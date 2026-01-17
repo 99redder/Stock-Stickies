@@ -95,6 +95,7 @@ const firebaseConfig = {
             const [stockLoading, setStockLoading] = useState(false);
             const [stockError, setStockError] = useState(null);
             const [finnhubApiKey, setFinnhubApiKey] = useState('');
+            const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
 
             useEffect(() => {
                 if (!auth) return;
@@ -514,12 +515,23 @@ const firebaseConfig = {
                                             type="text"
                                             value={finnhubApiKey}
                                             onChange={(e) => {
-                                                setFinnhubApiKey(e.target.value);
+                                                const newKey = e.target.value;
+                                                setFinnhubApiKey(newKey);
+                                                if (newKey) {
+                                                    setShowApiKeySuccess(true);
+                                                    setTimeout(() => setShowApiKeySuccess(false), 3000);
+                                                }
                                             }}
                                             placeholder="Finnhub API Key"
                                             className={`px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-800 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
                                             style={{width: '200px'}}
                                         />
+                                    </div>
+                                )}
+                                {showApiKeySuccess && (
+                                    <div className="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+                                        <Check size={20}/>
+                                        <span>API Key added successfully!</span>
                                     </div>
                                 )}
                                 <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg">{darkMode ? <Sun size={20}/> : <Moon size={20}/>}</button>
