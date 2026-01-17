@@ -249,10 +249,18 @@ const firebaseConfig = {
                 setStockError(null);
 
                 try {
-                    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`);
+                    // Using a CORS proxy to access Yahoo Finance
+                    const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                    const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`);
+                    const response = await fetch(proxyUrl + targetUrl);
+
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch');
+                    }
+
                     const data = await response.json();
 
-                    if (data.chart.error) {
+                    if (data.chart.error || !data.chart.result || data.chart.result.length === 0) {
                         setStockError('Stock not found');
                         setStockData(null);
                     } else {
@@ -274,7 +282,8 @@ const firebaseConfig = {
                         });
                     }
                 } catch (error) {
-                    setStockError('Failed to fetch stock data');
+                    console.error('Stock fetch error:', error);
+                    setStockError('Unable to fetch stock data. Please try again.');
                     setStockData(null);
                 }
 
