@@ -20,15 +20,16 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // 🔥 FIREBASE CONFIG - REPLACE WITH YOUR CREDENTIALS
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY_HERE",
-            authDomain: "YOUR_AUTH_DOMAIN_HERE",
-            projectId: "YOUR_PROJECT_ID_HERE",
-            storageBucket: "YOUR_STORAGE_BUCKET_HERE",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID_HERE",
-            appId: "YOUR_APP_ID_HERE"
-        };
+// my credential from firebase
+const firebaseConfig = {
+  apiKey: "REDACTED_FIREBASE_API_KEY",
+  authDomain: "red-s-stickies.firebaseapp.com",
+  projectId: "red-s-stickies",
+  storageBucket: "red-s-stickies.firebasestorage.app",
+  messagingSenderId: "896398882822",
+  appId: "1:896398882822:web:dcfc3217a949601916eb87"
+};
+
 
         // Initialize Firebase
         let db = null;
