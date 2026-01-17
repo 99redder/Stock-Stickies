@@ -183,7 +183,11 @@ const firebaseConfig = {
             };
 
             const updateNoteTitle = (noteId, title) => {
-                setNotes(notes.map(n => n.id === noteId ? {...n, title: title.toUpperCase()} : n));
+                const uppercaseTitle = title.toUpperCase();
+                setNotes(notes.map(n => n.id === noteId ? {...n, title: uppercaseTitle} : n));
+                if (expandedNote && expandedNote.id === noteId) {
+                    setExpandedNote({...expandedNote, title: uppercaseTitle});
+                }
             };
 
             const syncNow = () => {
@@ -322,7 +326,11 @@ const firebaseConfig = {
                                     />
                                     <textarea
                                         value={expandedNote.text}
-                                        onChange={(e) => setNotes(notes.map(n => n.id === expandedNote.id ? {...n, text: e.target.value} : n))}
+                                        onChange={(e) => {
+                                            const newText = e.target.value;
+                                            setNotes(notes.map(n => n.id === expandedNote.id ? {...n, text: newText} : n));
+                                            setExpandedNote({...expandedNote, text: newText});
+                                        }}
                                         placeholder="Type here..."
                                         className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-500 text-lg"
                                     />
