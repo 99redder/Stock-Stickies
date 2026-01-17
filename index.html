@@ -225,29 +225,7 @@ const firebaseConfig = {
             const classifiedNotes = useMemo(() => notes.filter(n => n.classified), [notes]);
             const groupedNotes = useMemo(() => COLORS.reduce((acc, color) => { acc[color] = classifiedNotes.filter(n => n.color === color); return acc; }, {}), [classifiedNotes]);
 
-            if (!currentUser) {
-                return (
-                    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-                            <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">Stock Stickies</h1>
-                            {!auth && <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded mb-4 text-sm"><strong>Setup Required:</strong> Add Firebase credentials</div>}
-                            <form onSubmit={handleLogin} className="space-y-4">
-                                <div><label className="block text-sm font-medium text-gray-700 mb-2">Email</label><input type="email" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter email"/></div>
-                                {!isResettingPassword && <div><label className="block text-sm font-medium text-gray-700 mb-2">Password</label><input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter password"/></div>}
-                                {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
-                                {resetSuccess && <p className="text-green-500 text-sm">Password reset email sent!</p>}
-                                <button type="submit" className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-medium">{isResettingPassword ? 'Send Reset Email' : (isSignup ? 'Sign Up' : 'Login')}</button>
-                            </form>
-                            <div className="mt-4 text-center space-y-2">
-                                <button onClick={() => { setIsSignup(!isSignup); setIsResettingPassword(false); setLoginError(''); }} className="text-blue-500 text-sm block w-full">{isSignup ? 'Login' : 'Sign Up'}</button>
-                                {!isSignup && !isResettingPassword && <button onClick={() => setIsResettingPassword(true)} className="text-gray-500 text-sm">Forgot password?</button>}
-                                {isResettingPassword && <button onClick={() => setIsResettingPassword(false)} className="text-gray-500 text-sm">Back to login</button>}
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
+            // Stock data fetching effect - must be before early return to follow Rules of Hooks
             useEffect(() => {
                 // Use a flag to prevent state updates on unmounted component
                 let isMounted = true;
@@ -321,6 +299,29 @@ const firebaseConfig = {
                     isMounted = false;
                 };
             }, [expandedNote?.title]);
+
+            if (!currentUser) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+                            <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">Stock Stickies</h1>
+                            {!auth && <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded mb-4 text-sm"><strong>Setup Required:</strong> Add Firebase credentials</div>}
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div><label className="block text-sm font-medium text-gray-700 mb-2">Email</label><input type="email" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter email"/></div>
+                                {!isResettingPassword && <div><label className="block text-sm font-medium text-gray-700 mb-2">Password</label><input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter password"/></div>}
+                                {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
+                                {resetSuccess && <p className="text-green-500 text-sm">Password reset email sent!</p>}
+                                <button type="submit" className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-medium">{isResettingPassword ? 'Send Reset Email' : (isSignup ? 'Sign Up' : 'Login')}</button>
+                            </form>
+                            <div className="mt-4 text-center space-y-2">
+                                <button onClick={() => { setIsSignup(!isSignup); setIsResettingPassword(false); setLoginError(''); }} className="text-blue-500 text-sm block w-full">{isSignup ? 'Login' : 'Sign Up'}</button>
+                                {!isSignup && !isResettingPassword && <button onClick={() => setIsResettingPassword(true)} className="text-gray-500 text-sm">Forgot password?</button>}
+                                {isResettingPassword && <button onClick={() => setIsResettingPassword(false)} className="text-gray-500 text-sm">Back to login</button>}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
 
             return (
                 <>
