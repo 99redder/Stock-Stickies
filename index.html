@@ -115,7 +115,7 @@ const firebaseConfig = {
             useEffect(() => {
                 if (currentUser && auth.currentUser && db) {
                     if (saveTimeout) clearTimeout(saveTimeout);
-                    
+
                     const timeout = setTimeout(() => {
                         setIsSaving(true);
                         setSyncStatus('syncing');
@@ -129,8 +129,8 @@ const firebaseConfig = {
                             setSyncStatus('offline');
                             setIsSaving(false);
                         });
-                    }, 1000);
-                    
+                    }, 3000);
+
                     setSaveTimeout(timeout);
                     return () => clearTimeout(timeout);
                 }
