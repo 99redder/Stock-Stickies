@@ -96,6 +96,8 @@ const firebaseConfig = {
             const [stockError, setStockError] = useState(null);
             const [finnhubApiKey, setFinnhubApiKey] = useState('');
             const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
+            const [watchList, setWatchList] = useState([]);
+            const [newWatchTicker, setNewWatchTicker] = useState('');
 
             useEffect(() => {
                 if (!auth) return;
@@ -118,6 +120,7 @@ const firebaseConfig = {
                             setCollapsedCategories(data.collapsedCategories || {});
                             setDarkMode(data.darkMode || false);
                             setFinnhubApiKey(data.finnhubApiKey || '');
+                            setWatchList(data.watchList || []);
                         }
                     });
                 return () => unsubscribe();
@@ -131,7 +134,7 @@ const firebaseConfig = {
                         isSavingRef.current = true;
                         setSyncStatus('syncing');
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         }).then(() => {
                             setSyncStatus('synced');
@@ -147,13 +150,13 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey]);
+            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList]);
 
             useEffect(() => {
                 const handleBeforeUnload = (e) => {
                     if (currentUser && auth.currentUser && db) {
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
@@ -161,7 +164,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey]);
+            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -200,10 +203,22 @@ const firebaseConfig = {
             const syncNow = () => {
                 if (currentUser && auth.currentUser && db) {
                     db.collection('users').doc(auth.currentUser.uid).set({
-                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey,
+                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 }
+            };
+
+            const addToWatchList = () => {
+                const ticker = newWatchTicker.trim().toUpperCase();
+                if (ticker && !watchList.includes(ticker)) {
+                    setWatchList([...watchList, ticker]);
+                    setNewWatchTicker('');
+                }
+            };
+
+            const removeFromWatchList = (ticker) => {
+                setWatchList(watchList.filter(t => t !== ticker));
             };
 
             const handleLogout = async () => {
@@ -530,7 +545,8 @@ const firebaseConfig = {
                     </div>
                 )}
                 <div className={`min-h-screen p-8 ${darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-100 to-gray-200'}`}>
-                    <div className="max-w-7xl mx-auto">
+                    <div className="flex gap-6 max-w-full mx-auto">
+                        <div className="flex-grow" style={{width: '80%'}}>
                         <div className="flex items-center justify-between mb-4">
                             <div>
                                 <div className="flex items-center gap-3">
@@ -662,6 +678,58 @@ const firebaseConfig = {
                             );
                         })}
                         {!notes.length && <div className="text-center py-20"><p className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No notes yet. Click "New Note" to get started!</p></div>}
+                        </div>
+
+                        {/* Watch List Panel */}
+                        <div className={`w-80 flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6 h-fit sticky top-8`}>
+                            <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h2>
+
+                            {/* Add Ticker Input */}
+                            <div className="mb-4">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newWatchTicker}
+                                        onChange={(e) => setNewWatchTicker(e.target.value.toUpperCase())}
+                                        onKeyDown={(e) => e.key === 'Enter' && addToWatchList()}
+                                        placeholder="Add ticker..."
+                                        className={`flex-1 px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none uppercase`}
+                                    />
+                                    <button
+                                        onClick={addToWatchList}
+                                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded shadow"
+                                    >
+                                        <Plus size={20}/>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Watch List Items */}
+                            <div className="space-y-2">
+                                {watchList.length === 0 ? (
+                                    <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        No tickers in watch list
+                                    </p>
+                                ) : (
+                                    watchList.map((ticker) => (
+                                        <div
+                                            key={ticker}
+                                            className={`flex items-center justify-between p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} hover:shadow-md transition-shadow`}
+                                        >
+                                            <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                                {ticker}
+                                            </span>
+                                            <button
+                                                onClick={() => removeFromWatchList(ticker)}
+                                                className="text-red-500 hover:text-red-700"
+                                            >
+                                                <X size={18}/>
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
                 </>
