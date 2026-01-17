@@ -86,6 +86,9 @@ const firebaseConfig = {
             const [tempLabel, setTempLabel] = useState('');
             const [collapsedCategories, setCollapsedCategories] = useState({});
             const [expandedNote, setExpandedNote] = useState(null);
+            const [stockData, setStockData] = useState(null);
+            const [stockLoading, setStockLoading] = useState(false);
+            const [stockError, setStockError] = useState(null);
 
             const colors = ['bg-yellow-200', 'bg-pink-200', 'bg-blue-200', 'bg-green-200', 'bg-red-300', 'bg-orange-200'];
             const unclassifiedColor = 'bg-gray-300';
@@ -236,6 +239,54 @@ const firebaseConfig = {
                 }
             };
 
+            const fetchStockData = async (ticker) => {
+                if (!ticker) {
+                    setStockData(null);
+                    return;
+                }
+
+                setStockLoading(true);
+                setStockError(null);
+
+                try {
+                    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`);
+                    const data = await response.json();
+
+                    if (data.chart.error) {
+                        setStockError('Stock not found');
+                        setStockData(null);
+                    } else {
+                        const result = data.chart.result[0];
+                        const quote = result.indicators.quote[0];
+                        const meta = result.meta;
+
+                        setStockData({
+                            symbol: meta.symbol,
+                            currentPrice: meta.regularMarketPrice,
+                            previousClose: meta.chartPreviousClose || meta.previousClose,
+                            change: meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose),
+                            changePercent: ((meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose)) / (meta.chartPreviousClose || meta.previousClose)) * 100,
+                            dayHigh: quote.high?.[0] || meta.regularMarketDayHigh,
+                            dayLow: quote.low?.[0] || meta.regularMarketDayLow,
+                            volume: quote.volume?.[0] || meta.regularMarketVolume,
+                            marketCap: meta.marketCap,
+                            currency: meta.currency
+                        });
+                    }
+                } catch (error) {
+                    setStockError('Failed to fetch stock data');
+                    setStockData(null);
+                }
+
+                setStockLoading(false);
+            };
+
+            useEffect(() => {
+                if (expandedNote?.title) {
+                    fetchStockData(expandedNote.title);
+                }
+            }, [expandedNote?.title]);
+
             return (
                 <>
                 {expandedNote && (
@@ -264,16 +315,70 @@ const firebaseConfig = {
                                         className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-500 text-lg"
                                     />
                                 </div>
-                                <div className="w-1/2 bg-white overflow-hidden">
-                                    {expandedNote.title ? (
-                                        <iframe
-                                            src={`https://finance.yahoo.com/chart/${expandedNote.title}`}
-                                            className="w-full h-full border-none"
-                                            title={`${expandedNote.title} Stock Chart`}
-                                        />
+                                <div className="w-1/2 bg-gray-50 overflow-auto p-6">
+                                    {stockLoading ? (
+                                        <div className="flex items-center justify-center h-full">
+                                            <p className="text-gray-500">Loading stock data...</p>
+                                        </div>
+                                    ) : stockError ? (
+                                        <div className="flex items-center justify-center h-full">
+                                            <p className="text-red-500">{stockError}</p>
+                                        </div>
+                                    ) : stockData ? (
+                                        <div className="space-y-6">
+                                            <div className="bg-white rounded-lg p-6 shadow">
+                                                <h3 className="text-3xl font-bold text-gray-800 mb-2">{stockData.symbol}</h3>
+                                                <div className="flex items-baseline gap-3">
+                                                    <span className="text-5xl font-bold text-gray-900">
+                                                        {stockData.currency === 'USD' ? '$' : ''}{stockData.currentPrice?.toFixed(2)}
+                                                    </span>
+                                                    <span className={`text-2xl font-semibold ${stockData.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {stockData.change >= 0 ? '+' : ''}{stockData.change?.toFixed(2)} ({stockData.changePercent?.toFixed(2)}%)
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white rounded-lg p-6 shadow">
+                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Market Data</h4>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Previous Close</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {stockData.currency === 'USD' ? '$' : ''}{stockData.previousClose?.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Day High</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {stockData.currency === 'USD' ? '$' : ''}{stockData.dayHigh?.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Day Low</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {stockData.currency === 'USD' ? '$' : ''}{stockData.dayLow?.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Volume</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {stockData.volume?.toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                    {stockData.marketCap && (
+                                                        <div className="col-span-2">
+                                                            <p className="text-sm text-gray-500">Market Cap</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.currency === 'USD' ? '$' : ''}{(stockData.marketCap / 1e9).toFixed(2)}B
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
                                     ) : (
                                         <div className="flex items-center justify-center h-full text-gray-500">
-                                            <p>Enter a ticker symbol to view chart</p>
+                                            <p>Enter a ticker symbol to view stock data</p>
                                         </div>
                                     )}
                                 </div>
