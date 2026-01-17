@@ -681,11 +681,11 @@ const firebaseConfig = {
                         </div>
 
                         {/* Watch List Panel */}
-                        <div className={`w-80 flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6 h-fit sticky top-8`}>
-                            <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h2>
+                        <div className={`w-80 flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg sticky top-8 flex flex-col`} style={{maxHeight: 'calc(100vh - 4rem)'}}>
+                            <div className="p-6 pb-4">
+                                <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h2>
 
-                            {/* Add Ticker Input */}
-                            <div className="mb-4">
+                                {/* Add Ticker Input */}
                                 <div className="flex gap-2">
                                     <input
                                         type="text"
@@ -704,30 +704,32 @@ const firebaseConfig = {
                                 </div>
                             </div>
 
-                            {/* Watch List Items */}
-                            <div className="space-y-2">
-                                {watchList.length === 0 ? (
-                                    <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        No tickers in watch list
-                                    </p>
-                                ) : (
-                                    watchList.map((ticker) => (
-                                        <div
-                                            key={ticker}
-                                            className={`flex items-center justify-between p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} hover:shadow-md transition-shadow`}
-                                        >
-                                            <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                                {ticker}
-                                            </span>
-                                            <button
-                                                onClick={() => removeFromWatchList(ticker)}
-                                                className="text-red-500 hover:text-red-700"
+                            {/* Watch List Items - Scrollable */}
+                            <div className="flex-1 overflow-y-auto px-6 pb-6">
+                                <div className="space-y-2">
+                                    {watchList.length === 0 ? (
+                                        <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            No tickers in watch list
+                                        </p>
+                                    ) : (
+                                        watchList.map((ticker) => (
+                                            <div
+                                                key={ticker}
+                                                className={`flex items-center justify-between p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} hover:shadow-md transition-shadow`}
                                             >
-                                                <X size={18}/>
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
+                                                <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                                    {ticker}
+                                                </span>
+                                                <button
+                                                    onClick={() => removeFromWatchList(ticker)}
+                                                    className="text-red-500 hover:text-red-700"
+                                                >
+                                                    <X size={18}/>
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
