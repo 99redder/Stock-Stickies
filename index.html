@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chris's Sticky Notes App</title>
+    <title>Red's Stickies</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -89,6 +89,8 @@
             const [isSignup, setIsSignup] = useState(false);
             const [loginError, setLoginError] = useState('');
             const [darkMode, setDarkMode] = useState(false);
+            const [isResettingPassword, setIsResettingPassword] = useState(false);
+            const [resetSuccess, setResetSuccess] = useState(false);
             
             const [notes, setNotes] = useState([]);
             const [nextId, setNextId] = useState(1);
@@ -148,6 +150,7 @@
             const handleLogin = (e) => {
                 e.preventDefault();
                 setLoginError('');
+                setResetSuccess(false);
                 
                 if (!loginUsername || !loginPassword) {
                     setLoginError('Please enter both username and password');
@@ -164,6 +167,17 @@
                     users[loginUsername] = loginPassword;
                     localStorage.setItem('users', JSON.stringify(users));
                     setCurrentUser(loginUsername);
+                    setLoginUsername('');
+                    setLoginPassword('');
+                } else if (isResettingPassword) {
+                    if (!users[loginUsername]) {
+                        setLoginError('Username not found');
+                        return;
+                    }
+                    users[loginUsername] = loginPassword;
+                    localStorage.setItem('users', JSON.stringify(users));
+                    setResetSuccess(true);
+                    setIsResettingPassword(false);
                     setLoginUsername('');
                     setLoginPassword('');
                 } else {
@@ -246,7 +260,7 @@
                     <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
                             <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">
-                                Chris's Sticky Notes App
+                                Red's Stickies
                             </h1>
                             <form onSubmit={handleLogin} className="space-y-4">
                                 <div>
@@ -263,36 +277,65 @@
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Password
+                                        {isResettingPassword ? 'New Password' : 'Password'}
                                     </label>
                                     <input
                                         type="password"
                                         value={loginPassword}
                                         onChange={(e) => setLoginPassword(e.target.value)}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                        placeholder="Enter password"
+                                        placeholder={isResettingPassword ? "Enter new password" : "Enter password"}
                                     />
                                 </div>
                                 {loginError && (
                                     <p className="text-red-500 text-sm">{loginError}</p>
                                 )}
+                                {resetSuccess && (
+                                    <p className="text-green-500 text-sm">Password reset successfully! You can now login.</p>
+                                )}
                                 <button
                                     type="submit"
                                     className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-medium transition-colors"
                                 >
-                                    {isSignup ? 'Sign Up' : 'Login'}
+                                    {isResettingPassword ? 'Reset Password' : (isSignup ? 'Sign Up' : 'Login')}
                                 </button>
                             </form>
-                            <div className="mt-4 text-center">
+                            <div className="mt-4 text-center space-y-2">
                                 <button
                                     onClick={() => {
                                         setIsSignup(!isSignup);
+                                        setIsResettingPassword(false);
                                         setLoginError('');
+                                        setResetSuccess(false);
                                     }}
-                                    className="text-blue-500 hover:text-blue-600 text-sm"
+                                    className="text-blue-500 hover:text-blue-600 text-sm block w-full"
                                 >
                                     {isSignup ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
                                 </button>
+                                {!isSignup && !isResettingPassword && (
+                                    <button
+                                        onClick={() => {
+                                            setIsResettingPassword(true);
+                                            setLoginError('');
+                                            setResetSuccess(false);
+                                        }}
+                                        className="text-gray-500 hover:text-gray-600 text-sm"
+                                    >
+                                        Forgot password?
+                                    </button>
+                                )}
+                                {isResettingPassword && (
+                                    <button
+                                        onClick={() => {
+                                            setIsResettingPassword(false);
+                                            setLoginError('');
+                                            setResetSuccess(false);
+                                        }}
+                                        className="text-gray-500 hover:text-gray-600 text-sm"
+                                    >
+                                        Back to login
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -304,7 +347,7 @@
                     <div className="max-w-7xl mx-auto">
                         <div className="flex items-center justify-between mb-4">
                             <div>
-                                <h1 className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Chris's Sticky Notes App</h1>
+                                <h1 className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Red's Stickies</h1>
                                 <p className={`text-sm mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Welcome, {currentUser}!</p>
                             </div>
                             <div className="flex gap-3">
