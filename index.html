@@ -94,6 +94,7 @@ const firebaseConfig = {
             const [stockData, setStockData] = useState(null);
             const [stockLoading, setStockLoading] = useState(false);
             const [stockError, setStockError] = useState(null);
+            const [finnhubApiKey, setFinnhubApiKey] = useState(localStorage.getItem('finnhubApiKey') || '');
 
             useEffect(() => {
                 if (!auth) return;
@@ -245,69 +246,61 @@ const firebaseConfig = {
                     }
 
                     try {
-                        const proxyUrl = 'https://api.allorigins.win/raw?url=';
-
-                        // Fetch price data
-                        const chartUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${expandedNote.title}?interval=1d&range=1d`);
-                        const chartResponse = await fetch(proxyUrl + chartUrl);
-
-                        if (!chartResponse.ok) {
-                            throw new Error('Failed to fetch chart data');
+                        if (!finnhubApiKey) {
+                            if (isMounted) {
+                                setStockError('Please enter your Finnhub API key in settings');
+                                setStockData(null);
+                            }
+                            return;
                         }
 
-                        const chartData = await chartResponse.json();
+                        // Fetch quote data from Finnhub
+                        const quoteResponse = await fetch(`https://finnhub.io/api/v1/quote?symbol=${expandedNote.title}&token=${finnhubApiKey}`);
 
-                        if (chartData.chart.error || !chartData.chart.result || chartData.chart.result.length === 0) {
+                        if (!quoteResponse.ok) {
+                            throw new Error('Failed to fetch quote data');
+                        }
+
+                        const quoteData = await quoteResponse.json();
+
+                        if (!quoteData.c || quoteData.c === 0) {
                             if (isMounted) {
                                 setStockError('Stock not found');
                                 setStockData(null);
                             }
-                        } else {
-                            const result = chartData.chart.result[0];
-                            const quote = result.indicators.quote[0];
-                            const meta = result.meta;
+                            return;
+                        }
 
-                            // Fetch fundamental data (P/E, P/B, Dividend)
-                            const quoteUrl = encodeURIComponent(`https://query2.finance.yahoo.com/v7/finance/quote?symbols=${expandedNote.title}`);
-                            let fundamentals = {};
+                        // Fetch company profile for additional info
+                        const profileResponse = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${expandedNote.title}&token=${finnhubApiKey}`);
+                        const profileData = profileResponse.ok ? await profileResponse.json() : {};
 
-                            try {
-                                const fundamentalsResponse = await fetch(proxyUrl + quoteUrl);
-                                if (fundamentalsResponse.ok) {
-                                    const fundamentalsData = await fundamentalsResponse.json();
-                                    const quoteData = fundamentalsData.quoteResponse?.result?.[0];
+                        // Fetch metrics for fundamentals
+                        const metricsResponse = await fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${expandedNote.title}&metric=all&token=${finnhubApiKey}`);
+                        const metricsData = metricsResponse.ok ? await metricsResponse.json() : {};
 
-                                    if (quoteData) {
-                                        fundamentals = {
-                                            peRatio: quoteData.trailingPE,
-                                            pbRatio: quoteData.priceToBook,
-                                            dividendYield: quoteData.dividendYield,
-                                            dividendRate: quoteData.trailingAnnualDividendRate
-                                        };
-                                    }
-                                }
-                            } catch (err) {
-                                console.log('Could not fetch fundamentals:', err);
-                            }
+                        if (isMounted) {
+                            const currentPrice = quoteData.c;
+                            const previousClose = quoteData.pc;
+                            const change = currentPrice - previousClose;
+                            const changePercent = (change / previousClose) * 100;
 
-                            if (isMounted) {
-                                setStockData({
-                                    symbol: meta.symbol,
-                                    currentPrice: meta.regularMarketPrice,
-                                    previousClose: meta.chartPreviousClose || meta.previousClose,
-                                    change: meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose),
-                                    changePercent: ((meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose)) / (meta.chartPreviousClose || meta.previousClose)) * 100,
-                                    dayHigh: quote.high?.[0] || meta.regularMarketDayHigh,
-                                    dayLow: quote.low?.[0] || meta.regularMarketDayLow,
-                                    volume: quote.volume?.[0] || meta.regularMarketVolume,
-                                    marketCap: meta.marketCap,
-                                    currency: meta.currency,
-                                    peRatio: fundamentals.peRatio,
-                                    pbRatio: fundamentals.pbRatio,
-                                    dividendYield: fundamentals.dividendYield,
-                                    dividendRate: fundamentals.dividendRate
-                                });
-                            }
+                            setStockData({
+                                symbol: expandedNote.title,
+                                currentPrice: currentPrice,
+                                previousClose: previousClose,
+                                change: change,
+                                changePercent: changePercent,
+                                dayHigh: quoteData.h,
+                                dayLow: quoteData.l,
+                                volume: null, // Finnhub doesn't provide volume in quote endpoint
+                                marketCap: profileData.marketCapitalization ? profileData.marketCapitalization * 1e6 : null,
+                                currency: profileData.currency || 'USD',
+                                peRatio: metricsData.metric?.peBasicExclExtraTTM || metricsData.metric?.peNormalizedAnnual,
+                                pbRatio: metricsData.metric?.pbAnnual || metricsData.metric?.pbQuarterly,
+                                dividendYield: metricsData.metric?.dividendYieldIndicatedAnnual ? metricsData.metric.dividendYieldIndicatedAnnual / 100 : null,
+                                dividendRate: metricsData.metric?.dividendPerShareAnnual
+                            });
                         }
                     } catch (error) {
                         console.error('Stock fetch error:', error);
@@ -428,12 +421,14 @@ const firebaseConfig = {
                                                             {stockData.currency === 'USD' ? '$' : ''}{stockData.dayLow?.toFixed(2)}
                                                         </p>
                                                     </div>
-                                                    <div>
-                                                        <p className="text-sm text-gray-500">Volume</p>
-                                                        <p className="text-xl font-semibold text-gray-900">
-                                                            {stockData.volume?.toLocaleString()}
-                                                        </p>
-                                                    </div>
+                                                    {stockData.volume && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">Volume</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.volume?.toLocaleString()}
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                     {stockData.marketCap && (
                                                         <div className="col-span-2">
                                                             <p className="text-sm text-gray-500">Market Cap</p>
@@ -510,8 +505,21 @@ const firebaseConfig = {
                                 </div>
                                 <p className={`text-sm mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Welcome, {currentUser}!</p>
                             </div>
-                            <div className="flex gap-3">
+                            <div className="flex gap-3 items-center">
                                 <button onClick={() => { setNotes([{id: nextId, title: '', text: '', color: UNCLASSIFIED_COLOR, classified: false}, ...notes]); setNextId(nextId + 1); }} className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg"><Plus size={20}/>New Note</button>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={finnhubApiKey}
+                                        onChange={(e) => {
+                                            setFinnhubApiKey(e.target.value);
+                                            localStorage.setItem('finnhubApiKey', e.target.value);
+                                        }}
+                                        placeholder="Finnhub API Key"
+                                        className={`px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-800 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        style={{width: '200px'}}
+                                    />
+                                </div>
                                 <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg">{darkMode ? <Sun size={20}/> : <Moon size={20}/>}</button>
                                 <button onClick={handleLogout} className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg shadow-lg"><LogOut size={20}/>Logout</button>
                             </div>
