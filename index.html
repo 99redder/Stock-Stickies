@@ -19,7 +19,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // my credentials from Firebase
 const firebaseConfig = {
@@ -241,9 +241,9 @@ const firebaseConfig = {
                 );
             }
 
-            const unclassifiedNotes = notes.filter(n => !n.classified);
-            const classifiedNotes = notes.filter(n => n.classified);
-            const groupedNotes = colors.reduce((acc, color) => { acc[color] = classifiedNotes.filter(n => n.color === color); return acc; }, {});
+            const unclassifiedNotes = useMemo(() => notes.filter(n => !n.classified), [notes]);
+            const classifiedNotes = useMemo(() => notes.filter(n => n.classified), [notes]);
+            const groupedNotes = useMemo(() => colors.reduce((acc, color) => { acc[color] = classifiedNotes.filter(n => n.color === color); return acc; }, {}), [classifiedNotes]);
 
             useEffect(() => {
                 // Use a flag to prevent state updates on unmounted component
