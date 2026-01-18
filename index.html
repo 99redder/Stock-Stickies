@@ -107,6 +107,9 @@ const firebaseConfig = {
             const [watchList, setWatchList] = useState([]);
             const [newWatchTicker, setNewWatchTicker] = useState('');
             const [hideEmail, setHideEmail] = useState(false);
+            const [marketauxApiKey, setMarketauxApiKey] = useState('');
+            const [newsData, setNewsData] = useState(null);
+            const [newsLoading, setNewsLoading] = useState(false);
 
             useEffect(() => {
                 if (!auth) return;
@@ -129,6 +132,7 @@ const firebaseConfig = {
                             setCollapsedCategories(data.collapsedCategories || {});
                             setDarkMode(data.darkMode || false);
                             setFinnhubApiKey(data.finnhubApiKey || '');
+                            setMarketauxApiKey(data.marketauxApiKey || '');
                             setWatchList(data.watchList || []);
                         }
                     });
@@ -145,7 +149,7 @@ const firebaseConfig = {
                     const timeout = setTimeout(() => {
                         setSyncStatus('syncing');
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         }).then(() => {
                             setSyncStatus('synced');
@@ -161,13 +165,13 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList]);
+            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList]);
 
             useEffect(() => {
                 const handleBeforeUnload = (e) => {
                     if (currentUser && auth.currentUser && db) {
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
@@ -175,7 +179,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList]);
+            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -214,7 +218,7 @@ const firebaseConfig = {
             const syncNow = () => {
                 if (currentUser && auth.currentUser && db) {
                     db.collection('users').doc(auth.currentUser.uid).set({
-                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, watchList,
+                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 }
@@ -362,6 +366,104 @@ const firebaseConfig = {
                     isMounted = false;
                 };
             }, [expandedNote?.title]);
+
+            // News fetching effect
+            useEffect(() => {
+                let isMounted = true;
+
+                const loadNewsData = async () => {
+                    if (!expandedNote?.title || !marketauxApiKey) {
+                        if (isMounted) setNewsData(null);
+                        return;
+                    }
+
+                    // Check cache - only fetch once per day per ticker
+                    const cacheKey = `news_${expandedNote.title}`;
+                    const cached = localStorage.getItem(cacheKey);
+                    if (cached) {
+                        const { data, date } = JSON.parse(cached);
+                        const today = new Date().toISOString().split('T')[0];
+                        if (date === today) {
+                            if (isMounted) setNewsData(data);
+                            return;
+                        }
+                    }
+
+                    if (isMounted) setNewsLoading(true);
+
+                    try {
+                        const today = new Date().toISOString().split('T')[0];
+
+                        // Fetch from MarketAux with sentiment
+                        const marketauxResponse = await fetch(
+                            `https://api.marketaux.com/v1/news/all?symbols=${expandedNote.title}&filter_entities=true&published_on=${today}&api_token=${marketauxApiKey}`
+                        );
+
+                        let articles = [];
+
+                        if (marketauxResponse.ok) {
+                            const marketauxData = await marketauxResponse.json();
+                            if (marketauxData.data && marketauxData.data.length > 0) {
+                                articles = marketauxData.data.slice(0, 10).map(article => {
+                                    // Find sentiment for this ticker
+                                    const entity = article.entities?.find(e => e.symbol === expandedNote.title);
+                                    const sentimentScore = entity?.sentiment_score || 0;
+                                    let sentiment = 'neutral';
+                                    if (sentimentScore > 0.2) sentiment = 'bullish';
+                                    else if (sentimentScore < -0.2) sentiment = 'bearish';
+
+                                    return {
+                                        title: article.title,
+                                        description: article.description,
+                                        url: article.url,
+                                        source: article.source,
+                                        publishedAt: article.published_at,
+                                        sentiment: sentiment,
+                                        sentimentScore: sentimentScore
+                                    };
+                                });
+                            }
+                        }
+
+                        // If no MarketAux results, try Finnhub company news as fallback
+                        if (articles.length === 0 && finnhubApiKey) {
+                            const finnhubResponse = await fetch(
+                                `https://finnhub.io/api/v1/company-news?symbol=${expandedNote.title}&from=${today}&to=${today}&token=${finnhubApiKey}`
+                            );
+                            if (finnhubResponse.ok) {
+                                const finnhubNews = await finnhubResponse.json();
+                                articles = finnhubNews.slice(0, 10).map(article => ({
+                                    title: article.headline,
+                                    description: article.summary,
+                                    url: article.url,
+                                    source: article.source,
+                                    publishedAt: new Date(article.datetime * 1000).toISOString(),
+                                    sentiment: 'neutral',
+                                    sentimentScore: 0
+                                }));
+                            }
+                        }
+
+                        if (isMounted) {
+                            setNewsData(articles);
+                            // Cache the results
+                            localStorage.setItem(cacheKey, JSON.stringify({
+                                data: articles,
+                                date: today
+                            }));
+                        }
+                    } catch (error) {
+                        console.error('News fetch error:', error);
+                        if (isMounted) setNewsData([]);
+                    }
+
+                    if (isMounted) setNewsLoading(false);
+                };
+
+                loadNewsData();
+
+                return () => { isMounted = false; };
+            }, [expandedNote?.title, marketauxApiKey, finnhubApiKey]);
 
             if (!currentUser) {
                 return (
@@ -555,6 +657,57 @@ const firebaseConfig = {
                                                     )}
                                                 </div>
                                             </div>
+
+                                            {/* Today's News Section */}
+                                            <div className="bg-white rounded-lg p-6 shadow">
+                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Today's News</h4>
+                                                {newsLoading ? (
+                                                    <div className="flex items-center justify-center py-4">
+                                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                                        <span className="ml-2 text-gray-500">Loading news...</span>
+                                                    </div>
+                                                ) : !marketauxApiKey ? (
+                                                    <p className="text-sm text-gray-500 text-center py-4">
+                                                        Add your MarketAux API key to see today's news with sentiment analysis.
+                                                        <br/>
+                                                        <a href="https://www.marketaux.com/register" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                                                            Get a free API key
+                                                        </a>
+                                                    </p>
+                                                ) : newsData && newsData.length > 0 ? (
+                                                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                                                        {newsData.map((article, index) => (
+                                                            <div key={index} className="border-b border-gray-100 pb-3 last:border-0">
+                                                                <div className="flex items-start gap-2">
+                                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                                                                        article.sentiment === 'bullish' ? 'bg-green-100 text-green-700' :
+                                                                        article.sentiment === 'bearish' ? 'bg-red-100 text-red-700' :
+                                                                        'bg-gray-100 text-gray-600'
+                                                                    }`}>
+                                                                        {article.sentiment === 'bullish' ? '↑ Bullish' :
+                                                                         article.sentiment === 'bearish' ? '↓ Bearish' : '• Neutral'}
+                                                                    </span>
+                                                                    <a href={article.url} target="_blank" rel="noopener noreferrer"
+                                                                       className="text-sm font-medium text-gray-800 hover:text-blue-600 line-clamp-2">
+                                                                        {article.title}
+                                                                    </a>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 mt-1 ml-0">
+                                                                    <span className="text-xs text-gray-400">{article.source}</span>
+                                                                    <span className="text-xs text-gray-300">•</span>
+                                                                    <span className="text-xs text-gray-400">
+                                                                        {new Date(article.publishedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-gray-500 text-center py-4">
+                                                        No news available for today
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="flex items-center justify-center h-full text-gray-500">
@@ -628,6 +781,18 @@ const firebaseConfig = {
                                     <div className="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
                                         <Check size={20}/>
                                         <span>API Key added successfully!</span>
+                                    </div>
+                                )}
+                                {!marketauxApiKey && (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={marketauxApiKey}
+                                            onChange={(e) => setMarketauxApiKey(e.target.value)}
+                                            placeholder="MarketAux API Key"
+                                            className={`px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-800 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                            style={{width: '200px'}}
+                                        />
                                     </div>
                                 )}
                                 <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg">{darkMode ? <Sun size={20}/> : <Moon size={20}/>}</button>
