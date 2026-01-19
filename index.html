@@ -112,6 +112,7 @@ const firebaseConfig = {
             const [newsLoading, setNewsLoading] = useState(false);
             const [morningstarData, setMorningstarData] = useState(null);
             const [morningstarLoading, setMorningstarLoading] = useState(false);
+            const [morningstarApiKey, setMorningstarApiKey] = useState('');
             const [watchListModalTicker, setWatchListModalTicker] = useState(null);
 
             // Compute the active ticker for data fetching (from expanded note or watch list modal)
@@ -139,6 +140,7 @@ const firebaseConfig = {
                             setDarkMode(data.darkMode || false);
                             setFinnhubApiKey(data.finnhubApiKey || '');
                             setMarketauxApiKey(data.marketauxApiKey || '');
+                            setMorningstarApiKey(data.morningstarApiKey || '');
                             setWatchList(data.watchList || []);
                         }
                     });
@@ -155,7 +157,7 @@ const firebaseConfig = {
                     const timeout = setTimeout(() => {
                         setSyncStatus('syncing');
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, morningstarApiKey, watchList,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         }).then(() => {
                             setSyncStatus('synced');
@@ -171,13 +173,13 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList]);
+            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, morningstarApiKey, watchList]);
 
             useEffect(() => {
                 const handleBeforeUnload = (e) => {
                     if (currentUser && auth.currentUser && db) {
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, morningstarApiKey, watchList,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
@@ -185,7 +187,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList]);
+            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, morningstarApiKey, watchList]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -224,7 +226,7 @@ const firebaseConfig = {
             const syncNow = () => {
                 if (currentUser && auth.currentUser && db) {
                     db.collection('users').doc(auth.currentUser.uid).set({
-                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
+                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, morningstarApiKey, watchList,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 }
@@ -473,12 +475,12 @@ const firebaseConfig = {
                 return () => { isMounted = false; };
             }, [activeTicker, marketauxApiKey, finnhubApiKey]);
 
-            // Morningstar data fetching effect
+            // Morningstar data fetching effect (using RapidAPI)
             useEffect(() => {
                 let isMounted = true;
 
                 const loadMorningstarData = async () => {
-                    if (!activeTicker) {
+                    if (!activeTicker || !morningstarApiKey) {
                         if (isMounted) setMorningstarData(null);
                         return;
                     }
@@ -501,48 +503,67 @@ const firebaseConfig = {
                         }
                     }
 
+                    // Check performanceId cache
+                    const perfIdCacheKey = `morningstar_perfId_${ticker}`;
+                    let performanceId = null;
+                    const cachedPerfId = localStorage.getItem(perfIdCacheKey);
+                    if (cachedPerfId) {
+                        try {
+                            const { id, timestamp } = JSON.parse(cachedPerfId);
+                            const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+                            if (timestamp > monthAgo && id) {
+                                performanceId = id;
+                            }
+                        } catch (e) {
+                            localStorage.removeItem(perfIdCacheKey);
+                        }
+                    }
+
                     if (isMounted) setMorningstarLoading(true);
 
                     try {
-                        // Try multiple CORS proxies and page types
-                        const corsProxies = [
-                            'https://api.allorigins.win/raw?url=',
-                            'https://corsproxy.io/?',
-                            'https://api.codetabs.com/v1/proxy?quest='
-                        ];
-                        const exchanges = ['xnas', 'xnys'];
-                        const pageTypes = ['valuation', 'quote'];
+                        const rapidApiHeaders = {
+                            'x-rapidapi-host': 'morningstar13.p.rapidapi.com',
+                            'x-rapidapi-key': morningstarApiKey
+                        };
 
-                        let html = null;
-                        let foundData = false;
-
-                        // Try each combination of proxy, exchange, and page type
-                        outerLoop:
-                        for (const proxy of corsProxies) {
-                            for (const exchange of exchanges) {
-                                for (const pageType of pageTypes) {
-                                    try {
-                                        const msUrl = `https://www.morningstar.com/stocks/${exchange}/${ticker.toLowerCase()}/${pageType}`;
-                                        const response = await fetch(proxy + encodeURIComponent(msUrl), {
-                                            headers: { 'Accept': 'text/html' }
-                                        });
-                                        if (response.ok) {
-                                            const text = await response.text();
-                                            // Check if we got actual content (not an error page)
-                                            if (text && text.length > 10000 && (
-                                                text.includes('Morningstar') ||
-                                                text.includes('starRating') ||
-                                                text.includes('Fair Value') ||
-                                                text.includes('Economic Moat')
-                                            )) {
-                                                html = text;
-                                                foundData = true;
-                                                break outerLoop;
-                                            }
-                                        }
-                                    } catch (e) {
-                                        continue;
+                        // Step 1: Get performanceId from ticker (if not cached)
+                        if (!performanceId) {
+                            const searchResponse = await fetch(
+                                `https://morningstar13.p.rapidapi.com/search?query=${ticker}&type=stock`,
+                                { headers: rapidApiHeaders }
+                            );
+                            if (searchResponse.ok) {
+                                const searchData = await searchResponse.json();
+                                // Look for exact ticker match in results
+                                if (searchData && Array.isArray(searchData)) {
+                                    const match = searchData.find(item =>
+                                        item.ticker?.toUpperCase() === ticker ||
+                                        item.symbol?.toUpperCase() === ticker
+                                    );
+                                    if (match) {
+                                        performanceId = match.performanceId || match.id;
+                                    } else if (searchData.length > 0) {
+                                        // Use first result if no exact match
+                                        performanceId = searchData[0].performanceId || searchData[0].id;
                                     }
+                                } else if (searchData && searchData.results) {
+                                    const match = searchData.results.find(item =>
+                                        item.ticker?.toUpperCase() === ticker ||
+                                        item.symbol?.toUpperCase() === ticker
+                                    );
+                                    if (match) {
+                                        performanceId = match.performanceId || match.id;
+                                    } else if (searchData.results.length > 0) {
+                                        performanceId = searchData.results[0].performanceId || searchData.results[0].id;
+                                    }
+                                }
+                                // Cache the performanceId
+                                if (performanceId) {
+                                    localStorage.setItem(perfIdCacheKey, JSON.stringify({
+                                        id: performanceId,
+                                        timestamp: Date.now()
+                                    }));
                                 }
                             }
                         }
@@ -554,64 +575,53 @@ const firebaseConfig = {
                             stewardship: null
                         };
 
-                        if (html) {
-                            // Try multiple regex patterns for each field
-                            // Star rating patterns
-                            const starPatterns = [
-                                /"starRating"\s*:\s*(\d)/,
-                                /"ratingValue"\s*:\s*(\d)/,
-                                /data-star-rating="(\d)"/,
-                                /class="[^"]*star[^"]*"[^>]*>(\d)/i
-                            ];
-                            for (const pattern of starPatterns) {
-                                const match = html.match(pattern);
-                                if (match) { data.starRating = parseInt(match[1]); break; }
-                            }
-
-                            // Fair value patterns
-                            const fvPatterns = [
-                                /"fairValue"\s*:\s*([\d.]+)/,
-                                /"quantitativeFairValue"\s*:\s*([\d.]+)/,
-                                /Fair Value[^$]*\$([\d.]+)/i,
-                                /fairValue['"]\s*:\s*['"]([\d.]+)/
-                            ];
-                            for (const pattern of fvPatterns) {
-                                const match = html.match(pattern);
-                                if (match) { data.fairValue = parseFloat(match[1]); break; }
-                            }
-
-                            // Moat patterns
-                            const moatPatterns = [
-                                /"economicMoat"\s*:\s*"([^"]+)"/i,
-                                /"moat"\s*:\s*"([^"]+)"/i,
-                                /Economic Moat[^<]*<[^>]*>([^<]*(?:Wide|Narrow|None)[^<]*)/i,
-                                /moatRating['"]\s*:\s*['"]([^'"]+)/i
-                            ];
-                            for (const pattern of moatPatterns) {
-                                const match = html.match(pattern);
-                                if (match) {
-                                    const val = match[1].trim();
-                                    if (val.toLowerCase().includes('wide')) data.moat = 'Wide';
-                                    else if (val.toLowerCase().includes('narrow')) data.moat = 'Narrow';
-                                    else if (val.toLowerCase().includes('none')) data.moat = 'None';
-                                    else data.moat = val;
-                                    break;
+                        if (performanceId) {
+                            // Step 2: Fetch fair value data
+                            const fairValueResponse = await fetch(
+                                `https://morningstar13.p.rapidapi.com/stock/fair-value?performanceId=${performanceId}&type=chart`,
+                                { headers: rapidApiHeaders }
+                            );
+                            if (fairValueResponse.ok) {
+                                const fvData = await fairValueResponse.json();
+                                // Extract fair value from response
+                                if (fvData) {
+                                    // Try different possible response structures
+                                    data.fairValue = fvData.fairValue || fvData.fair_value ||
+                                        fvData.quantitativeFairValue || fvData.latestFairValue ||
+                                        (fvData.chart && fvData.chart[fvData.chart.length - 1]?.fairValue);
+                                    data.starRating = fvData.starRating || fvData.rating || fvData.stars;
+                                    data.moat = fvData.moat || fvData.economicMoat || fvData.moatRating;
+                                    data.stewardship = fvData.stewardship || fvData.capitalAllocation ||
+                                        fvData.capitalAllocationRating;
                                 }
                             }
 
-                            // Stewardship/Capital Allocation patterns
-                            const stewardPatterns = [
-                                /"capitalAllocationRating"\s*:\s*"([^"]+)"/i,
-                                /"stewardship"\s*:\s*"([^"]+)"/i,
-                                /Capital Allocation[^<]*<[^>]*>([^<]+)/i,
-                                /Stewardship[^<]*<[^>]*>([^<]+)/i
-                            ];
-                            for (const pattern of stewardPatterns) {
-                                const match = html.match(pattern);
-                                if (match) {
-                                    const val = match[1].trim();
-                                    if (val.length < 20) data.stewardship = val;
-                                    break;
+                            // Step 3: Try to get additional analysis data if we're missing fields
+                            if (!data.starRating || !data.moat) {
+                                try {
+                                    const analysisResponse = await fetch(
+                                        `https://morningstar13.p.rapidapi.com/stock/get-analysis?performanceId=${performanceId}`,
+                                        { headers: rapidApiHeaders }
+                                    );
+                                    if (analysisResponse.ok) {
+                                        const analysisData = await analysisResponse.json();
+                                        if (analysisData) {
+                                            if (!data.starRating) {
+                                                data.starRating = analysisData.starRating || analysisData.rating || analysisData.stars;
+                                            }
+                                            if (!data.moat) {
+                                                data.moat = analysisData.moat || analysisData.economicMoat || analysisData.moatRating;
+                                            }
+                                            if (!data.stewardship) {
+                                                data.stewardship = analysisData.stewardship || analysisData.capitalAllocation;
+                                            }
+                                            if (!data.fairValue) {
+                                                data.fairValue = analysisData.fairValue || analysisData.fair_value;
+                                            }
+                                        }
+                                    }
+                                } catch (e) {
+                                    // Analysis endpoint may not exist, continue with what we have
                                 }
                             }
                         }
@@ -637,7 +647,7 @@ const firebaseConfig = {
                 loadMorningstarData();
 
                 return () => { isMounted = false; };
-            }, [activeTicker]);
+            }, [activeTicker, morningstarApiKey]);
 
             if (!currentUser) {
                 return (
@@ -934,7 +944,7 @@ const firebaseConfig = {
                                                     </div>
                                                 ) : (
                                                     <p className="text-sm text-gray-500 text-center py-4">
-                                                        Morningstar data unavailable for this ticker
+                                                        {!morningstarApiKey ? 'Add Morningstar API key in settings' : 'Morningstar data unavailable for this ticker'}
                                                     </p>
                                                 )}
                                             </div>
@@ -1132,7 +1142,7 @@ const firebaseConfig = {
                                                     )}
                                                 </div>
                                             ) : (
-                                                <p className="text-sm text-gray-500 text-center py-4">Morningstar data unavailable</p>
+                                                <p className="text-sm text-gray-500 text-center py-4">{!morningstarApiKey ? 'Add Morningstar API key in settings' : 'Morningstar data unavailable'}</p>
                                             )}
                                         </div>
                                     </div>
@@ -1219,6 +1229,18 @@ const firebaseConfig = {
                                             placeholder="MarketAux API Key"
                                             className={`px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-800 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
                                             style={{width: '200px'}}
+                                        />
+                                    </div>
+                                )}
+                                {!morningstarApiKey && (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={morningstarApiKey}
+                                            onChange={(e) => setMorningstarApiKey(e.target.value)}
+                                            placeholder="Morningstar API Key (RapidAPI)"
+                                            className={`px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-800 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                            style={{width: '220px'}}
                                         />
                                     </div>
                                 )}
