@@ -640,13 +640,30 @@ const firebaseConfig = {
                         '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
                     ];
 
+                    // Separate large slices (>=5%) from small ones, combine small into "Others"
+                    const largeSlices = portfolioData.filter(h => h.percentage >= 5);
+                    const smallSlices = portfolioData.filter(h => h.percentage < 5);
+                    const othersValue = smallSlices.reduce((sum, h) => sum + h.value, 0);
+                    const othersPercentage = smallSlices.reduce((sum, h) => sum + h.percentage, 0);
+
+                    // Build chart data: large slices + "Others" if there are small slices
+                    const chartLabels = largeSlices.map(h => h.ticker);
+                    const chartValues = largeSlices.map(h => h.value);
+                    const chartColors = colors.slice(0, largeSlices.length);
+
+                    if (smallSlices.length > 0) {
+                        chartLabels.push('Others');
+                        chartValues.push(othersValue);
+                        chartColors.push('#9CA3AF'); // Gray for "Others"
+                    }
+
                     chartInstance.current = new Chart(chartRef.current, {
                         type: 'pie',
                         data: {
-                            labels: portfolioData.map(h => h.ticker),
+                            labels: chartLabels,
                             datasets: [{
-                                data: portfolioData.map(h => h.value),
-                                backgroundColor: colors.slice(0, portfolioData.length),
+                                data: chartValues,
+                                backgroundColor: chartColors,
                                 borderWidth: 3,
                                 borderColor: darkMode ? '#1f2937' : '#ffffff'
                             }]
@@ -669,14 +686,13 @@ const firebaseConfig = {
                                         usePointStyle: true,
                                         pointStyle: 'circle',
                                         generateLabels: (chart) => {
-                                            const data = chart.data;
-                                            return data.labels.map((label, i) => {
-                                                const h = portfolioData[i];
+                                            // Show ALL positions in legend (not just chart slices)
+                                            return portfolioData.map((h, i) => {
                                                 const valueText = hidePortfolioValues ? '•••••' : `$${h.value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
                                                 return {
                                                     text: `${h.ticker} - ${h.percentage.toFixed(1)}% - ${valueText}`,
-                                                    fillStyle: data.datasets[0].backgroundColor[i],
-                                                    strokeStyle: data.datasets[0].borderColor,
+                                                    fillStyle: h.percentage >= 5 ? colors[largeSlices.findIndex(ls => ls.ticker === h.ticker)] : '#9CA3AF',
+                                                    strokeStyle: darkMode ? '#1f2937' : '#ffffff',
                                                     fontColor: darkMode ? '#ffffff' : '#374151',
                                                     lineWidth: 1,
                                                     hidden: false,
@@ -689,7 +705,15 @@ const firebaseConfig = {
                                 tooltip: {
                                     callbacks: {
                                         label: (ctx) => {
-                                            const h = portfolioData[ctx.dataIndex];
+                                            const label = chartLabels[ctx.dataIndex];
+                                            if (label === 'Others') {
+                                                const tickers = smallSlices.map(h => h.ticker).join(', ');
+                                                if (hidePortfolioValues) {
+                                                    return `Others (${tickers}): ${othersPercentage.toFixed(1)}%`;
+                                                }
+                                                return `Others (${tickers}): $${othersValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${othersPercentage.toFixed(1)}%)`;
+                                            }
+                                            const h = largeSlices[ctx.dataIndex];
                                             if (hidePortfolioValues) {
                                                 return `${h.ticker}: ${h.shares} shares (${h.percentage.toFixed(1)}%)`;
                                             }
@@ -704,10 +728,7 @@ const firebaseConfig = {
                                         size: 14
                                     },
                                     formatter: (value, ctx) => {
-                                        const h = portfolioData[ctx.dataIndex];
-                                        // Only show label if slice is large enough (>5%)
-                                        if (h.percentage < 5) return '';
-                                        return h.ticker;
+                                        return chartLabels[ctx.dataIndex];
                                     },
                                     anchor: 'center',
                                     align: 'center',
@@ -1378,29 +1399,6 @@ const firebaseConfig = {
                         ) : (
                         /* Portfolio View */
                         <div className="w-full">
-                            {/* Cypherpunk Portfolio Logo */}
-                            <div className="mb-6 flex items-center gap-4">
-                                <div className="relative">
-                                    <div className={`w-16 h-16 rounded-lg ${darkMode ? 'bg-gradient-to-br from-cyan-500 via-purple-600 to-pink-500' : 'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500'} flex items-center justify-center shadow-lg`} style={{boxShadow: darkMode ? '0 0 20px rgba(6, 182, 212, 0.5), 0 0 40px rgba(168, 85, 247, 0.3)' : '0 4px 15px rgba(0,0,0,0.2)'}}>
-                                        <svg viewBox="0 0 24 24" className="w-10 h-10 text-white" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                                            <path d="M2 17l10 5 10-5" />
-                                            <path d="M2 12l10 5 10-5" />
-                                            <circle cx="12" cy="12" r="2" fill="currentColor" />
-                                        </svg>
-                                    </div>
-                                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${darkMode ? 'bg-green-400' : 'bg-green-500'} border-2 ${darkMode ? 'border-gray-900' : 'border-white'}`} style={{boxShadow: darkMode ? '0 0 8px rgba(74, 222, 128, 0.6)' : 'none'}}></div>
-                                </div>
-                                <div>
-                                    <h1 className={`text-2xl font-bold tracking-tight ${darkMode ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400' : 'text-gray-800'}`} style={darkMode ? {textShadow: '0 0 30px rgba(6, 182, 212, 0.5)'} : {}}>
-                                        {nickname || currentUser?.split('@')[0] || 'User'}'s Portfolio
-                                    </h1>
-                                    <p className={`text-xs font-mono ${darkMode ? 'text-cyan-400' : 'text-gray-500'}`} style={darkMode ? {textShadow: '0 0 10px rgba(6, 182, 212, 0.5)'} : {}}>
-                                        // DECENTRALIZED WEALTH TRACKING
-                                    </p>
-                                </div>
-                            </div>
-
                             {/* Portfolio Stats */}
                             <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                                 <div className="flex items-center justify-between">
@@ -1439,8 +1437,23 @@ const firebaseConfig = {
                                 <div className="flex flex-col gap-6">
                                     {/* Pie Chart - Large */}
                                     <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`} style={{height: '650px'}}>
-                                        <h3 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Portfolio Allocation</h3>
-                                        <div style={{height: '570px'}}>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="relative">
+                                                <div className={`w-12 h-12 rounded-lg ${darkMode ? 'bg-gradient-to-br from-cyan-500 via-purple-600 to-pink-500' : 'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500'} flex items-center justify-center shadow-lg`} style={{boxShadow: darkMode ? '0 0 15px rgba(6, 182, 212, 0.5), 0 0 30px rgba(168, 85, 247, 0.3)' : '0 4px 12px rgba(0,0,0,0.2)'}}>
+                                                    <svg viewBox="0 0 24 24" className="w-7 h-7 text-white" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                                        <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                                                        <path d="M2 17l10 5 10-5" />
+                                                        <path d="M2 12l10 5 10-5" />
+                                                        <circle cx="12" cy="12" r="2" fill="currentColor" />
+                                                    </svg>
+                                                </div>
+                                                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full ${darkMode ? 'bg-green-400' : 'bg-green-500'} border-2 ${darkMode ? 'border-gray-800' : 'border-white'}`} style={{boxShadow: darkMode ? '0 0 6px rgba(74, 222, 128, 0.6)' : 'none'}}></div>
+                                            </div>
+                                            <h3 className={`text-xl font-bold tracking-tight ${darkMode ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400' : 'text-gray-800'}`} style={darkMode ? {textShadow: '0 0 20px rgba(6, 182, 212, 0.4)'} : {}}>
+                                                {nickname || currentUser?.split('@')[0] || 'User'}'s Portfolio
+                                            </h3>
+                                        </div>
+                                        <div style={{height: '560px'}}>
                                             <canvas ref={chartRef}></canvas>
                                         </div>
                                     </div>
