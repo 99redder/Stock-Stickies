@@ -109,6 +109,7 @@ const firebaseConfig = {
             const [watchList, setWatchList] = useState([]);
             const [newWatchTicker, setNewWatchTicker] = useState('');
             const [hideEmail, setHideEmail] = useState(false);
+            const [nickname, setNickname] = useState('');
             const [marketauxApiKey, setMarketauxApiKey] = useState('');
             const [newsData, setNewsData] = useState(null);
             const [newsLoading, setNewsLoading] = useState(false);
@@ -155,6 +156,7 @@ const firebaseConfig = {
                             setFinnhubApiKey(data.finnhubApiKey || '');
                             setMarketauxApiKey(data.marketauxApiKey || '');
                             setWatchList(data.watchList || []);
+                            setNickname(data.nickname || '');
                         }
                     });
                 return () => unsubscribe();
@@ -170,7 +172,7 @@ const firebaseConfig = {
                     const timeout = setTimeout(() => {
                         setSyncStatus('syncing');
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         }).then(() => {
                             setSyncStatus('synced');
@@ -186,13 +188,13 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList]);
+            }, [notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname]);
 
             useEffect(() => {
                 const handleBeforeUnload = (e) => {
                     if (currentUser && auth.currentUser && db) {
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
+                            notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
                     }
@@ -200,7 +202,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList]);
+            }, [currentUser, notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -239,7 +241,7 @@ const firebaseConfig = {
             const syncNow = () => {
                 if (currentUser && auth.currentUser && db) {
                     db.collection('users').doc(auth.currentUser.uid).set({
-                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList,
+                        notes, colorLabels, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 }
@@ -1167,10 +1169,20 @@ const firebaseConfig = {
                                     {syncStatus === 'offline' && <span className="text-sm text-red-500 flex items-center gap-1"><CloudOff size={16}/> Offline</span>}
                                 </div>
                                 <p className={`text-sm mt-1 flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    Welcome, {hideEmail ? '•••••@•••••' : currentUser}!
-                                    <button onClick={() => setHideEmail(!hideEmail)} className="ml-1 opacity-60 hover:opacity-100">
-                                        {hideEmail ? <Eye size={14}/> : <EyeOff size={14}/>}
-                                    </button>
+                                    Welcome, {nickname || (hideEmail ? '•••••@•••••' : currentUser)}!
+                                    {!nickname && (
+                                        <button onClick={() => setHideEmail(!hideEmail)} className="ml-1 opacity-60 hover:opacity-100">
+                                            {hideEmail ? <Eye size={14}/> : <EyeOff size={14}/>}
+                                        </button>
+                                    )}
+                                    <input
+                                        type="text"
+                                        value={nickname}
+                                        onChange={(e) => setNickname(e.target.value)}
+                                        placeholder="Set nickname..."
+                                        className={`ml-2 px-2 py-1 text-xs rounded border ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-1 focus:ring-blue-500 outline-none`}
+                                        style={{width: '120px'}}
+                                    />
                                 </p>
                             </div>
                             <div className="flex gap-3 items-center">
@@ -1347,7 +1359,30 @@ const firebaseConfig = {
                         ) : (
                         /* Portfolio View */
                         <div className="w-full">
-                            {/* Portfolio Header */}
+                            {/* Cypherpunk Portfolio Logo */}
+                            <div className="mb-6 flex items-center gap-4">
+                                <div className="relative">
+                                    <div className={`w-16 h-16 rounded-lg ${darkMode ? 'bg-gradient-to-br from-cyan-500 via-purple-600 to-pink-500' : 'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500'} flex items-center justify-center shadow-lg`} style={{boxShadow: darkMode ? '0 0 20px rgba(6, 182, 212, 0.5), 0 0 40px rgba(168, 85, 247, 0.3)' : '0 4px 15px rgba(0,0,0,0.2)'}}>
+                                        <svg viewBox="0 0 24 24" className="w-10 h-10 text-white" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                                            <path d="M2 17l10 5 10-5" />
+                                            <path d="M2 12l10 5 10-5" />
+                                            <circle cx="12" cy="12" r="2" fill="currentColor" />
+                                        </svg>
+                                    </div>
+                                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${darkMode ? 'bg-green-400' : 'bg-green-500'} border-2 ${darkMode ? 'border-gray-900' : 'border-white'}`} style={{boxShadow: darkMode ? '0 0 8px rgba(74, 222, 128, 0.6)' : 'none'}}></div>
+                                </div>
+                                <div>
+                                    <h1 className={`text-2xl font-bold tracking-tight ${darkMode ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400' : 'text-gray-800'}`} style={darkMode ? {textShadow: '0 0 30px rgba(6, 182, 212, 0.5)'} : {}}>
+                                        {nickname || currentUser?.split('@')[0] || 'User'}'s Portfolio
+                                    </h1>
+                                    <p className={`text-xs font-mono ${darkMode ? 'text-cyan-400' : 'text-gray-500'}`} style={darkMode ? {textShadow: '0 0 10px rgba(6, 182, 212, 0.5)'} : {}}>
+                                        // DECENTRALIZED WEALTH TRACKING
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Portfolio Stats */}
                             <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                                 <div className="flex items-center justify-between">
                                     <div>
