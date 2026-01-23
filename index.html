@@ -652,6 +652,10 @@ const firebaseConfig = {
             const handleLogout = async () => {
                 // Wait for sync to complete before logging out
                 await syncNow();
+                // Clear any pending save timeouts and reset saving flag
+                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                isSavingRef.current = false;
+                isLoadingRef.current = false;
                 if (auth) await auth.signOut();
                 setCurrentUser(null);
                 setNotes([]);

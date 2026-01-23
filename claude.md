@@ -119,6 +119,13 @@ The auto-save useEffect (line 437) was missing `categories` in updateData object
 - Added `categories` to updateData in auto-save useEffect (line 440)
 - Now all three save locations include categories: syncNow, auto-save, beforeunload
 
+### Problem: Notes don't load on login until page refresh
+The `isSavingRef.current` was still `true` from a previous save, blocking data load.
+
+### Solution
+- Reset `isSavingRef`, `isLoadingRef`, and clear `saveTimeoutRef` in handleLogout
+- Ensures clean state when user logs back in
+
 ## Color System
 Categories use Tailwind CSS background classes:
 ```javascript
