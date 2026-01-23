@@ -777,6 +777,9 @@ const firebaseConfig = {
 
             // Ensure all categories have labels
             useEffect(() => {
+                // Skip if we're loading data from Firestore
+                if (isLoadingRef.current) return;
+
                 const missingLabels = categories.filter(c => !colorLabels[c]);
                 if (missingLabels.length > 0) {
                     const newLabels = {...colorLabels};

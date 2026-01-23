@@ -39,58 +39,78 @@ Sticky-Notes/
 - **Lines 86-91**: Input validation constants
 
 ### State Management
-- **Lines 294-340**: All useState declarations
+- **Lines 294-345**: All useState declarations
+- **Line 304**: `isLoadingRef` - Prevents orphan repair during data load
 - **Line 311**: `categories` state (dynamic category colors)
 - **Lines 312-317**: Category modal states
 
+### Critical Refs (Race Condition Prevention)
+- **Line 303**: `isSavingRef` - Prevents loading during save
+- **Line 304**: `isLoadingRef` - Prevents orphan repair during load
+- **Line 703**: `isChangingColorRef` - Prevents orphan repair during color change
+
 ### Core Functions
-- **Lines 535-560**: `handleLogin` - Authentication
-- **Lines 569-610**: `syncNow` - Firestore sync
-- **Lines 648-650**: `classifyNote` - Assign note to category
-- **Lines 652-656**: `deleteNote` - Delete a note
-- **Lines 659-716**: Category management functions:
-  - `getAvailableColors()` - Colors not in use
-  - `getNotesCountForCategory()` - Count notes per category
-  - `addCategory()` - Add new category
-  - `handleDeleteCategory()` - Delete with reassignment check
-  - `confirmDeleteCategory()` - Execute deletion after reassignment
-  - `changeCategoryColor()` - Change a category's color
+- **Lines 535-567**: `handleLogin` - Authentication
+- **Lines 571-617**: `syncNow` - Firestore sync (properly awaited)
+- **Lines 641-649**: `handleLogout` - Awaits sync before logout
+- **Lines 651-653**: `classifyNote` - Assign note to category
+- **Lines 655-659**: `deleteNote` - Delete a note
+
+### Category Management Functions (Lines 661-730)
+- `getAvailableColors()` - Colors not in use
+- `getNotesCountForCategory()` - Count notes per category
+- `addCategory()` - Add new category
+- `handleDeleteCategory()` - Delete with reassignment check
+- `confirmDeleteCategory()` - Execute deletion after reassignment
+- `changeCategoryColor()` - Change category color (with race condition protection)
 
 ### Auto-Repair Logic
-- **Lines 734-746**: Orphaned notes repair (notes with invalid colors)
-- **Lines 748-758**: Missing category labels repair
+- **Lines 759-776**: Orphaned notes repair (skips during load/color change)
+- **Lines 778-791**: Missing category labels repair (skips during load)
 
-### Data Loading
-- **Lines 363-420**: Firestore onSnapshot listener (loads user data)
-- **Line 374**: Categories loaded from Firestore with DEFAULT_COLORS fallback
+### Data Loading (Lines 364-425)
+- Firestore onSnapshot listener
+- Sets `isLoadingRef` during load to prevent orphan repair
+- Loads categories FIRST, then notes (order matters!)
+- 200ms delay before clearing loading flag
 
 ### UI Components
-- **Lines 1250-1288**: Login page (dark mode styled)
-- **Lines 1273-1513**: Expanded note modal with stock data
-- **Lines 1666-1780**: Category management modals (Add Category, Reassign Notes)
-- **Lines 1957-2017**: Legend UI with add/delete/color-change buttons
-- **Lines 2018-2040**: Unclassified notes section
-- **Lines 2041-2100**: Category sections with notes grid
-- **Lines 2291-2294**: Fixed footer
+- **Lines 1268-1306**: Login page (dark mode styled)
+- **Lines 1291-1531**: Expanded note modal with stock data
+- **Lines 1684-1798**: Category management modals (Add Category, Reassign Notes)
+- **Lines 2075-2135**: Legend UI with add/delete/color-change buttons
+- **Lines 2136-2158**: Unclassified notes section
+- **Lines 2159-2220**: Category sections with notes grid
+- **Lines 2310-2312**: Fixed footer ("Website created by Chris Gorham")
 
-## Recent Changes
+## Race Condition Fixes
 
-### Category Management System
-Added full CRUD for categories:
-- Add new categories (up to 10 max)
-- Delete categories (min 1 required)
-- Change category colors from Tailwind palette
-- Reassignment modal when deleting category with notes
-- Auto-repair for orphaned notes and missing labels
+### Problem: Notes moving to wrong category
+When changing category colors, a race condition occurred:
+1. `setCategories()` updated categories array
+2. Orphan repair ran before `setNotes()` completed
+3. Notes appeared "orphaned" and got moved to first category
 
-### UI Updates
-- Login page styled with dark mode (matches main app)
-- Logo with SVG icon on login page
-- Fixed footer: "Website created by Chris Gorham"
+### Solution
+- Added `isChangingColorRef` flag set before color change
+- Orphan repair checks this flag and skips if true
+- Flag resets after 100ms timeout
 
-### Data Persistence
-- `categories` array saved to Firestore
-- Backward compatible - existing users get DEFAULT_COLORS
+### Problem: Data not persisting on logout
+The logout function wasn't waiting for sync to complete.
+
+### Solution
+- `syncNow()` now properly awaits Firestore write
+- `handleLogout()` awaits `syncNow()` before signing out
+- Added `isLoadingRef` to prevent orphan repair during login data load
+- Data load order changed: categories first, then notes
+
+### Problem: Category labels resetting to "Category" on login
+The missing labels repair was running before colorLabels loaded from Firestore.
+
+### Solution
+- Added `isLoadingRef` check to missing labels repair useEffect
+- Repair now skips during initial data load
 
 ## Color System
 Categories use Tailwind CSS background classes:
@@ -119,21 +139,23 @@ AVAILABLE_COLORS = [
 }
 ```
 
-## Known Issues & Fixes
-
-### Orphaned Notes
-If notes disappear after changing category colors, the auto-repair logic (lines 734-746) will move them to the first category on page refresh.
-
-### Missing Labels
-If category labels are blank, the auto-repair logic (lines 748-758) will restore default labels or use "Category" as fallback.
+## Portfolio Update Schedule
+```javascript
+// 15-minute fetch windows (EST):
+// - Market open: 9:35-9:50 AM
+// - Midday: 1:00-1:15 PM
+// - Market close: 4:05-4:20 PM
+// Cache expires after 8 hours
+```
 
 ## Testing Checklist
-1. Login/logout functionality
+1. Login/logout functionality (verify data persists)
 2. Create/edit/delete notes
-3. Add/delete/recolor categories
+3. Add/delete/recolor categories (notes should stay in place)
 4. Category reassignment when deleting with notes
 5. Dark mode toggle
-6. Portfolio chart updates
+6. Portfolio chart updates at scheduled times
 7. Stock data fetching
 8. Cloud sync (check sync status indicator)
 9. Page refresh persistence
+10. Logout and login (categories and notes should persist)
