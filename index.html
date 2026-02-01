@@ -652,6 +652,41 @@ const firebaseConfig = {
                 setWatchList(watchList.filter(t => t !== ticker));
             };
 
+            const handleRefreshPortfolioPrices = async () => {
+                if (!finnhubApiKey) {
+                    alert('Please add your Finnhub API key first.');
+                    return;
+                }
+                if (portfolioNotes.length === 0) {
+                    alert('No portfolio positions to refresh.');
+                    return;
+                }
+
+                setPortfolioLoading(true);
+                const prices = {};
+                for (const note of portfolioNotes) {
+                    try {
+                        const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
+                            symbol: note.title,
+                            token: finnhubApiKey
+                        });
+                        const response = await fetch(portfolioQuoteUrl);
+                        const data = await response.json();
+                        if (data.c) prices[note.title] = data.c;
+                    } catch (e) {
+                        console.error(`Failed to fetch ${note.title}`);
+                    }
+                }
+
+                setPortfolioPrices(prices);
+                setPortfolioLoading(false);
+                localStorage.setItem('portfolio_prices_cache', JSON.stringify({
+                    prices,
+                    timestamp: Date.now(),
+                    fetchedWindow: `manual-${Date.now()}`
+                }));
+            };
+
             const handleDownloadPortfolioSnapshot = async () => {
                 const card = portfolioCardRef.current;
                 if (!card) {
@@ -2374,8 +2409,17 @@ const firebaseConfig = {
                                             {hidePortfolioValues ? <Eye size={20}/> : <EyeOff size={20}/>}
                                         </button>
                                     </div>
-                                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        {portfolioData.length} position{portfolioData.length !== 1 ? 's' : ''}
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={handleRefreshPortfolioPrices}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border snapshot-hide ${darkMode ? 'border-blue-400/60 text-blue-200 hover:text-blue-100 hover:border-blue-300 hover:bg-blue-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
+                                            title="Refresh portfolio prices"
+                                        >
+                                            Refresh Prices
+                                        </button>
+                                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            {portfolioData.length} position{portfolioData.length !== 1 ? 's' : ''}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
