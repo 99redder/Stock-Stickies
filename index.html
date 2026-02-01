@@ -18,6 +18,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -662,6 +663,26 @@ const firebaseConfig = {
                 const suggestedName = `portfolio-${timestamp}.png`;
 
                 try {
+                    if (window.html2canvas) {
+                        const snapshotCanvas = await window.html2canvas(card, {
+                            backgroundColor: null,
+                            scale: window.devicePixelRatio || 1
+                        });
+                        const blob = await new Promise((resolve) => snapshotCanvas.toBlob(resolve, 'image/png', 1));
+                        if (!blob) {
+                            throw new Error('Unable to create snapshot.');
+                        }
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = suggestedName;
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        URL.revokeObjectURL(url);
+                        return;
+                    }
+
                     const inlineComputedStyles = (source, target) => {
                         const computed = window.getComputedStyle(source);
                         const cssText = Array.from(computed)
