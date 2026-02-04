@@ -1483,9 +1483,7 @@ const firebaseConfig = {
                         plugins: [ChartDataLabels],
                         options: {
                             responsive: true,
-                            // Keep the chart perfectly circular (avoid "stretched" pies when the canvas is a rectangle)
-                            maintainAspectRatio: true,
-                            aspectRatio: 1,
+                            maintainAspectRatio: false,
                             layout: {
                                 padding: 20
                             },
@@ -3024,11 +3022,8 @@ const firebaseConfig = {
                                                 Snapshot
                                             </button>
                                         </div>
-                                        {/* Constrain the canvas to a square so the pie stays circular */}
-                                        <div className="flex items-center justify-center" style={{height: '560px'}}>
-                                            <div style={{height: '560px', width: '100%', maxWidth: '560px'}}>
-                                                <canvas ref={chartRef}></canvas>
-                                            </div>
+                                        <div style={{height: '560px'}}>
+                                            <canvas ref={chartRef}></canvas>
                                         </div>
                                     </div>
 
