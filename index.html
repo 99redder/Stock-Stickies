@@ -334,6 +334,11 @@ const firebaseConfig = {
             const [finnhubApiKey, setFinnhubApiKey] = useState('');
             const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
             const [watchList, setWatchList] = useState([]);
+
+            // API key help popovers (click-to-toggle; closes on outside click / Escape)
+            const [openHelp, setOpenHelp] = useState(null); // 'finnhub' | 'marketaux' | null
+            const finnhubHelpRef = useRef(null);
+            const marketauxHelpRef = useRef(null);
             const [newWatchTicker, setNewWatchTicker] = useState('');
             const [hideEmail, setHideEmail] = useState(false);
             const [nickname, setNickname] = useState('');
@@ -362,6 +367,26 @@ const firebaseConfig = {
 
             // Compute the active ticker for data fetching (from expanded note or watch list modal)
             const activeTicker = expandedNote?.title || watchListModalTicker;
+
+            // Close API key help popovers on outside click / Escape
+            useEffect(() => {
+                const onMouseDown = (e) => {
+                    if (!openHelp) return;
+                    const t = e.target;
+                    const inFinnhub = finnhubHelpRef.current && finnhubHelpRef.current.contains(t);
+                    const inMarketaux = marketauxHelpRef.current && marketauxHelpRef.current.contains(t);
+                    if (!inFinnhub && !inMarketaux) setOpenHelp(null);
+                };
+                const onKeyDown = (e) => {
+                    if (e.key === 'Escape') setOpenHelp(null);
+                };
+                document.addEventListener('mousedown', onMouseDown);
+                document.addEventListener('keydown', onKeyDown);
+                return () => {
+                    document.removeEventListener('mousedown', onMouseDown);
+                    document.removeEventListener('keydown', onKeyDown);
+                };
+            }, [openHelp]);
 
             useEffect(() => {
                 if (!auth) return;
@@ -2412,22 +2437,31 @@ const firebaseConfig = {
                                             style={{width: '200px'}}
                                             maxLength={MAX_API_KEY_LENGTH}
                                         />
-                                        <div className="relative group">
-                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold cursor-default ${
-                                                darkMode ? 'border-gray-500 text-gray-300' : 'border-gray-600 text-gray-700'
-                                            }`}>
+                                        <div className="relative" ref={finnhubHelpRef}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenHelp(openHelp === 'finnhub' ? null : 'finnhub')}
+                                                aria-expanded={openHelp === 'finnhub'}
+                                                aria-controls="finnhub-help"
+                                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${
+                                                    darkMode ? 'border-gray-500 text-gray-300 hover:bg-gray-800' : 'border-gray-600 text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                                title="How to get a Finnhub API key"
+                                            >
                                                 ?
-                                            </span>
-                                            <div className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-20">
-                                                <p className="font-semibold text-white mb-2">How to get a Finnhub API key</p>
-                                                <ol className="list-decimal list-inside space-y-1">
-                                                    <li>Create a free account at finnhub.io.</li>
-                                                    <li>Verify your email and sign in.</li>
-                                                    <li>Open your dashboard and copy the API key.</li>
-                                                    <li>Paste it here.</li>
-                                                </ol>
-                                                <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-cyan-400 hover:text-cyan-300">Open Finnhub</a>
-                                            </div>
+                                            </button>
+                                            {openHelp === 'finnhub' && (
+                                                <div id="finnhub-help" className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl z-20">
+                                                    <p className="font-semibold text-white mb-2">How to get a Finnhub API key</p>
+                                                    <ol className="list-decimal list-inside space-y-1">
+                                                        <li>Create a free account at finnhub.io.</li>
+                                                        <li>Verify your email and sign in.</li>
+                                                        <li>Open your dashboard and copy the API key.</li>
+                                                        <li>Paste it here.</li>
+                                                    </ol>
+                                                    <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-cyan-400 hover:text-cyan-300">Open Finnhub</a>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -2461,22 +2495,31 @@ const firebaseConfig = {
                                             style={{width: '200px'}}
                                             maxLength={MAX_API_KEY_LENGTH}
                                         />
-                                        <div className="relative group">
-                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold cursor-default ${
-                                                darkMode ? 'border-gray-500 text-gray-300' : 'border-gray-600 text-gray-700'
-                                            }`}>
+                                        <div className="relative" ref={marketauxHelpRef}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenHelp(openHelp === 'marketaux' ? null : 'marketaux')}
+                                                aria-expanded={openHelp === 'marketaux'}
+                                                aria-controls="marketaux-help"
+                                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${
+                                                    darkMode ? 'border-gray-500 text-gray-300 hover:bg-gray-800' : 'border-gray-600 text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                                title="How to get a MarketAux API key"
+                                            >
                                                 ?
-                                            </span>
-                                            <div className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-20">
-                                                <p className="font-semibold text-white mb-2">How to get a MarketAux API key</p>
-                                                <ol className="list-decimal list-inside space-y-1">
-                                                    <li>Create a free account at marketaux.com.</li>
-                                                    <li>Verify your email and sign in.</li>
-                                                    <li>Go to your API settings and copy the API token.</li>
-                                                    <li>Paste it here.</li>
-                                                </ol>
-                                                <a href="https://www.marketaux.com/register" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-cyan-400 hover:text-cyan-300">Open MarketAux</a>
-                                            </div>
+                                            </button>
+                                            {openHelp === 'marketaux' && (
+                                                <div id="marketaux-help" className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl z-20">
+                                                    <p className="font-semibold text-white mb-2">How to get a MarketAux API key</p>
+                                                    <ol className="list-decimal list-inside space-y-1">
+                                                        <li>Create a free account at marketaux.com.</li>
+                                                        <li>Verify your email and sign in.</li>
+                                                        <li>Go to your API settings and copy the API token.</li>
+                                                        <li>Paste it here.</li>
+                                                    </ol>
+                                                    <a href="https://www.marketaux.com/register" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-cyan-400 hover:text-cyan-300">Open MarketAux</a>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
