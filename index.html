@@ -2187,7 +2187,7 @@ const firebaseConfig = {
                         <div className="flex items-center justify-between mb-4">
                             <div>
                                 <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-2">
+                                    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${darkMode ? '' : 'bg-gray-900/90 shadow-md'}`}>
                                         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <rect x="2" y="2" width="44" height="44" rx="4" fill={darkMode ? '#1a1a2e' : '#0f0f23'} stroke={darkMode ? '#00ff9f' : '#ff006e'} strokeWidth="2"/>
                                             <path d="M8 32 L16 20 L22 26 L32 12 L40 18" stroke={darkMode ? '#00ff9f' : '#ff006e'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
