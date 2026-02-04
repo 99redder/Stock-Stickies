@@ -343,6 +343,10 @@ const firebaseConfig = {
             // Quick Start Guide (logged-in only)
             const [quickStartOpen, setQuickStartOpen] = useState(false);
 
+            // Login help (login page only)
+            const [loginHelpOpen, setLoginHelpOpen] = useState(false);
+            const loginHelpRef = useRef(null);
+
             const [newWatchTicker, setNewWatchTicker] = useState('');
             const [hideEmail, setHideEmail] = useState(false);
             const [nickname, setNickname] = useState('');
@@ -391,6 +395,24 @@ const firebaseConfig = {
                     document.removeEventListener('keydown', onKeyDown);
                 };
             }, [openHelp]);
+
+            // Close login help modal on outside click / Escape
+            useEffect(() => {
+                if (!loginHelpOpen) return;
+                const onMouseDown = (e) => {
+                    const t = e.target;
+                    if (loginHelpRef.current && !loginHelpRef.current.contains(t)) setLoginHelpOpen(false);
+                };
+                const onKeyDown = (e) => {
+                    if (e.key === 'Escape') setLoginHelpOpen(false);
+                };
+                document.addEventListener('mousedown', onMouseDown);
+                document.addEventListener('keydown', onKeyDown);
+                return () => {
+                    document.removeEventListener('mousedown', onMouseDown);
+                    document.removeEventListener('keydown', onKeyDown);
+                };
+            }, [loginHelpOpen]);
 
 
             useEffect(() => {
@@ -1547,6 +1569,64 @@ const firebaseConfig = {
             if (!currentUser) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-4">
+                        {loginHelpOpen && (
+                            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                                <div ref={loginHelpRef} className="bg-gray-900 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+                                        <h2 className="text-xl font-bold text-white">Getting started</h2>
+                                        <button onClick={() => setLoginHelpOpen(false)} className="text-gray-400 hover:text-white">
+                                            <X size={22} />
+                                        </button>
+                                    </div>
+                                    <div className="px-6 py-5 space-y-5 text-sm text-gray-300 overflow-auto max-h-[calc(90vh-72px)]">
+                                        <p className="text-gray-400">Two ways to create an account (pick whichever is easier):</p>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">Option 1: Continue with Google (fastest)</h3>
+                                            <ol className="list-decimal list-inside space-y-1">
+                                                <li>Click <span className="text-white font-semibold">Continue with Google</span>.</li>
+                                                <li>Select your Google account.</li>
+                                                <li>That’s it — your account is created automatically on first sign-in.</li>
+                                            </ol>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">Option 2: Email + password</h3>
+                                            <ol className="list-decimal list-inside space-y-1">
+                                                <li>Click <span className="text-white font-semibold">Sign Up with Email</span>.</li>
+                                                <li>Enter your email and a password.</li>
+                                                <li>Click <span className="text-white font-semibold">Sign Up with Email</span> to create your account.</li>
+                                            </ol>
+                                            <p className="text-xs text-gray-400">Tip: If you already have an account, click “Login” instead.</p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">Forgot password?</h3>
+                                            <ol className="list-decimal list-inside space-y-1">
+                                                <li>Click <span className="text-white font-semibold">Forgot password?</span></li>
+                                                <li>Enter your email and send the reset email.</li>
+                                                <li>Use the link in your inbox to set a new password.</li>
+                                            </ol>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">After you sign in</h3>
+                                            <ul className="list-disc list-inside space-y-1">
+                                                <li>Your notes sync to your account automatically.</li>
+                                                <li>API keys are optional (they unlock live quotes + news).</li>
+                                            </ul>
+                                        </div>
+
+                                        <div className="pt-2 text-xs text-gray-400">
+                                            You can review the <button type="button" className="text-cyan-300 hover:text-cyan-200 underline" onClick={() => { setLoginHelpOpen(false); setLegalView('privacy'); }}>Privacy Policy</button>
+                                            {' '}and{' '}
+                                            <button type="button" className="text-cyan-300 hover:text-cyan-200 underline" onClick={() => { setLoginHelpOpen(false); setLegalView('terms'); }}>Terms of Use</button>.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {legalView && (
                             <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
                                 <div className="bg-gray-900 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
@@ -1695,6 +1775,13 @@ const firebaseConfig = {
                                         <button type="button" onClick={handleGoogleLogin} className="w-full bg-white text-gray-800 py-2 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-100">
                                             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold">G</span>
                                             Continue with Google
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLoginHelpOpen(true)}
+                                            className="w-full text-center text-xs text-gray-400 hover:text-gray-200 underline underline-offset-4"
+                                        >
+                                            New here? How to create an account
                                         </button>
                                     </>
                                 )}
