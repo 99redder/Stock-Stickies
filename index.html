@@ -1613,8 +1613,8 @@ const firebaseConfig = {
                             </div>
                         )}
                         <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-700">
-                            <div className="flex items-center justify-center gap-3 mb-6">
-                                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <div className="flex items-center justify-center gap-4 mb-6">
+                                <svg width="64" height="64" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <rect x="2" y="2" width="44" height="44" rx="4" fill="#1a1a2e" stroke="#00ff9f" strokeWidth="2"/>
                                     <path d="M8 32 L16 20 L22 26 L32 12 L40 18" stroke="#00ff9f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
                                     <circle cx="16" cy="20" r="3" fill="#00ff9f"/>
@@ -1625,16 +1625,16 @@ const firebaseConfig = {
                                     <rect x="36" y="34" width="6" height="8" fill="#00ff9f" opacity="0.6"/>
                                 </svg>
                                 <div className="flex flex-col">
-                                    <span className="text-3xl font-black tracking-tight" style={{fontFamily: 'monospace', color: '#00ff41'}}>
+                                    <span className="text-4xl font-black tracking-tight" style={{fontFamily: 'monospace', color: '#00ff41'}}>
                                         STOCK
                                     </span>
-                                    <span className="text-xl font-bold tracking-widest -mt-1 text-cyan-400" style={{fontFamily: 'monospace'}}>
+                                    <span className="text-2xl font-bold tracking-widest -mt-1 text-cyan-400" style={{fontFamily: 'monospace'}}>
                                         STICKIES
                                     </span>
                                 </div>
                             </div>
                             <p className="text-center text-sm text-gray-400 mb-6">
-                                Capture stock ideas, track watchlists, and keep your investing notes organized.
+                                Capture stock ideas, track your portfolio value, and keep your investing notes organized.
                             </p>
                             {!auth && <div className="bg-yellow-900 border border-yellow-600 text-yellow-200 px-4 py-3 rounded mb-4 text-sm"><strong>Setup Required:</strong> Add Firebase credentials</div>}
                             <form onSubmit={handleLogin} className="space-y-4">
