@@ -1423,16 +1423,18 @@ const firebaseConfig = {
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            // Make the pie a bit larger within the canvas so more labels can fit
                             layout: {
-                                padding: 30
+                                padding: 12
                             },
+                            radius: '95%',
                             plugins: {
                                 legend: {
                                     display: true,
                                     position: 'right',
                                     labels: {
                                         color: darkMode ? '#ffffff' : '#374151',
-                                        font: { size: 14, weight: 'bold' },
+                                        font: { size: 12, weight: 'bold' },
                                         padding: 20,
                                         usePointStyle: true,
                                         pointStyle: 'circle',
@@ -1476,7 +1478,7 @@ const firebaseConfig = {
                                     color: '#ffffff',
                                     font: {
                                         weight: 'bold',
-                                        size: 14
+                                        size: 12
                                     },
                                     formatter: (value, ctx) => {
                                         const label = chartLabels[ctx.dataIndex];
@@ -2743,7 +2745,7 @@ const firebaseConfig = {
                                                 Snapshot
                                             </button>
                                         </div>
-                                        <div style={{height: '560px'}}>
+                                        <div style={{height: '620px'}}>
                                             <canvas ref={chartRef}></canvas>
                                         </div>
                                     </div>
