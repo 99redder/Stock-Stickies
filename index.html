@@ -445,6 +445,7 @@ const firebaseConfig = {
                             setDarkMode(data.darkMode || false);
                             setWatchList(data.watchList || []);
                             setNickname(data.nickname || '');
+                            setNotesSortMode(data.notesSortMode || 'default');
 
                             // Reset loading flag after state updates settle
                             setTimeout(() => { isLoadingRef.current = false; }, 200);
@@ -507,6 +508,7 @@ const firebaseConfig = {
                             darkMode,
                             watchList,
                             nickname,
+                            notesSortMode,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
                         
@@ -551,7 +553,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, notesSortMode]);
 
             useEffect(() => {
                 const handleBeforeUnload = async (e) => {
@@ -567,6 +569,7 @@ const firebaseConfig = {
                             darkMode,
                             watchList,
                             nickname,
+                            notesSortMode,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
                         
@@ -602,7 +605,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, notesSortMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -668,6 +671,7 @@ const firebaseConfig = {
                         darkMode,
                         watchList,
                         nickname,
+                        notesSortMode,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
 
@@ -3080,8 +3084,8 @@ const firebaseConfig = {
                                             {categoryNotes.map(note => (
                                                 <div key={note.id} className={`${note.color} p-6 rounded-lg shadow-lg relative hover:scale-105 transition-transform`} style={{minHeight: '200px'}}>
                                                     {positionRankById[note.id] && (
-                                                        <div className="absolute top-2 left-2 group">
-                                                            <div className={`bg-white bg-opacity-70 border rounded px-2 py-1 text-xs font-bold ${darkMode ? 'text-gray-800 border-gray-300' : 'text-gray-700 border-gray-300'}`}>
+                                                        <div className="absolute top-1 left-1 group">
+                                                            <div className={`bg-white bg-opacity-70 border rounded px-1.5 py-0.5 text-[10px] leading-none font-bold ${darkMode ? 'text-gray-800 border-gray-300' : 'text-gray-700 border-gray-300'}`}>
                                                                 {positionRankById[note.id]} of {totalPositions}
                                                             </div>
                                                             <div className={`absolute left-0 top-8 z-40 hidden group-hover:block w-60 rounded-lg border shadow-xl p-3 text-xs ${darkMode ? 'bg-gray-900 text-gray-200 border-gray-700' : 'bg-white text-gray-800 border-gray-200'}`}>
