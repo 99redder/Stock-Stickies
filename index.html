@@ -2626,6 +2626,17 @@ const firebaseConfig = {
                                         </button>
                                     )}
                                 </p>
+
+                                <div className="mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setQuickStartOpen(true)}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
+                                        title="Open Quick Start Guide"
+                                    >
+                                        Quick Start Guide
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex gap-3 items-center">
                                 <button onClick={() => { setNotes([{id: nextId, title: '', text: '', color: UNCLASSIFIED_COLOR, classified: false}, ...notes]); setNextId(nextId + 1); }} className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg"><Plus size={20}/>New Note</button>
@@ -3038,14 +3049,6 @@ const firebaseConfig = {
                             <div className="p-6 pb-4">
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => setQuickStartOpen(true)}
-                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
-                                        title="Open Quick Start Guide"
-                                    >
-                                        Quick Start
-                                    </button>
                                 </div>
                                 <div className="flex gap-2">
                                     <input
