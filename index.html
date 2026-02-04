@@ -370,6 +370,7 @@ const firebaseConfig = {
             });
             const [portfolioLoading, setPortfolioLoading] = useState(false);
             const [mainTab, setMainTab] = useState('notes');
+            const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
 
@@ -1005,7 +1006,97 @@ const firebaseConfig = {
             // Compute derived state - must be before early return to follow Rules of Hooks
             const unclassifiedNotes = useMemo(() => notes.filter(n => !n.classified), [notes]);
             const classifiedNotes = useMemo(() => notes.filter(n => n.classified), [notes]);
-            const groupedNotes = useMemo(() => categories.reduce((acc, color) => { acc[color] = classifiedNotes.filter(n => n.color === color); return acc; }, {}), [classifiedNotes, categories]);
+
+            // Notes display ordering (optional): sort by position market value (shares * latest price)
+            const sortedClassifiedNotes = useMemo(() => {
+                if (notesSortMode !== 'positionValue') return classifiedNotes;
+
+                const getTicker = (n) => (n.title || '').trim().toUpperCase();
+                const getShares = (n) => (typeof n.shares === 'number' ? n.shares : parseFloat(n.shares)) || 0;
+                const getPrice = (ticker) => {
+                    const p = portfolioPrices[ticker];
+                    return typeof p === 'number' ? p : 0;
+                };
+
+                const copy = [...classifiedNotes];
+                copy.sort((a, b) => {
+                    const aShares = getShares(a);
+                    const bShares = getShares(b);
+                    const aIsPos = aShares > 0;
+                    const bIsPos = bShares > 0;
+                    if (aIsPos !== bIsPos) return aIsPos ? -1 : 1; // positions above non-positions
+
+                    // Unknown price positions should still appear above non-positions, but below priced positions
+                    const aTicker = getTicker(a);
+                    const bTicker = getTicker(b);
+                    const aPrice = getPrice(aTicker);
+                    const bPrice = getPrice(bTicker);
+                    const aHasPrice = aPrice > 0;
+                    const bHasPrice = bPrice > 0;
+                    if (aIsPos && bIsPos && aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
+
+                    const aValue = aShares * aPrice;
+                    const bValue = bShares * bPrice;
+                    if (bValue !== aValue) return bValue - aValue;
+
+                    // Stable tie-breakers
+                    if (aTicker !== bTicker) return aTicker.localeCompare(bTicker);
+                    return (a.id || 0) - (b.id || 0);
+                });
+                return copy;
+            }, [classifiedNotes, notesSortMode, portfolioPrices]);
+
+            // Position ranking info (for badges on notes)
+            const { positionRankById, totalPositions, positionDetailsById } = useMemo(() => {
+                const getTicker = (n) => (n.title || '').trim().toUpperCase();
+                const getShares = (n) => (typeof n.shares === 'number' ? n.shares : parseFloat(n.shares)) || 0;
+                const getPrice = (ticker) => {
+                    const p = portfolioPrices[ticker];
+                    return typeof p === 'number' ? p : 0;
+                };
+
+                const positions = notes
+                    .filter(n => getShares(n) > 0)
+                    .map(n => {
+                        const ticker = getTicker(n);
+                        const shares = getShares(n);
+                        const price = getPrice(ticker);
+                        const value = shares * price;
+                        return { id: n.id, ticker, shares, price, value };
+                    });
+
+                // Sort by: priced positions first, then value desc, then shares desc, then ticker
+                positions.sort((a, b) => {
+                    const aHasPrice = a.price > 0;
+                    const bHasPrice = b.price > 0;
+                    if (aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
+                    if (b.value !== a.value) return b.value - a.value;
+                    if (b.shares !== a.shares) return b.shares - a.shares;
+                    return a.ticker.localeCompare(b.ticker);
+                });
+
+                const total = positions.reduce((sum, p) => sum + p.value, 0);
+                const rankById = {};
+                const detailsById = {};
+                positions.forEach((p, idx) => {
+                    const rank = idx + 1;
+                    rankById[p.id] = rank;
+                    detailsById[p.id] = {
+                        ...p,
+                        rank,
+                        totalPositions: positions.length,
+                        pctOfTotal: total > 0 ? (p.value / total) * 100 : 0,
+                        totalValue: total
+                    };
+                });
+
+                return { positionRankById: rankById, totalPositions: positions.length, positionDetailsById: detailsById };
+            }, [notes, portfolioPrices]);
+
+            const groupedNotes = useMemo(() => categories.reduce((acc, color) => {
+                acc[color] = sortedClassifiedNotes.filter(n => n.color === color);
+                return acc;
+            }, {}), [sortedClassifiedNotes, categories]);
 
             // Detect orphaned notes (notes with colors not in categories) and auto-repair them
             useEffect(() => {
@@ -1827,7 +1918,7 @@ const firebaseConfig = {
                                                 <li>Your notes sync automatically when you’re signed in.</li>
                                             </ol>
                                         </div>
-                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3">
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
                                             <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
                                                 <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
                                                 <rect x="28" y="32" width="120" height="34" rx="10" fill="#3b82f6" />
@@ -1851,31 +1942,78 @@ const firebaseConfig = {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                         <div className="space-y-2">
                                             <ol className="list-decimal list-inside space-y-1 text-gray-300">
-                                                <li>Open a note (click it) to expand details.</li>
-                                                <li>Enter the number of shares you own.</li>
+                                                <li>Find the <span className="text-white font-semibold">Shares owned</span> input on a note.</li>
+                                                <li>Click the input box and enter the number of shares you own.</li>
                                                 <li>Switch to the <span className="text-white font-semibold">Portfolio</span> tab to see the pie chart.</li>
                                             </ol>
                                         </div>
-                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3">
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
                                             <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
                                                 <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
                                                 <rect x="28" y="34" width="220" height="24" rx="8" fill="#111827" stroke="#334155" />
                                                 <text x="40" y="51" font-size="12" fill="#e5e7eb">Shares</text>
                                                 <rect x="28" y="64" width="220" height="36" rx="10" fill="#0f172a" stroke="#38bdf8" />
                                                 <text x="44" y="88" font-size="16" font-weight="800" fill="#ffffff">10</text>
-                                                <rect x="280" y="40" width="210" height="150" rx="14" fill="#0f172a" stroke="#334155" />
-                                                <circle cx="385" cy="116" r="56" fill="#1f2937" />
-                                                <path d="M385 116 L385 60 A56 56 0 0 1 436 142 Z" fill="#3b82f6" />
-                                                <path d="M385 116 L436 142 A56 56 0 0 1 352 168 Z" fill="#22c55e" />
-                                                <path d="M385 116 L352 168 A56 56 0 0 1 385 60 Z" fill="#f59e0b" />
-                                                <text x="385" y="200" text-anchor="middle" font-size="12" fill="#94a3b8">Portfolio</text>
+                                                <rect x="300" y="40" width="150" height="150" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <circle cx="375" cy="115" r="56" fill="#1f2937" />
+                                                <path d="M375 115 L375 59 A56 56 0 0 1 424 143 Z" fill="#3b82f6" />
+                                                <path d="M375 115 L424 143 A56 56 0 0 1 326 143 Z" fill="#22c55e" />
+                                                <path d="M375 115 L326 143 A56 56 0 0 1 375 59 Z" fill="#f59e0b" />
+                                                <text x="375" y="200" text-anchor="middle" font-size="12" fill="#94a3b8">Portfolio</text>
                                             </svg>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <h3 className="text-white font-semibold text-base">3) Customize categories</h3>
+                                    <h3 className="text-white font-semibold text-base">3) Sort notes by position size (optional)</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                                                <li>In the Notes tab, use the <span className="text-white font-semibold">Sort</span> toggle.</li>
+                                                <li>Select <span className="text-white font-semibold">Largest position</span> to order notes by market value (shares × price).</li>
+                                                <li>Tip: Add your <span className="text-white font-semibold">Finnhub API key</span> to enable market value sorting.</li>
+                                            </ol>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+                                                <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
+
+                                                <rect x="28" y="44" width="250" height="132" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <text x="46" y="74" font-size="14" font-weight="800" fill="#e5e7eb">Functionality Panel</text>
+
+                                                <rect x="46" y="92" width="110" height="34" rx="10" fill="#3b82f6" />
+                                                <text x="101" y="114" text-anchor="middle" font-size="13" font-weight="800" fill="#ffffff">New Note</text>
+
+                                                <text x="172" y="114" font-size="12" font-weight="700" fill="#94a3b8">Sort</text>
+                                                <rect x="200" y="92" width="190" height="34" rx="10" fill="#111827" stroke="#334155" />
+
+                                                <rect x="206" y="98" width="72" height="22" rx="8" fill="#0b1220" stroke="#475569" />
+                                                <text x="242" y="113" text-anchor="middle" font-size="11" font-weight="800" fill="#94a3b8">Default</text>
+
+                                                <rect x="282" y="98" width="102" height="22" rx="8" fill="#0b1220" stroke="#22c55e" />
+                                                <text x="333" y="113" text-anchor="middle" font-size="11" font-weight="800" fill="#e5e7eb">Largest position</text>
+
+                                                <path d="M400 110 L478 110" stroke="#22c55e" stroke-width="4" marker-end="url(#arrowSort)" />
+                                                <defs>
+                                                    <marker id="arrowSort" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                                                        <path d="M0,0 L12,6 L0,12 z" fill="#22c55e" />
+                                                    </marker>
+                                                </defs>
+
+                                                <rect x="300" y="64" width="190" height="112" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <text x="314" y="88" font-size="12" font-weight="800" fill="#e5e7eb">Notes</text>
+                                                <rect x="314" y="98" width="162" height="14" rx="7" fill="#bbf7d0" opacity="0.7" />
+                                                <rect x="314" y="118" width="128" height="14" rx="7" fill="#fde68a" opacity="0.7" />
+                                                <rect x="314" y="138" width="92" height="14" rx="7" fill="#93c5fd" opacity="0.7" />
+                                                <text x="314" y="168" font-size="11" fill="#94a3b8">Largest positions rise to the top</text>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">4) Customize categories</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                         <div className="space-y-2">
                                             <ol className="list-decimal list-inside space-y-1 text-gray-300">
@@ -1884,7 +2022,7 @@ const firebaseConfig = {
                                                 <li>Notes stay organized by category.</li>
                                             </ol>
                                         </div>
-                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3">
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
                                             <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
                                                 <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
                                                 <rect x="28" y="34" width="160" height="32" rx="12" fill="#93c5fd" stroke="#3b82f6" />
@@ -1914,7 +2052,7 @@ const firebaseConfig = {
                                                 <li>Click the <span className="text-white font-semibold">?</span> next to each input for instructions</li>
                                             </ul>
                                         </div>
-                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3">
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
                                             <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
                                                 <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
                                                 <rect x="28" y="50" width="210" height="42" rx="12" fill="#0f172a" stroke="#38bdf8" />
@@ -2626,9 +2764,19 @@ const firebaseConfig = {
                                         </button>
                                     )}
                                 </p>
+
+                                <div className="mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setQuickStartOpen(true)}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-extrabold tracking-wide border border-transparent bg-gradient-to-r from-fuchsia-500 via-purple-500 to-emerald-400 text-gray-900 shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60 ${darkMode ? 'ring-1 ring-white/10 shadow-fuchsia-500/25' : 'ring-1 ring-black/5 shadow-fuchsia-500/15'}`}
+                                        title="Open Quick Start Guide"
+                                    >
+                                        Quick Start Guide
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex gap-3 items-center">
-                                <button onClick={() => { setNotes([{id: nextId, title: '', text: '', color: UNCLASSIFIED_COLOR, classified: false}, ...notes]); setNextId(nextId + 1); }} className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg"><Plus size={20}/>New Note</button>
                                 {!finnhubApiKey && (
                                     <div className="flex items-center gap-2">
                                         <input
@@ -2839,6 +2987,49 @@ const firebaseConfig = {
                                 )}
                             </div>
                         </div>
+
+                        {/* Functionality Panel (below legend, above notes) */}
+                        <div className={`rounded-lg shadow-md p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <button
+                                    onClick={() => {
+                                        setNotes([{id: nextId, title: '', text: '', color: UNCLASSIFIED_COLOR, classified: false}, ...notes]);
+                                        setNextId(nextId + 1);
+                                    }}
+                                    className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow-lg font-semibold"
+                                >
+                                    <Plus size={18}/> New Note
+                                </button>
+
+                                <div className="flex items-center gap-3">
+                                    <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sort</span>
+                                    <div className={`inline-flex rounded-lg p-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setNotesSortMode('default')}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesSortMode === 'default' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
+                                        >
+                                            Default
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => finnhubApiKey && setNotesSortMode('positionValue')}
+                                            disabled={!finnhubApiKey}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesSortMode === 'positionValue' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')} ${!finnhubApiKey ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            title={!finnhubApiKey ? 'Add a Finnhub API key to sort by market value' : 'Sort by largest position (market value)'}
+                                        >
+                                            Largest position
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {!finnhubApiKey && (
+                                <div className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    Add a <span className={darkMode ? 'text-cyan-300 font-semibold' : 'text-blue-600 font-semibold'}>Finnhub API key</span> above to enable market value sorting.
+                                </div>
+                            )}
+                        </div>
+
                         {unclassifiedNotes.length > 0 && (
                             <div className="mb-6">
                                 <div className={`p-4 rounded-lg mb-3 ${darkMode ? 'bg-yellow-900 border-2 border-yellow-600' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
@@ -2888,6 +3079,30 @@ const firebaseConfig = {
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                             {categoryNotes.map(note => (
                                                 <div key={note.id} className={`${note.color} p-6 rounded-lg shadow-lg relative hover:scale-105 transition-transform`} style={{minHeight: '200px'}}>
+                                                    {positionRankById[note.id] && (
+                                                        <div className="absolute top-2 left-2 group">
+                                                            <div className={`bg-white bg-opacity-70 border rounded px-2 py-1 text-xs font-bold ${darkMode ? 'text-gray-800 border-gray-300' : 'text-gray-700 border-gray-300'}`}>
+                                                                {positionRankById[note.id]} of {totalPositions}
+                                                            </div>
+                                                            <div className={`absolute left-0 top-8 z-40 hidden group-hover:block w-60 rounded-lg border shadow-xl p-3 text-xs ${darkMode ? 'bg-gray-900 text-gray-200 border-gray-700' : 'bg-white text-gray-800 border-gray-200'}`}>
+                                                                <div className="font-bold mb-1">Position ranking</div>
+                                                                <div className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                    <div>
+                                                                        <span className="font-semibold">Size:</span>{' '}
+                                                                        ${positionDetailsById[note.id].value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="font-semibold">% of total:</span>{' '}
+                                                                        {positionDetailsById[note.id].pctOfTotal.toFixed(1)}%
+                                                                    </div>
+                                                                    <div className="mt-2">
+                                                                        This is your <span className="font-semibold">{positionDetailsById[note.id].rank}{(positionDetailsById[note.id].rank % 10 === 1 && positionDetailsById[note.id].rank % 100 !== 11) ? 'st' : (positionDetailsById[note.id].rank % 10 === 2 && positionDetailsById[note.id].rank % 100 !== 12) ? 'nd' : (positionDetailsById[note.id].rank % 10 === 3 && positionDetailsById[note.id].rank % 100 !== 13) ? 'rd' : 'th'}</span>
+                                                                        {' '}largest position out of <span className="font-semibold">{positionDetailsById[note.id].totalPositions}</span>.
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     <div className="absolute top-2 right-2 flex gap-2">
                                                         <select value={note.color} onChange={(e) => setNotes(notes.map(n => n.id === note.id ? {...n, color: e.target.value} : n))} className="bg-white bg-opacity-70 border rounded px-2 py-1 text-xs">
                                                             {categories.map(c => <option key={c} value={c}>{colorLabels[c]}</option>)}
@@ -3038,14 +3253,6 @@ const firebaseConfig = {
                             <div className="p-6 pb-4">
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => setQuickStartOpen(true)}
-                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
-                                        title="Open Quick Start Guide"
-                                    >
-                                        Quick Start
-                                    </button>
                                 </div>
                                 <div className="flex gap-2">
                                     <input
