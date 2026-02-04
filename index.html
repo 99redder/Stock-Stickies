@@ -2303,7 +2303,9 @@ const firebaseConfig = {
                                             maxLength={MAX_API_KEY_LENGTH}
                                         />
                                         <div className="relative group">
-                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-500 text-gray-300 text-xs font-bold cursor-default">
+                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold cursor-default ${
+                                                darkMode ? 'border-gray-500 text-gray-300' : 'border-gray-600 text-gray-700'
+                                            }`}>
                                                 ?
                                             </span>
                                             <div className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-20">
@@ -2350,7 +2352,9 @@ const firebaseConfig = {
                                             maxLength={MAX_API_KEY_LENGTH}
                                         />
                                         <div className="relative group">
-                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-500 text-gray-300 text-xs font-bold cursor-default">
+                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold cursor-default ${
+                                                darkMode ? 'border-gray-500 text-gray-300' : 'border-gray-600 text-gray-700'
+                                            }`}>
                                                 ?
                                             </span>
                                             <div className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-20">
@@ -2711,7 +2715,13 @@ const firebaseConfig = {
                 </div>
 
                 {/* Fixed Footer */}
-                <footer className="fixed bottom-0 left-0 right-0 bg-black text-white text-center py-2 text-sm">
+                <footer className="fixed bottom-0 left-0 right-0 bg-black text-white text-center py-2 text-xs sm:text-sm whitespace-nowrap">
+                    <span>© {new Date().getFullYear()} Stock Stickies. All rights reserved.</span>
+                    <span className="mx-2">·</span>
+                    <button type="button" onClick={() => setLegalView('privacy')} className="hover:text-gray-200">Privacy Policy</button>
+                    <span className="mx-2">·</span>
+                    <button type="button" onClick={() => setLegalView('terms')} className="hover:text-gray-200">Terms of Use</button>
+                    <span className="mx-2">·</span>
                     Website created by <a href="https://github.com/chrisgorham999" target="_blank" rel="noopener noreferrer" className="text-red-400 hover:text-blue-300">Chris Gorham</a>
                 </footer>
                 </>
