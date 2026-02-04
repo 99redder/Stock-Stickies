@@ -1046,6 +1046,53 @@ const firebaseConfig = {
                 return copy;
             }, [classifiedNotes, notesSortMode, portfolioPrices]);
 
+            // Position ranking info (for badges on notes)
+            const { positionRankById, totalPositions, positionDetailsById } = useMemo(() => {
+                const getTicker = (n) => (n.title || '').trim().toUpperCase();
+                const getShares = (n) => (typeof n.shares === 'number' ? n.shares : parseFloat(n.shares)) || 0;
+                const getPrice = (ticker) => {
+                    const p = portfolioPrices[ticker];
+                    return typeof p === 'number' ? p : 0;
+                };
+
+                const positions = notes
+                    .filter(n => getShares(n) > 0)
+                    .map(n => {
+                        const ticker = getTicker(n);
+                        const shares = getShares(n);
+                        const price = getPrice(ticker);
+                        const value = shares * price;
+                        return { id: n.id, ticker, shares, price, value };
+                    });
+
+                // Sort by: priced positions first, then value desc, then shares desc, then ticker
+                positions.sort((a, b) => {
+                    const aHasPrice = a.price > 0;
+                    const bHasPrice = b.price > 0;
+                    if (aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
+                    if (b.value !== a.value) return b.value - a.value;
+                    if (b.shares !== a.shares) return b.shares - a.shares;
+                    return a.ticker.localeCompare(b.ticker);
+                });
+
+                const total = positions.reduce((sum, p) => sum + p.value, 0);
+                const rankById = {};
+                const detailsById = {};
+                positions.forEach((p, idx) => {
+                    const rank = idx + 1;
+                    rankById[p.id] = rank;
+                    detailsById[p.id] = {
+                        ...p,
+                        rank,
+                        totalPositions: positions.length,
+                        pctOfTotal: total > 0 ? (p.value / total) * 100 : 0,
+                        totalValue: total
+                    };
+                });
+
+                return { positionRankById: rankById, totalPositions: positions.length, positionDetailsById: detailsById };
+            }, [notes, portfolioPrices]);
+
             const groupedNotes = useMemo(() => categories.reduce((acc, color) => {
                 acc[color] = sortedClassifiedNotes.filter(n => n.color === color);
                 return acc;
@@ -3032,6 +3079,30 @@ const firebaseConfig = {
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                             {categoryNotes.map(note => (
                                                 <div key={note.id} className={`${note.color} p-6 rounded-lg shadow-lg relative hover:scale-105 transition-transform`} style={{minHeight: '200px'}}>
+                                                    {positionRankById[note.id] && (
+                                                        <div className="absolute top-2 left-2 group">
+                                                            <div className={`bg-white bg-opacity-70 border rounded px-2 py-1 text-xs font-bold ${darkMode ? 'text-gray-800 border-gray-300' : 'text-gray-700 border-gray-300'}`}>
+                                                                {positionRankById[note.id]} of {totalPositions}
+                                                            </div>
+                                                            <div className={`absolute left-0 top-8 z-40 hidden group-hover:block w-60 rounded-lg border shadow-xl p-3 text-xs ${darkMode ? 'bg-gray-900 text-gray-200 border-gray-700' : 'bg-white text-gray-800 border-gray-200'}`}>
+                                                                <div className="font-bold mb-1">Position ranking</div>
+                                                                <div className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                    <div>
+                                                                        <span className="font-semibold">Size:</span>{' '}
+                                                                        ${positionDetailsById[note.id].value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="font-semibold">% of total:</span>{' '}
+                                                                        {positionDetailsById[note.id].pctOfTotal.toFixed(1)}%
+                                                                    </div>
+                                                                    <div className="mt-2">
+                                                                        This is your <span className="font-semibold">{positionDetailsById[note.id].rank}{(positionDetailsById[note.id].rank % 10 === 1 && positionDetailsById[note.id].rank % 100 !== 11) ? 'st' : (positionDetailsById[note.id].rank % 10 === 2 && positionDetailsById[note.id].rank % 100 !== 12) ? 'nd' : (positionDetailsById[note.id].rank % 10 === 3 && positionDetailsById[note.id].rank % 100 !== 13) ? 'rd' : 'th'}</span>
+                                                                        {' '}largest position out of <span className="font-semibold">{positionDetailsById[note.id].totalPositions}</span>.
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     <div className="absolute top-2 right-2 flex gap-2">
                                                         <select value={note.color} onChange={(e) => setNotes(notes.map(n => n.id === note.id ? {...n, color: e.target.value} : n))} className="bg-white bg-opacity-70 border rounded px-2 py-1 text-xs">
                                                             {categories.map(c => <option key={c} value={c}>{colorLabels[c]}</option>)}
