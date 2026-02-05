@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Keep baseline behavior sane */
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}

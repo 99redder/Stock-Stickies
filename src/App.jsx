@@ -1,0 +1,3303 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react'
+import firebase from 'firebase/compat/app'
+import 'firebase/compat/auth'
+import 'firebase/compat/firestore'
+import 'firebase/compat/app-check'
+import { Chart } from 'chart.js/auto'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
+import html2canvas from 'html2canvas'
+
+// my credentials from Firebase
+const firebaseConfig = {
+  apiKey: "__REMOVED_GOOGLE_API_KEY__",
+  authDomain: "red-s-stickies.firebaseapp.com",
+  projectId: "red-s-stickies",
+  storageBucket: "red-s-stickies.firebasestorage.app",
+  messagingSenderId: "896398882822",
+  appId: "1:896398882822:web:dcfc3217a949601916eb87"
+
+};
+
+
+        // Initialize Firebase
+        let db = null;
+        let auth = null;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+
+            // Initialize App Check with reCAPTCHA v3
+            const appCheck = firebase.appCheck();
+            appCheck.activate('6Ld6FE4sAAAAANxjvc3zRPUlAvZ5s-0gpKNUcRpN', true);
+
+            db = firebase.firestore();
+            auth = firebase.auth();
+        } catch (error) {
+            console.error("Firebase initialization error:", error);
+        }
+
+        // Icons
+        const Plus = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+        const X = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+        const Edit2 = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>;
+        const Check = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>;
+        const LogOut = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+        const Moon = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+        const Sun = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
+        const ChevronDown = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>;
+        const ChevronRight = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>;
+        const Cloud = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>;
+        const CloudOff = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+        const Maximize = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>;
+        const Eye = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+        const EyeOff = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+        const Download = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+
+        // Default stock-focused categories (users can customize/delete/add later)
+        const DEFAULT_COLOR_LABELS = {
+            'bg-blue-200': 'Core Holding',
+            'bg-green-200': 'Swing Trade',
+            'bg-purple-200': 'Value',
+            'bg-orange-200': 'Growth',
+            'bg-red-300': 'Speculative'
+        };
+
+        const DEFAULT_COLORS = ['bg-blue-200', 'bg-green-200', 'bg-purple-200', 'bg-orange-200', 'bg-red-300'];
+        const UNCLASSIFIED_COLOR = 'bg-gray-300';
+
+        // Available Tailwind colors for category customization
+        const AVAILABLE_COLORS = [
+            'bg-yellow-200', 'bg-yellow-300', 'bg-yellow-400',
+            'bg-pink-200', 'bg-pink-300', 'bg-pink-400',
+            'bg-blue-200', 'bg-blue-300', 'bg-blue-400',
+            'bg-green-200', 'bg-green-300', 'bg-green-400',
+            'bg-red-200', 'bg-red-300', 'bg-red-400',
+            'bg-orange-200', 'bg-orange-300', 'bg-orange-400',
+            'bg-purple-200', 'bg-purple-300', 'bg-purple-400',
+            'bg-teal-200', 'bg-teal-300', 'bg-cyan-200'
+        ];
+        const MIN_CATEGORIES = 1;
+        const MAX_CATEGORIES = 10;
+
+        // Input validation constants
+        const MAX_TITLE_LENGTH = 10; // For ticker symbols
+        const MAX_CONTENT_LENGTH = 10000; // For note content
+        const MAX_NICKNAME_LENGTH = 50;
+        const MAX_API_KEY_LENGTH = 200;
+
+        // Input validation functions
+        const validateTicker = (ticker) => {
+            if (!ticker || typeof ticker !== 'string') return false;
+            const trimmed = ticker.trim().toUpperCase();
+            // Ticker must be 1-5 uppercase letters/numbers (some tickers have numbers)
+            const tickerRegex = /^[A-Z0-9]{1,5}$/;
+            return tickerRegex.test(trimmed) && trimmed.length <= MAX_TITLE_LENGTH;
+        };
+
+        const sanitizeTicker = (ticker) => {
+            if (!ticker || typeof ticker !== 'string') return '';
+            // Remove any non-alphanumeric characters and convert to uppercase
+            const sanitized = ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+            // Limit to 5 characters
+            return sanitized.substring(0, 5);
+        };
+
+        const validateApiKey = (key, type) => {
+            if (!key || typeof key !== 'string') return false;
+            const trimmed = key.trim();
+            if (trimmed.length === 0 || trimmed.length > MAX_API_KEY_LENGTH) return false;
+            
+            // Basic format validation - alphanumeric and common special chars
+            const apiKeyRegex = /^[a-zA-Z0-9\-_]+$/;
+            if (!apiKeyRegex.test(trimmed)) return false;
+            
+            // Type-specific validation
+            if (type === 'finnhub') {
+                // Finnhub keys are typically 20+ characters
+                return trimmed.length >= 20;
+            }
+            if (type === 'marketaux') {
+                // MarketAux keys are typically 32+ characters
+                return trimmed.length >= 32;
+            }
+            return true; // Generic validation passed
+        };
+
+        const validateContent = (content) => {
+            if (content === null || content === undefined) return true; // Allow empty
+            if (typeof content !== 'string') return false;
+            return content.length <= MAX_CONTENT_LENGTH;
+        };
+
+        const validateNickname = (nickname) => {
+            if (!nickname || typeof nickname !== 'string') return true; // Allow empty
+            const trimmed = nickname.trim();
+            if (trimmed.length > MAX_NICKNAME_LENGTH) return false;
+            // Allow alphanumeric, spaces, and common punctuation
+            const nicknameRegex = /^[a-zA-Z0-9\s\-_.,!?']+$/;
+            return nicknameRegex.test(trimmed);
+        };
+
+        const sanitizeContent = (content) => {
+            if (content === null || content === undefined) return '';
+            if (typeof content !== 'string') return String(content);
+            // Limit length
+            return content.substring(0, MAX_CONTENT_LENGTH);
+        };
+
+        // Helper function to build API URLs safely with URLSearchParams
+        const buildApiUrl = (baseUrl, params) => {
+            const url = new URL(baseUrl);
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') {
+                    url.searchParams.append(key, String(value));
+                }
+            });
+            return url.toString();
+        };
+
+        // API Key Encryption/Decryption using Web Crypto API
+        // Derives encryption key from user's Firebase UID for security
+        const getEncryptionKey = async (userId) => {
+            const encoder = new TextEncoder();
+            // Use a combination of userId and a constant salt for key derivation
+            // In production, you might want to use a more sophisticated approach
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(userId + '|StockStickies|2024'), // Salt with app identifier
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            // Use a fixed salt for consistency (in production, consider storing per-user salt)
+            const salt = encoder.encode('StockStickiesSalt2024');
+            
+            const derivedKey = await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+            
+            return derivedKey;
+        };
+
+        // Encrypt API key before storing in Firestore
+        const encryptApiKey = async (apiKey, userId) => {
+            if (!apiKey || !userId) return null;
+            
+            try {
+                const key = await getEncryptionKey(userId);
+                const encoder = new TextEncoder();
+                const data = encoder.encode(apiKey);
+                
+                // Generate a random IV for each encryption
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    key,
+                    data
+                );
+                
+                // Convert to base64 for storage in Firestore
+                const encryptedArray = Array.from(new Uint8Array(encrypted));
+                const ivArray = Array.from(iv);
+                
+                return {
+                    encrypted: btoa(String.fromCharCode(...encryptedArray)),
+                    iv: btoa(String.fromCharCode(...ivArray)),
+                    version: '1' // For future migration support
+                };
+            } catch (error) {
+                console.error('Encryption error:', error);
+                return null;
+            }
+        };
+
+        // Decrypt API key after loading from Firestore
+        const decryptApiKey = async (encryptedData, userId) => {
+            if (!encryptedData) return '';
+            if (!userId) return '';
+            
+            // Handle legacy unencrypted keys (for migration)
+            if (typeof encryptedData === 'string') {
+                return encryptedData; // Return as-is if it's a plain string
+            }
+            
+            // Handle encrypted keys
+            if (!encryptedData || typeof encryptedData !== 'object') {
+                return '';
+            }
+            
+            if (!encryptedData.encrypted || !encryptedData.iv) {
+                return '';
+            }
+            
+            try {
+                const key = await getEncryptionKey(userId);
+                
+                // Decode from base64
+                const encrypted = Uint8Array.from(
+                    atob(encryptedData.encrypted),
+                    c => c.charCodeAt(0)
+                );
+                const iv = Uint8Array.from(
+                    atob(encryptedData.iv),
+                    c => c.charCodeAt(0)
+                );
+                
+                const decrypted = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    key,
+                    encrypted
+                );
+                
+                const decoder = new TextDecoder();
+                return decoder.decode(decrypted);
+            } catch (error) {
+                console.error('Decryption error:', error);
+                // If decryption fails, try to return as string (might be legacy format)
+                if (typeof encryptedData === 'string') {
+                    return encryptedData;
+                }
+                return '';
+            }
+        };
+
+        function StickyNotesApp() {
+            const [currentUser, setCurrentUser] = useState(null);
+            const [loginUsername, setLoginUsername] = useState('');
+            const [loginPassword, setLoginPassword] = useState('');
+            const [isSignup, setIsSignup] = useState(false);
+            const [loginError, setLoginError] = useState('');
+            const [darkMode, setDarkMode] = useState(false);
+            const [isResettingPassword, setIsResettingPassword] = useState(false);
+            const [resetSuccess, setResetSuccess] = useState(false);
+            const [legalView, setLegalView] = useState(null); // 'privacy' | 'terms' | null
+            const [syncStatus, setSyncStatus] = useState('synced');
+            const isSavingRef = useRef(false);
+            const isLoadingRef = useRef(false);
+            const saveTimeoutRef = useRef(null);
+            const [notes, setNotes] = useState([]);
+            const [nextId, setNextId] = useState(1);
+            const [colorLabels, setColorLabels] = useState(DEFAULT_COLOR_LABELS);
+            const [editingLabel, setEditingLabel] = useState(null);
+            const [tempLabel, setTempLabel] = useState('');
+            const [collapsedCategories, setCollapsedCategories] = useState({});
+            const [categories, setCategories] = useState(DEFAULT_COLORS);
+            // Category management modal states
+            const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+            const [newCategoryLabel, setNewCategoryLabel] = useState('');
+            const [newCategoryColor, setNewCategoryColor] = useState(null);
+            const [categoryToDelete, setCategoryToDelete] = useState(null);
+            const [reassignTarget, setReassignTarget] = useState(null);
+            const [editingCategoryColor, setEditingCategoryColor] = useState(null);
+            const [expandedNote, setExpandedNote] = useState(null);
+            const [stockData, setStockData] = useState(null);
+            const [stockLoading, setStockLoading] = useState(false);
+            const [stockError, setStockError] = useState(null);
+            const [finnhubApiKey, setFinnhubApiKey] = useState('');
+            const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
+            const [watchList, setWatchList] = useState([]);
+
+            // API key help popovers (click-to-toggle; closes on outside click / Escape)
+            const [openHelp, setOpenHelp] = useState(null); // 'finnhub' | 'marketaux' | null
+            const finnhubHelpRef = useRef(null);
+            const marketauxHelpRef = useRef(null);
+
+            // Quick Start Guide (logged-in only)
+            const [quickStartOpen, setQuickStartOpen] = useState(false);
+
+            // Login help (login page only)
+            const [loginHelpOpen, setLoginHelpOpen] = useState(false);
+            const loginHelpRef = useRef(null);
+
+            const [newWatchTicker, setNewWatchTicker] = useState('');
+            const [hideEmail, setHideEmail] = useState(false);
+            const [nickname, setNickname] = useState('');
+            const [editingNickname, setEditingNickname] = useState(false);
+            const [hidePortfolioValues, setHidePortfolioValues] = useState(false);
+            const [marketauxApiKey, setMarketauxApiKey] = useState('');
+            const [newsData, setNewsData] = useState(null);
+            const [newsLoading, setNewsLoading] = useState(false);
+            const [watchListModalTicker, setWatchListModalTicker] = useState(null);
+            const portfolioCardRef = useRef(null);
+            // Load cached portfolio prices immediately on init for instant chart display
+            const [portfolioPrices, setPortfolioPrices] = useState(() => {
+                try {
+                    const cached = localStorage.getItem('portfolio_prices_cache');
+                    if (cached) {
+                        const { prices } = JSON.parse(cached);
+                        return prices || {};
+                    }
+                } catch (e) {}
+                return {};
+            });
+            const [portfolioLoading, setPortfolioLoading] = useState(false);
+            const [mainTab, setMainTab] = useState('notes');
+            const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            // Compute the active ticker for data fetching (from expanded note or watch list modal)
+            const activeTicker = expandedNote?.title || watchListModalTicker;
+
+            // Close API key help popovers on outside click / Escape
+            useEffect(() => {
+                const onMouseDown = (e) => {
+                    if (!openHelp) return;
+                    const t = e.target;
+                    const inFinnhub = finnhubHelpRef.current && finnhubHelpRef.current.contains(t);
+                    const inMarketaux = marketauxHelpRef.current && marketauxHelpRef.current.contains(t);
+                    if (!inFinnhub && !inMarketaux) setOpenHelp(null);
+                };
+                const onKeyDown = (e) => {
+                    if (e.key === 'Escape') setOpenHelp(null);
+                };
+                document.addEventListener('mousedown', onMouseDown);
+                document.addEventListener('keydown', onKeyDown);
+                return () => {
+                    document.removeEventListener('mousedown', onMouseDown);
+                    document.removeEventListener('keydown', onKeyDown);
+                };
+            }, [openHelp]);
+
+            // Close login help modal on outside click / Escape
+            useEffect(() => {
+                if (!loginHelpOpen) return;
+                const onMouseDown = (e) => {
+                    const t = e.target;
+                    if (loginHelpRef.current && !loginHelpRef.current.contains(t)) setLoginHelpOpen(false);
+                };
+                const onKeyDown = (e) => {
+                    if (e.key === 'Escape') setLoginHelpOpen(false);
+                };
+                document.addEventListener('mousedown', onMouseDown);
+                document.addEventListener('keydown', onKeyDown);
+                return () => {
+                    document.removeEventListener('mousedown', onMouseDown);
+                    document.removeEventListener('keydown', onKeyDown);
+                };
+            }, [loginHelpOpen]);
+
+
+            useEffect(() => {
+                if (!auth) return;
+                const unsubscribe = auth.onAuthStateChanged((user) => {
+                    if (user) setCurrentUser(user.email);
+                    else setCurrentUser(null);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                if (!currentUser || !db || !auth.currentUser) return;
+                const userId = auth.currentUser.uid;
+                const unsubscribe = db.collection('users').doc(userId)
+                    .onSnapshot((doc) => {
+                        if (doc.exists && !isSavingRef.current) {
+                            const data = doc.data();
+
+                            // Set loading flag to prevent orphan repair during data load
+                            isLoadingRef.current = true;
+
+                            // Load all data immediately - categories FIRST, then notes
+                            setCategories(data.categories || DEFAULT_COLORS);
+                            setColorLabels(data.colorLabels || DEFAULT_COLOR_LABELS);
+                            setNotes(data.notes || []);
+                            setNextId(data.nextId || 1);
+                            setCollapsedCategories(data.collapsedCategories || {});
+                            setDarkMode(data.darkMode || false);
+                            setWatchList(data.watchList || []);
+                            setNickname(data.nickname || '');
+                            setNotesSortMode(data.notesSortMode || 'default');
+
+                            // Reset loading flag after state updates settle
+                            setTimeout(() => { isLoadingRef.current = false; }, 200);
+                            
+                            // Handle API keys - support both encrypted and plain text formats
+                            // Try to decrypt, but fallback to plain string if decryption fails or data is plain text
+                            const handleApiKey = async (apiKeyData, setter) => {
+                                if (!apiKeyData) {
+                                    setter('');
+                                    return;
+                                }
+                                
+                                // If it's already a plain string, use it directly
+                                if (typeof apiKeyData === 'string') {
+                                    setter(apiKeyData);
+                                    return;
+                                }
+                                
+                                // If it's an object, try to decrypt
+                                if (typeof apiKeyData === 'object' && apiKeyData.encrypted && apiKeyData.iv) {
+                                    try {
+                                        const decrypted = await decryptApiKey(apiKeyData, userId);
+                                        setter(decrypted || '');
+                                    } catch (err) {
+                                        console.error('Decryption error:', err);
+                                        setter(''); // Clear on error
+                                    }
+                                } else {
+                                    setter(''); // Unknown format
+                                }
+                            };
+                            
+                            // Decrypt API keys asynchronously (non-blocking)
+                            handleApiKey(data.finnhubApiKey, setFinnhubApiKey);
+                            handleApiKey(data.marketauxApiKey, setMarketauxApiKey);
+                        }
+                    }, (error) => {
+                        console.error('Firestore snapshot error:', error);
+                    });
+                return () => unsubscribe();
+            }, [currentUser]);
+
+            useEffect(() => {
+                if (currentUser && auth.currentUser && db) {
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+                    // Immediately block incoming updates while we have pending changes
+                    isSavingRef.current = true;
+
+                    const timeout = setTimeout(async () => {
+                        setSyncStatus('syncing');
+                        const userId = auth.currentUser.uid;
+                        
+                        const updateData = {
+                            notes,
+                            colorLabels,
+                            categories,
+                            nextId,
+                            collapsedCategories,
+                            darkMode,
+                            watchList,
+                            nickname,
+                            notesSortMode,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        };
+                        
+                        // Try to encrypt API keys, but fallback to plain text if encryption fails
+                        // This ensures data is always saved even if encryption has issues
+                        if (finnhubApiKey) {
+                            try {
+                                const encrypted = await encryptApiKey(finnhubApiKey, userId);
+                                updateData.finnhubApiKey = encrypted || finnhubApiKey; // Fallback to plain text
+                            } catch (err) {
+                                console.warn('Encryption failed, storing as plain text:', err);
+                                updateData.finnhubApiKey = finnhubApiKey; // Store as plain text on error
+                            }
+                        } else {
+                            updateData.finnhubApiKey = null;
+                        }
+                        
+                        if (marketauxApiKey) {
+                            try {
+                                const encrypted = await encryptApiKey(marketauxApiKey, userId);
+                                updateData.marketauxApiKey = encrypted || marketauxApiKey; // Fallback to plain text
+                            } catch (err) {
+                                console.warn('Encryption failed, storing as plain text:', err);
+                                updateData.marketauxApiKey = marketauxApiKey; // Store as plain text on error
+                            }
+                        } else {
+                            updateData.marketauxApiKey = null;
+                        }
+                        
+                        db.collection('users').doc(userId).set(updateData, { merge: false }).then(() => {
+                            setSyncStatus('synced');
+                            setTimeout(() => { isSavingRef.current = false; }, 1000);
+                        }).catch((err) => {
+                            console.error('Firestore save error:', err);
+                            setSyncStatus('offline');
+                            isSavingRef.current = false;
+                        });
+                    }, 10000);
+
+                    saveTimeoutRef.current = timeout;
+                    return () => {
+                        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                    };
+                }
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, notesSortMode]);
+
+            useEffect(() => {
+                const handleBeforeUnload = async (e) => {
+                    if (currentUser && auth.currentUser && db) {
+                        const userId = auth.currentUser.uid;
+
+                        const updateData = {
+                            notes,
+                            colorLabels,
+                            categories,
+                            nextId,
+                            collapsedCategories,
+                            darkMode,
+                            watchList,
+                            nickname,
+                            notesSortMode,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        };
+                        
+                        // Try to encrypt, but fallback to plain text if encryption fails
+                        if (finnhubApiKey) {
+                            try {
+                                const encrypted = await encryptApiKey(finnhubApiKey, userId);
+                                updateData.finnhubApiKey = encrypted || finnhubApiKey;
+                            } catch (err) {
+                                updateData.finnhubApiKey = finnhubApiKey;
+                            }
+                        } else {
+                            updateData.finnhubApiKey = null;
+                        }
+                        
+                        if (marketauxApiKey) {
+                            try {
+                                const encrypted = await encryptApiKey(marketauxApiKey, userId);
+                                updateData.marketauxApiKey = encrypted || marketauxApiKey;
+                            } catch (err) {
+                                updateData.marketauxApiKey = marketauxApiKey;
+                            }
+                        } else {
+                            updateData.marketauxApiKey = null;
+                        }
+                        
+                        // Use sendBeacon or fire-and-forget to avoid blocking page unload
+                        db.collection('users').doc(userId).set(updateData, { merge: false }).catch(() => {
+                            // Ignore errors on unload
+                        });
+                    }
+                };
+
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, notesSortMode]);
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoginError('');
+                setResetSuccess(false);
+                if (!loginUsername || !loginPassword) {
+                    setLoginError('Please enter both email and password');
+                    return;
+                }
+                if (!auth) {
+                    setLoginError('Firebase not configured');
+                    return;
+                }
+                try {
+                    if (isSignup) await auth.createUserWithEmailAndPassword(loginUsername, loginPassword);
+                    else if (isResettingPassword) {
+                        await auth.sendPasswordResetEmail(loginUsername);
+                        setResetSuccess(true);
+                        setIsResettingPassword(false);
+                    } else await auth.signInWithEmailAndPassword(loginUsername, loginPassword);
+                    setLoginUsername('');
+                    setLoginPassword('');
+                } catch (error) {
+                    setLoginError(error.message);
+                }
+            };
+
+            const handleGoogleLogin = async () => {
+                setLoginError('');
+                setResetSuccess(false);
+                if (!auth) {
+                    setLoginError('Firebase not configured');
+                    return;
+                }
+                try {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    await auth.signInWithPopup(provider);
+                } catch (error) {
+                    setLoginError(error.message);
+                }
+            };
+
+            const updateNoteTitle = (noteId, title) => {
+                // Sanitize and validate ticker input
+                const sanitized = sanitizeTicker(title);
+                if (sanitized.length > MAX_TITLE_LENGTH) return; // Prevent overly long input
+                setNotes(notes.map(n => n.id === noteId ? {...n, title: sanitized} : n));
+                if (expandedNote && expandedNote.id === noteId) {
+                    setExpandedNote({...expandedNote, title: sanitized});
+                }
+            };
+
+            const syncNow = async () => {
+                if (currentUser && auth.currentUser && db) {
+                    const userId = auth.currentUser.uid;
+
+                    const updateData = {
+                        notes,
+                        colorLabels,
+                        categories,
+                        nextId,
+                        collapsedCategories,
+                        darkMode,
+                        watchList,
+                        nickname,
+                        notesSortMode,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+
+                    // Try to encrypt, but fallback to plain text if encryption fails
+                    if (finnhubApiKey) {
+                        try {
+                            const encrypted = await encryptApiKey(finnhubApiKey, userId);
+                            updateData.finnhubApiKey = encrypted || finnhubApiKey;
+                        } catch (err) {
+                            updateData.finnhubApiKey = finnhubApiKey; // Store as plain text on error
+                        }
+                    } else {
+                        updateData.finnhubApiKey = null;
+                    }
+
+                    if (marketauxApiKey) {
+                        try {
+                            const encrypted = await encryptApiKey(marketauxApiKey, userId);
+                            updateData.marketauxApiKey = encrypted || marketauxApiKey;
+                        } catch (err) {
+                            updateData.marketauxApiKey = marketauxApiKey; // Store as plain text on error
+                        }
+                    } else {
+                        updateData.marketauxApiKey = null;
+                    }
+
+                    try {
+                        await db.collection('users').doc(userId).set(updateData, { merge: false });
+                        console.log('Sync completed successfully');
+                    } catch (err) {
+                        console.error('Sync error:', err);
+                    }
+                }
+            };
+
+            const addToWatchList = () => {
+                const sanitized = sanitizeTicker(newWatchTicker);
+                if (!sanitized) {
+                    setNewWatchTicker('');
+                    return;
+                }
+                // Validate ticker format
+                if (!validateTicker(sanitized)) {
+                    alert('Invalid ticker symbol. Please enter 1-5 letters/numbers.');
+                    return;
+                }
+                if (!watchList.includes(sanitized)) {
+                    isSavingRef.current = true;
+                    setWatchList([...watchList, sanitized]);
+                    setNewWatchTicker('');
+                } else {
+                    alert('Ticker already in watch list.');
+                }
+            };
+
+            const removeFromWatchList = (ticker) => {
+                isSavingRef.current = true;
+                setWatchList(watchList.filter(t => t !== ticker));
+            };
+
+            const handleRefreshPortfolioPrices = async () => {
+                if (!finnhubApiKey) {
+                    alert('Please add your Finnhub API key first.');
+                    return;
+                }
+                if (portfolioNotes.length === 0) {
+                    alert('No portfolio positions to refresh.');
+                    return;
+                }
+
+                setPortfolioLoading(true);
+                const prices = {};
+                for (const note of portfolioNotes) {
+                    try {
+                        const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
+                            symbol: note.title,
+                            token: finnhubApiKey
+                        });
+                        const response = await fetch(portfolioQuoteUrl);
+                        const data = await response.json();
+                        if (data.c) prices[note.title] = data.c;
+                    } catch (e) {
+                        console.error(`Failed to fetch ${note.title}`);
+                    }
+                }
+
+                setPortfolioPrices(prices);
+                setPortfolioLoading(false);
+                localStorage.setItem('portfolio_prices_cache', JSON.stringify({
+                    prices,
+                    timestamp: Date.now(),
+                    fetchedWindow: `manual-${Date.now()}`
+                }));
+            };
+
+            const handleDownloadPortfolioSnapshot = async () => {
+                const card = portfolioCardRef.current;
+                if (!card) {
+                    alert('Portfolio chart is not ready yet. Please try again in a moment.');
+                    return;
+                }
+
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const suggestedName = `portfolio-${timestamp}.png`;
+
+                try {
+                    if (window.html2canvas) {
+                        const snapshotCanvas = await window.html2canvas(card, {
+                            backgroundColor: null,
+                            scale: window.devicePixelRatio || 1,
+                            onclone: (clonedDoc) => {
+                                clonedDoc.querySelectorAll('.snapshot-hide').forEach((el) => {
+                                    el.style.display = 'none';
+                                });
+                                clonedDoc.querySelectorAll('.snapshot-only').forEach((el) => {
+                                    el.style.display = 'inline';
+                                });
+                                clonedDoc.querySelectorAll('.snapshot-timestamp').forEach((el) => {
+                                    el.textContent = `(${new Date().toLocaleString()})`;
+                                });
+                                clonedDoc.querySelectorAll('.portfolio-title').forEach((el) => {
+                                    el.style.color = '#e5e7eb';
+                                    el.style.webkitTextFillColor = '#e5e7eb';
+                                    el.style.textShadow = 'none';
+                                    el.style.backgroundImage = 'none';
+                                });
+                            }
+                        });
+                        const blob = await new Promise((resolve) => snapshotCanvas.toBlob(resolve, 'image/png', 1));
+                        if (!blob) {
+                            throw new Error('Unable to create snapshot.');
+                        }
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = suggestedName;
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        URL.revokeObjectURL(url);
+                        return;
+                    }
+
+                    const inlineComputedStyles = (source, target) => {
+                        const computed = window.getComputedStyle(source);
+                        const cssText = Array.from(computed)
+                            .map((prop) => `${prop}:${computed.getPropertyValue(prop)};`)
+                            .join('');
+                        target.style.cssText = cssText;
+                        for (let i = 0; i < source.children.length; i++) {
+                            inlineComputedStyles(source.children[i], target.children[i]);
+                        }
+                    };
+
+                    const rect = card.getBoundingClientRect();
+                    const clone = card.cloneNode(true);
+                    const chartCanvas = chartRef.current;
+                    const chartRect = chartCanvas ? chartCanvas.getBoundingClientRect() : null;
+                    const chartDataUrl = chartCanvas ? chartCanvas.toDataURL('image/png') : null;
+                    inlineComputedStyles(card, clone);
+                    if (chartDataUrl && chartRect) {
+                        const originalCanvas = clone.querySelector('canvas');
+                        if (originalCanvas) {
+                            const imageReplacement = document.createElement('img');
+                            imageReplacement.src = chartDataUrl;
+                            imageReplacement.width = chartRect.width;
+                            imageReplacement.height = chartRect.height;
+                            imageReplacement.style.width = `${chartRect.width}px`;
+                            imageReplacement.style.height = `${chartRect.height}px`;
+                            imageReplacement.style.display = 'block';
+                            originalCanvas.replaceWith(imageReplacement);
+                        }
+                    }
+                    clone.style.margin = '0';
+
+                    const container = document.createElement('div');
+                    container.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+                    container.style.width = `${rect.width}px`;
+                    container.style.height = `${rect.height}px`;
+                    container.appendChild(clone);
+
+                    const svg = `
+                        <svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
+                            <foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(container)}</foreignObject>
+                        </svg>
+                    `;
+                    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+                    const svgUrl = URL.createObjectURL(svgBlob);
+
+                    const image = new Image();
+                    const blob = await new Promise((resolve, reject) => {
+                        image.onload = () => {
+                            const dpr = window.devicePixelRatio || 1;
+                            const outputCanvas = document.createElement('canvas');
+                            outputCanvas.width = rect.width * dpr;
+                            outputCanvas.height = rect.height * dpr;
+                            const ctx = outputCanvas.getContext('2d');
+                            ctx.scale(dpr, dpr);
+                            ctx.drawImage(image, 0, 0);
+                            outputCanvas.toBlob((result) => {
+                                if (result) resolve(result);
+                                else reject(new Error('Unable to create snapshot.'));
+                            }, 'image/png', 1);
+                            URL.revokeObjectURL(svgUrl);
+                        };
+                        image.onerror = () => {
+                            URL.revokeObjectURL(svgUrl);
+                            reject(new Error('Snapshot render failed.'));
+                        };
+                        image.src = svgUrl;
+                    });
+
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = suggestedName;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error('Snapshot download failed:', error);
+                    alert('Snapshot download failed. Please try again.');
+                }
+            };
+
+            const handleLogout = async () => {
+                // Wait for sync to complete before logging out
+                await syncNow();
+                // Clear any pending save timeouts and reset saving flag
+                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                isSavingRef.current = false;
+                isLoadingRef.current = false;
+                if (auth) await auth.signOut();
+                setCurrentUser(null);
+                setNotes([]);
+                // Reset categories to defaults on logout
+                setCategories(DEFAULT_COLORS);
+                setColorLabels(DEFAULT_COLOR_LABELS);
+            };
+
+            const classifyNote = (noteId, color) => {
+                setNotes(notes.map(n => n.id === noteId ? {...n, color, classified: true} : n));
+            };
+
+            const deleteNote = (noteId) => {
+                if (window.confirm('Are you sure you want to delete this note?')) {
+                    setNotes(notes.filter(n => n.id !== noteId));
+                }
+            };
+
+            // Category management functions
+            const getAvailableColors = () => AVAILABLE_COLORS.filter(c => !categories.includes(c));
+
+            const getNotesCountForCategory = (color) => notes.filter(n => n.color === color && n.classified).length;
+
+            const addCategory = (color, label) => {
+                if (categories.length >= MAX_CATEGORIES) return;
+                if (categories.includes(color)) return;
+                setCategories([...categories, color]);
+                setColorLabels({...colorLabels, [color]: label || 'New Category'});
+                setShowAddCategoryModal(false);
+                setNewCategoryLabel('');
+                setNewCategoryColor(null);
+            };
+
+            const handleDeleteCategory = (color) => {
+                const notesCount = getNotesCountForCategory(color);
+                if (notesCount > 0) {
+                    setCategoryToDelete(color);
+                    setReassignTarget(categories.find(c => c !== color) || null);
+                } else {
+                    // No notes, delete directly
+                    if (categories.length <= MIN_CATEGORIES) return;
+                    setCategories(categories.filter(c => c !== color));
+                    const newLabels = {...colorLabels};
+                    delete newLabels[color];
+                    setColorLabels(newLabels);
+                }
+            };
+
+            const confirmDeleteCategory = () => {
+                if (!categoryToDelete || !reassignTarget) return;
+                // Move all notes from deleted category to target category
+                setNotes(notes.map(n => n.color === categoryToDelete ? {...n, color: reassignTarget} : n));
+                // Remove the category
+                setCategories(categories.filter(c => c !== categoryToDelete));
+                const newLabels = {...colorLabels};
+                delete newLabels[categoryToDelete];
+                setColorLabels(newLabels);
+                // Clear modal state
+                setCategoryToDelete(null);
+                setReassignTarget(null);
+            };
+
+            // Ref to track intentional color changes (prevents orphan repair race condition)
+            const isChangingColorRef = useRef(false);
+
+            const changeCategoryColor = (oldColor, newColor) => {
+                if (oldColor === newColor) return;
+                if (categories.includes(newColor)) return;
+
+                // Mark that we're intentionally changing colors
+                isChangingColorRef.current = true;
+
+                // Update notes FIRST, then categories (order matters for orphan detection)
+                const updatedNotes = notes.map(n => n.color === oldColor ? {...n, color: newColor} : n);
+                setNotes(updatedNotes);
+
+                // Update categories array
+                setCategories(categories.map(c => c === oldColor ? newColor : c));
+
+                // Update colorLabels
+                const label = colorLabels[oldColor];
+                const newLabels = {...colorLabels};
+                delete newLabels[oldColor];
+                newLabels[newColor] = label;
+                setColorLabels(newLabels);
+                setEditingCategoryColor(null);
+
+                // Reset flag after a short delay to allow state to settle
+                setTimeout(() => { isChangingColorRef.current = false; }, 100);
+            };
+
+            // Close color picker when clicking outside
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (editingCategoryColor && !e.target.closest('.group')) {
+                        setEditingCategoryColor(null);
+                    }
+                };
+                document.addEventListener('click', handleClickOutside);
+                return () => document.removeEventListener('click', handleClickOutside);
+            }, [editingCategoryColor]);
+
+            // Compute derived state - must be before early return to follow Rules of Hooks
+            const unclassifiedNotes = useMemo(() => notes.filter(n => !n.classified), [notes]);
+            const classifiedNotes = useMemo(() => notes.filter(n => n.classified), [notes]);
+
+            // Notes display ordering (optional): sort by position market value (shares * latest price)
+            const sortedClassifiedNotes = useMemo(() => {
+                if (notesSortMode !== 'positionValue') return classifiedNotes;
+
+                const getTicker = (n) => (n.title || '').trim().toUpperCase();
+                const getShares = (n) => (typeof n.shares === 'number' ? n.shares : parseFloat(n.shares)) || 0;
+                const getPrice = (ticker) => {
+                    const p = portfolioPrices[ticker];
+                    return typeof p === 'number' ? p : 0;
+                };
+
+                const copy = [...classifiedNotes];
+                copy.sort((a, b) => {
+                    const aShares = getShares(a);
+                    const bShares = getShares(b);
+                    const aIsPos = aShares > 0;
+                    const bIsPos = bShares > 0;
+                    if (aIsPos !== bIsPos) return aIsPos ? -1 : 1; // positions above non-positions
+
+                    // Unknown price positions should still appear above non-positions, but below priced positions
+                    const aTicker = getTicker(a);
+                    const bTicker = getTicker(b);
+                    const aPrice = getPrice(aTicker);
+                    const bPrice = getPrice(bTicker);
+                    const aHasPrice = aPrice > 0;
+                    const bHasPrice = bPrice > 0;
+                    if (aIsPos && bIsPos && aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
+
+                    const aValue = aShares * aPrice;
+                    const bValue = bShares * bPrice;
+                    if (bValue !== aValue) return bValue - aValue;
+
+                    // Stable tie-breakers
+                    if (aTicker !== bTicker) return aTicker.localeCompare(bTicker);
+                    return (a.id || 0) - (b.id || 0);
+                });
+                return copy;
+            }, [classifiedNotes, notesSortMode, portfolioPrices]);
+
+            // Position ranking info (for badges on notes)
+            const { positionRankById, totalPositions, positionDetailsById } = useMemo(() => {
+                const getTicker = (n) => (n.title || '').trim().toUpperCase();
+                const getShares = (n) => (typeof n.shares === 'number' ? n.shares : parseFloat(n.shares)) || 0;
+                const getPrice = (ticker) => {
+                    const p = portfolioPrices[ticker];
+                    return typeof p === 'number' ? p : 0;
+                };
+
+                const positions = notes
+                    .filter(n => getShares(n) > 0)
+                    .map(n => {
+                        const ticker = getTicker(n);
+                        const shares = getShares(n);
+                        const price = getPrice(ticker);
+                        const value = shares * price;
+                        return { id: n.id, ticker, shares, price, value };
+                    });
+
+                // Sort by: priced positions first, then value desc, then shares desc, then ticker
+                positions.sort((a, b) => {
+                    const aHasPrice = a.price > 0;
+                    const bHasPrice = b.price > 0;
+                    if (aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
+                    if (b.value !== a.value) return b.value - a.value;
+                    if (b.shares !== a.shares) return b.shares - a.shares;
+                    return a.ticker.localeCompare(b.ticker);
+                });
+
+                const total = positions.reduce((sum, p) => sum + p.value, 0);
+                const rankById = {};
+                const detailsById = {};
+                positions.forEach((p, idx) => {
+                    const rank = idx + 1;
+                    rankById[p.id] = rank;
+                    detailsById[p.id] = {
+                        ...p,
+                        rank,
+                        totalPositions: positions.length,
+                        pctOfTotal: total > 0 ? (p.value / total) * 100 : 0,
+                        totalValue: total
+                    };
+                });
+
+                return { positionRankById: rankById, totalPositions: positions.length, positionDetailsById: detailsById };
+            }, [notes, portfolioPrices]);
+
+            const groupedNotes = useMemo(() => categories.reduce((acc, color) => {
+                acc[color] = sortedClassifiedNotes.filter(n => n.color === color);
+                return acc;
+            }, {}), [sortedClassifiedNotes, categories]);
+
+            // Detect orphaned notes (notes with colors not in categories) and auto-repair them
+            useEffect(() => {
+                // Skip if we're in the middle of an intentional color change or loading data
+                if (isChangingColorRef.current || isLoadingRef.current) return;
+
+                const orphanedNotes = classifiedNotes.filter(n => !categories.includes(n.color));
+                if (orphanedNotes.length > 0 && categories.length > 0) {
+                    console.log('Repairing orphaned notes:', orphanedNotes.length);
+                    const defaultCategory = categories[0];
+                    setNotes(notes.map(n =>
+                        n.classified && !categories.includes(n.color)
+                            ? {...n, color: defaultCategory}
+                            : n
+                    ));
+                }
+            }, [classifiedNotes, categories]);
+
+            // Ensure all categories have labels
+            useEffect(() => {
+                // Skip if we're loading data from Firestore
+                if (isLoadingRef.current) return;
+
+                const missingLabels = categories.filter(c => !colorLabels[c]);
+                if (missingLabels.length > 0) {
+                    const newLabels = {...colorLabels};
+                    missingLabels.forEach(c => {
+                        newLabels[c] = DEFAULT_COLOR_LABELS[c] || 'Category';
+                    });
+                    setColorLabels(newLabels);
+                }
+            }, [categories, colorLabels]);
+
+            // Stock data fetching effect - must be before early return to follow Rules of Hooks
+            useEffect(() => {
+                // Use a flag to prevent state updates on unmounted component
+                let isMounted = true;
+
+                const loadStockData = async () => {
+                    if (!activeTicker) {
+                        if (isMounted) {
+                            setStockData(null);
+                            setStockError(null);
+                        }
+                        return;
+                    }
+
+                    // Validate ticker format before making API calls
+                    if (!validateTicker(activeTicker)) {
+                        if (isMounted) {
+                            setStockError('Invalid ticker symbol format');
+                            setStockData(null);
+                            setStockLoading(false);
+                        }
+                        return;
+                    }
+
+                    if (isMounted) {
+                        setStockLoading(true);
+                        setStockError(null);
+                    }
+
+                    try {
+                        if (!finnhubApiKey) {
+                            if (isMounted) {
+                                setStockError('Please enter your Finnhub API key in settings');
+                                setStockData(null);
+                            }
+                            return;
+                        }
+
+                        // Fetch quote data from Finnhub - using URLSearchParams for safer URL construction
+                        const quoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
+                            symbol: activeTicker,
+                            token: finnhubApiKey
+                        });
+                        const quoteResponse = await fetch(quoteUrl);
+
+                        if (!quoteResponse.ok) {
+                            throw new Error('Failed to fetch quote data');
+                        }
+
+                        const quoteData = await quoteResponse.json();
+
+                        if (!quoteData.c || quoteData.c === 0) {
+                            if (isMounted) {
+                                setStockError('Stock not found');
+                                setStockData(null);
+                            }
+                            return;
+                        }
+
+                        // Fetch company profile for additional info
+                        const profileUrl = buildApiUrl('https://finnhub.io/api/v1/stock/profile2', {
+                            symbol: activeTicker,
+                            token: finnhubApiKey
+                        });
+                        const profileResponse = await fetch(profileUrl);
+                        const profileData = profileResponse.ok ? await profileResponse.json() : {};
+
+                        // Fetch metrics for fundamentals
+                        const metricsUrl = buildApiUrl('https://finnhub.io/api/v1/stock/metric', {
+                            symbol: activeTicker,
+                            metric: 'all',
+                            token: finnhubApiKey
+                        });
+                        const metricsResponse = await fetch(metricsUrl);
+                        const metricsData = metricsResponse.ok ? await metricsResponse.json() : {};
+
+                        // Fetch earnings calendar for next earnings date
+                        const today = new Date();
+                        const fromDate = today.toISOString().split('T')[0];
+                        const toDate = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 90 days ahead
+                        const earningsUrl = buildApiUrl('https://finnhub.io/api/v1/calendar/earnings', {
+                            from: fromDate,
+                            to: toDate,
+                            symbol: activeTicker,
+                            token: finnhubApiKey
+                        });
+                        const earningsResponse = await fetch(earningsUrl);
+                        const earningsData = earningsResponse.ok ? await earningsResponse.json() : {};
+
+                        if (isMounted) {
+                            const currentPrice = quoteData.c;
+                            const previousClose = quoteData.pc;
+                            const change = currentPrice - previousClose;
+                            const changePercent = (change / previousClose) * 100;
+
+                            setStockData({
+                                symbol: activeTicker,
+                                currentPrice: currentPrice,
+                                previousClose: previousClose,
+                                change: change,
+                                changePercent: changePercent,
+                                dayHigh: quoteData.h,
+                                dayLow: quoteData.l,
+                                volume: null, // Finnhub doesn't provide volume in quote endpoint
+                                marketCap: profileData.marketCapitalization ? profileData.marketCapitalization * 1e6 : null,
+                                currency: profileData.currency || 'USD',
+                                peTTM: metricsData.metric?.peBasicExclExtraTTM || metricsData.metric?.peTTM,
+                                peForward: metricsData.metric?.peNormalizedAnnual,
+                                pbRatio: metricsData.metric?.pbAnnual || metricsData.metric?.pbQuarterly,
+                                dividendYield: metricsData.metric?.dividendYieldIndicatedAnnual ? metricsData.metric.dividendYieldIndicatedAnnual / 100 : null,
+                                dividendRate: metricsData.metric?.dividendPerShareAnnual,
+                                week52High: metricsData.metric?.['52WeekHigh'],
+                                week52Low: metricsData.metric?.['52WeekLow'],
+                                nextEarningsDate: earningsData.earningsCalendar && earningsData.earningsCalendar.length > 0 ? earningsData.earningsCalendar[0].date : null
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Stock fetch error:', error);
+                        if (isMounted) {
+                            setStockError('Unable to fetch stock data. Please try again.');
+                            setStockData(null);
+                        }
+                    }
+
+                    if (isMounted) {
+                        setStockLoading(false);
+                    }
+                };
+
+                loadStockData();
+
+                return () => {
+                    isMounted = false;
+                };
+            }, [activeTicker]);
+
+            // News fetching effect
+            useEffect(() => {
+                let isMounted = true;
+
+                const loadNewsData = async () => {
+                    if (!activeTicker) {
+                        if (isMounted) setNewsData(null);
+                        return;
+                    }
+
+                    // Validate ticker format before making API calls
+                    if (!validateTicker(activeTicker)) {
+                        if (isMounted) setNewsData([]);
+                        return;
+                    }
+
+                    if (!marketauxApiKey) {
+                        if (isMounted) setNewsData(null);
+                        return;
+                    }
+
+                    // Check cache - only fetch once per day per ticker
+                    const cacheKey = `news_${activeTicker}`;
+                    const cached = localStorage.getItem(cacheKey);
+                    if (cached) {
+                        const { data, date } = JSON.parse(cached);
+                        const today = new Date().toISOString().split('T')[0];
+                        if (date === today) {
+                            if (isMounted) setNewsData(data);
+                            return;
+                        }
+                    }
+
+                    if (isMounted) setNewsLoading(true);
+
+                    try {
+                        const today = new Date();
+                        const todayStr = today.toISOString().split('T')[0];
+                        const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+                        // Fetch from MarketAux with sentiment (last 3 days to ensure coverage on weekends)
+                        const marketauxUrl = buildApiUrl('https://api.marketaux.com/v1/news/all', {
+                            symbols: activeTicker,
+                            filter_entities: 'true',
+                            published_after: threeDaysAgo,
+                            api_token: marketauxApiKey
+                        });
+                        const marketauxResponse = await fetch(marketauxUrl);
+
+                        let articles = [];
+
+                        if (marketauxResponse.ok) {
+                            const marketauxData = await marketauxResponse.json();
+                            if (marketauxData.data && marketauxData.data.length > 0) {
+                                articles = marketauxData.data.slice(0, 10).map(article => {
+                                    // Find sentiment for this ticker
+                                    const entity = article.entities?.find(e => e.symbol === activeTicker);
+                                    const sentimentScore = entity?.sentiment_score || 0;
+                                    let sentiment = 'neutral';
+                                    if (sentimentScore > 0.2) sentiment = 'bullish';
+                                    else if (sentimentScore < -0.2) sentiment = 'bearish';
+
+                                    return {
+                                        title: article.title,
+                                        description: article.description,
+                                        url: article.url,
+                                        source: article.source,
+                                        publishedAt: article.published_at,
+                                        sentiment: sentiment,
+                                        sentimentScore: sentimentScore
+                                    };
+                                });
+                            }
+                        }
+
+                        // If no MarketAux results, try Finnhub company news as fallback
+                        if (articles.length === 0 && finnhubApiKey) {
+                            const finnhubNewsUrl = buildApiUrl('https://finnhub.io/api/v1/company-news', {
+                                symbol: activeTicker,
+                                from: threeDaysAgo,
+                                to: todayStr,
+                                token: finnhubApiKey
+                            });
+                            const finnhubResponse = await fetch(finnhubNewsUrl);
+                            if (finnhubResponse.ok) {
+                                const finnhubNews = await finnhubResponse.json();
+                                articles = finnhubNews.slice(0, 10).map(article => ({
+                                    title: article.headline,
+                                    description: article.summary,
+                                    url: article.url,
+                                    source: article.source,
+                                    publishedAt: new Date(article.datetime * 1000).toISOString(),
+                                    sentiment: 'neutral',
+                                    sentimentScore: 0
+                                }));
+                            }
+                        }
+
+                        if (isMounted) {
+                            setNewsData(articles);
+                            // Cache the results
+                            localStorage.setItem(cacheKey, JSON.stringify({
+                                data: articles,
+                                date: todayStr
+                            }));
+                        }
+                    } catch (error) {
+                        console.error('News fetch error:', error);
+                        if (isMounted) setNewsData([]);
+                    }
+
+                    if (isMounted) setNewsLoading(false);
+                };
+
+                loadNewsData();
+
+                return () => { isMounted = false; };
+            }, [activeTicker, marketauxApiKey, finnhubApiKey]);
+
+            // Derive portfolio from notes that have both a ticker (title) and shares
+            const portfolioNotes = useMemo(() =>
+                notes.filter(n => n.title && n.shares && n.shares > 0),
+            [notes]);
+
+            // Portfolio price fetching effect - updates at 9:35am, 1pm, and 4:05pm EST
+            useEffect(() => {
+                if (!finnhubApiKey || portfolioNotes.length === 0) return;
+
+                let isMounted = true;
+
+                // Check if we should fetch prices (9:35am, 1pm, or 4:05pm EST windows, or no cached data)
+                const shouldFetchPrices = () => {
+                    const cacheKey = 'portfolio_prices_cache';
+                    const cached = localStorage.getItem(cacheKey);
+
+                    // Get current time in EST
+                    const now = new Date();
+                    const estOffset = -5; // EST is UTC-5 (ignoring DST for simplicity)
+                    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                    const estTime = new Date(utc + (3600000 * estOffset));
+                    const estHour = estTime.getHours();
+                    const estMinutes = estTime.getMinutes();
+                    const totalMinutes = estHour * 60 + estMinutes;
+
+                    // Define fetch windows (15-minute windows):
+                    // - Market open: 9:35-9:50 EST (575-590 minutes)
+                    // - Mid day: 13:00-13:15 EST (780-795 minutes)
+                    // - Market close: 16:05-16:20 EST (965-980 minutes)
+                    const isMarketOpenWindow = totalMinutes >= 575 && totalMinutes < 590;
+                    const isMiddayWindow = totalMinutes >= 780 && totalMinutes < 795;
+                    const isMarketCloseWindow = totalMinutes >= 965 && totalMinutes < 980;
+
+                    if (!cached) {
+                        return { shouldFetch: true, cachedPrices: null };
+                    }
+
+                    try {
+                        const { prices, timestamp, fetchedWindow } = JSON.parse(cached);
+                        const cacheAge = Date.now() - timestamp;
+                        const oneHour = 60 * 60 * 1000;
+
+                        // Determine current window identifier
+                        const today = estTime.toISOString().split('T')[0];
+                        const currentWindow = isMarketOpenWindow ? `${today}-935am` :
+                                             isMiddayWindow ? `${today}-1pm` :
+                                             isMarketCloseWindow ? `${today}-405pm` : null;
+
+                        // Fetch if: in a fetch window AND haven't fetched this window yet
+                        // OR if cache is older than 8 hours (stale data)
+                        if ((isMarketOpenWindow || isMiddayWindow || isMarketCloseWindow) && fetchedWindow !== currentWindow) {
+                            return { shouldFetch: true, cachedPrices: prices, currentWindow };
+                        }
+
+                        // Use cached data if less than 8 hours old
+                        if (cacheAge < 8 * oneHour) {
+                            return { shouldFetch: false, cachedPrices: prices };
+                        }
+
+                        // Cache is stale, fetch fresh
+                        return { shouldFetch: true, cachedPrices: prices };
+                    } catch (e) {
+                        return { shouldFetch: true, cachedPrices: null };
+                    }
+                };
+
+                const { shouldFetch, cachedPrices, currentWindow } = shouldFetchPrices();
+
+                // If we have cached prices, use them immediately
+                if (cachedPrices && Object.keys(cachedPrices).length > 0) {
+                    setPortfolioPrices(cachedPrices);
+                    if (!shouldFetch) {
+                        setPortfolioLoading(false);
+                        return;
+                    }
+                }
+
+                if (!shouldFetch) {
+                    setPortfolioLoading(false);
+                    return;
+                }
+
+                setPortfolioLoading(true);
+
+                const fetchPrices = async () => {
+                    const prices = {};
+                    for (const note of portfolioNotes) {
+                        try {
+                            const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
+                                symbol: note.title,
+                                token: finnhubApiKey
+                            });
+                            const response = await fetch(portfolioQuoteUrl);
+                            const data = await response.json();
+                            if (data.c) prices[note.title] = data.c;
+                        } catch (e) {
+                            console.error(`Failed to fetch ${note.title}`);
+                        }
+                    }
+                    if (isMounted) {
+                        setPortfolioPrices(prices);
+                        setPortfolioLoading(false);
+                        // Cache the prices with timestamp and window identifier
+                        localStorage.setItem('portfolio_prices_cache', JSON.stringify({
+                            prices,
+                            timestamp: Date.now(),
+                            fetchedWindow: currentWindow || `manual-${Date.now()}`
+                        }));
+                    }
+                };
+
+                fetchPrices();
+                return () => { isMounted = false; };
+            }, [portfolioNotes, finnhubApiKey]);
+
+            // Portfolio computed data - derived from notes
+            const portfolioData = useMemo(() => {
+                const holdings = portfolioNotes.map(n => {
+                    const price = portfolioPrices[n.title] || 0;
+                    const value = price * n.shares;
+                    return { ticker: n.title, shares: n.shares, price, value, noteId: n.id, color: n.color };
+                });
+                const totalValue = holdings.reduce((sum, h) => sum + h.value, 0);
+                return holdings.map(h => ({
+                    ...h,
+                    percentage: totalValue > 0 ? (h.value / totalValue) * 100 : 0
+                })).sort((a, b) => b.value - a.value);
+            }, [portfolioNotes, portfolioPrices]);
+
+            const totalPortfolioValue = useMemo(() =>
+                portfolioData.reduce((sum, h) => sum + h.value, 0),
+            [portfolioData]);
+
+            // Update shares for a note
+            const updateNoteShares = (noteId, shares) => {
+                const parsedShares = parseFloat(shares);
+                setNotes(notes.map(n => n.id === noteId ? {...n, shares: isNaN(parsedShares) ? 0 : parsedShares} : n));
+            };
+
+            // Chart rendering effect - runs when tab changes, data changes, or after a short delay to ensure canvas is mounted
+            useEffect(() => {
+                if (mainTab !== 'portfolio' || portfolioData.length === 0) return;
+
+                // Small delay to ensure canvas is mounted in DOM
+                const timeoutId = setTimeout(() => {
+                    if (!chartRef.current) return;
+
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    const colors = [
+                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+                        '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
+                    ];
+
+                    // Separate large slices (>=3%) from small ones, combine small into "Others"
+                    // Lower threshold = more visible slices in the pie.
+                    const SLICE_THRESHOLD_PCT = 3;
+                    const largeSlices = portfolioData.filter(h => h.percentage >= SLICE_THRESHOLD_PCT);
+                    const smallSlices = portfolioData.filter(h => h.percentage < SLICE_THRESHOLD_PCT);
+                    const othersValue = smallSlices.reduce((sum, h) => sum + h.value, 0);
+                    const othersPercentage = smallSlices.reduce((sum, h) => sum + h.percentage, 0);
+
+                    // Build chart data: large slices + "Others" if there are small slices
+                    const chartLabels = largeSlices.map(h => h.ticker);
+                    const chartValues = largeSlices.map(h => h.value);
+                    const chartColors = largeSlices.map((_, i) => colors[i % colors.length]);
+
+                    if (smallSlices.length > 0) {
+                        chartLabels.push('Others');
+                        chartValues.push(othersValue);
+                        chartColors.push('#9CA3AF'); // Gray for "Others"
+                    }
+
+                    chartInstance.current = new Chart(chartRef.current, {
+                        type: 'pie',
+                        data: {
+                            labels: chartLabels,
+                            datasets: [{
+                                data: chartValues,
+                                backgroundColor: chartColors,
+                                borderWidth: 3,
+                                borderColor: darkMode ? '#1f2937' : '#ffffff'
+                            }]
+                        },
+                        plugins: [ChartDataLabels],
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: 20
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'right',
+                                    labels: {
+                                        color: darkMode ? '#ffffff' : '#374151',
+                                        font: { size: 14, weight: 'bold' },
+                                        padding: 10,
+                                        boxWidth: 10,
+                                        usePointStyle: true,
+                                        pointStyle: 'circle',
+                                        generateLabels: (chart) => {
+                                            // Show ALL positions in legend (not just chart slices)
+                                            return portfolioData.map((h, i) => {
+                                                const valueText = hidePortfolioValues ? '•••••' : `$${h.value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+                                                return {
+                                                    text: `${h.ticker} - ${h.percentage.toFixed(1)}% - ${valueText}`,
+                                                    fillStyle: h.percentage >= SLICE_THRESHOLD_PCT
+                                                        ? colors[Math.max(0, largeSlices.findIndex(ls => ls.ticker === h.ticker)) % colors.length]
+                                                        : '#9CA3AF',
+                                                    strokeStyle: darkMode ? '#1f2937' : '#ffffff',
+                                                    fontColor: darkMode ? '#ffffff' : '#374151',
+                                                    lineWidth: 1,
+                                                    hidden: false,
+                                                    index: i
+                                                };
+                                            });
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: (ctx) => {
+                                            const label = chartLabels[ctx.dataIndex];
+                                            if (label === 'Others') {
+                                                const tickers = smallSlices.map(h => h.ticker).join(', ');
+                                                if (hidePortfolioValues) {
+                                                    return `Others (${tickers}): ${othersPercentage.toFixed(1)}%`;
+                                                }
+                                                return `Others (${tickers}): $${othersValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${othersPercentage.toFixed(1)}%)`;
+                                            }
+                                            const h = largeSlices[ctx.dataIndex];
+                                            if (hidePortfolioValues) {
+                                                return `${h.ticker}: ${h.shares} shares (${h.percentage.toFixed(1)}%)`;
+                                            }
+                                            return `${h.ticker}: ${h.shares} shares @ $${h.price.toFixed(2)} = $${h.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${h.percentage.toFixed(1)}%)`;
+                                        }
+                                    }
+                                },
+                                datalabels: {
+                                    color: '#ffffff',
+                                    font: {
+                                        weight: 'bold',
+                                        size: 10
+                                    },
+                                    formatter: (value, ctx) => {
+                                        const label = chartLabels[ctx.dataIndex];
+                                        const percentage = label === 'Others'
+                                            ? Math.round(othersPercentage)
+                                            : Math.round(largeSlices[ctx.dataIndex].percentage);
+                                        return `${label}\n${percentage}%`;
+                                    },
+                                    anchor: 'center',
+                                    align: 'center',
+                                    textAlign: 'center',
+                                    textStrokeColor: 'rgba(0,0,0,0.5)',
+                                    textStrokeWidth: 2
+                                }
+                            }
+                        }
+                    });
+                }, 50);
+
+                return () => {
+                    clearTimeout(timeoutId);
+                    if (chartInstance.current) chartInstance.current.destroy();
+                };
+            }, [mainTab, portfolioData, darkMode, hidePortfolioValues]);
+
+            if (!currentUser) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-4">
+                        {loginHelpOpen && (
+                            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                                <div ref={loginHelpRef} className="bg-gray-900 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+                                        <h2 className="text-xl font-bold text-white">Getting started</h2>
+                                        <button onClick={() => setLoginHelpOpen(false)} className="text-gray-400 hover:text-white">
+                                            <X size={22} />
+                                        </button>
+                                    </div>
+                                    <div className="px-6 py-5 space-y-5 text-sm text-gray-300 overflow-auto max-h-[calc(90vh-72px)]">
+                                        <p className="text-gray-400">Two ways to create an account (pick whichever is easier):</p>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">Option 1: Continue with Google (fastest)</h3>
+                                            <ol className="list-decimal list-inside space-y-1">
+                                                <li>Click <span className="text-white font-semibold">Continue with Google</span>.</li>
+                                                <li>Select your Google account.</li>
+                                                <li>That’s it — your account is created automatically on first sign-in.</li>
+                                            </ol>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">Option 2: Email + password</h3>
+                                            <ol className="list-decimal list-inside space-y-1">
+                                                <li>Click <span className="text-white font-semibold">Sign Up with Email</span>.</li>
+                                                <li>Enter your email and a password.</li>
+                                                <li>Click <span className="text-white font-semibold">Sign Up with Email</span> to create your account.</li>
+                                            </ol>
+                                            <p className="text-xs text-gray-400">Tip: If you already have an account, click “Login” instead.</p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">Forgot password?</h3>
+                                            <ol className="list-decimal list-inside space-y-1">
+                                                <li>Click <span className="text-white font-semibold">Forgot password?</span></li>
+                                                <li>Enter your email and send the reset email.</li>
+                                                <li>Use the link in your inbox to set a new password.</li>
+                                            </ol>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <h3 className="text-white font-semibold">After you sign in</h3>
+                                            <ul className="list-disc list-inside space-y-1">
+                                                <li>Your notes sync to your account automatically.</li>
+                                                <li>API keys are optional (they unlock live quotes + news).</li>
+                                            </ul>
+                                        </div>
+
+                                        <div className="pt-2 text-xs text-gray-400">
+                                            You can review the <button type="button" className="text-cyan-300 hover:text-cyan-200 underline" onClick={() => { setLoginHelpOpen(false); setLegalView('privacy'); }}>Privacy Policy</button>
+                                            {' '}and{' '}
+                                            <button type="button" className="text-cyan-300 hover:text-cyan-200 underline" onClick={() => { setLoginHelpOpen(false); setLegalView('terms'); }}>Terms of Use</button>.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {legalView && (
+                            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                                <div className="bg-gray-900 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+                                        <h2 className="text-xl font-bold text-white">
+                                            {legalView === 'privacy' ? 'Privacy Policy' : 'Terms of Use'}
+                                        </h2>
+                                        <button onClick={() => setLegalView(null)} className="text-gray-400 hover:text-white">
+                                            <X size={22} />
+                                        </button>
+                                    </div>
+                                    <div className="px-6 py-5 space-y-4 text-sm text-gray-300 overflow-auto max-h-[calc(90vh-72px)]">
+                                        <p className="text-gray-400">Effective date: February 4, 2026</p>
+                                        {legalView === 'privacy' ? (
+                                            <>
+                                                <p>
+                                                    This Privacy Policy explains how Stock Stickies collects, uses, and shares information when you use the app.
+                                                </p>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Information We Collect</h3>
+                                                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                                        <li>Account information such as email address and authentication identifiers.</li>
+                                                        <li>Content you create, including notes, categories, and settings.</li>
+                                                        <li>Usage and device information for security and performance.</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">How We Use Information</h3>
+                                                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                                        <li>Provide and maintain the service, including syncing your data.</li>
+                                                        <li>Improve reliability, security, and user experience.</li>
+                                                        <li>Communicate important updates or security notices.</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Sharing</h3>
+                                                    <p>
+                                                        We share information only with service providers needed to operate the app (such as authentication
+                                                        and database services) or as required by law.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Data Retention</h3>
+                                                    <p>
+                                                        We retain your data for as long as your account is active. You can request deletion by contacting us.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Your Choices</h3>
+                                                    <p>
+                                                        You can update or delete your data by managing your account and notes. You may also disable
+                                                        sync by signing out.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Contact</h3>
+                                                    <p>For privacy questions, contact support at <a href="mailto:redonx99@gmail.com" className="text-cyan-300 hover:text-cyan-200">redonx99@gmail.com</a>.</p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <p>
+                                                    These Terms of Use govern your use of Stock Stickies. By using the app, you agree to these terms.
+                                                </p>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Use of the Service</h3>
+                                                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                                        <li>You must provide accurate account information and keep it updated.</li>
+                                                        <li>You are responsible for the content you store in the app.</li>
+                                                        <li>You may not use the service to violate laws or infringe rights.</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Data and Security</h3>
+                                                    <p>
+                                                        We take reasonable measures to protect your data, but no system is 100% secure.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Third-Party Services</h3>
+                                                    <p>
+                                                        The app relies on third-party services (such as authentication and market data APIs). Their
+                                                        terms and privacy policies may also apply.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Termination</h3>
+                                                    <p>
+                                                        We may suspend or terminate access if these terms are violated. You may stop using the app at any time.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Changes</h3>
+                                                    <p>
+                                                        We may update these terms from time to time. Continued use indicates acceptance of the updated terms.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-white font-semibold mb-2">Contact</h3>
+                                                    <p>For questions about these terms, contact support at <a href="mailto:redonx99@gmail.com" className="text-cyan-300 hover:text-cyan-200">redonx99@gmail.com</a>.</p>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-700">
+                            <div className="flex items-center justify-center gap-4 mb-6">
+                                <svg width="64" height="64" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="2" y="2" width="44" height="44" rx="4" fill="#1a1a2e" stroke="#00ff9f" strokeWidth="2"/>
+                                    <path d="M8 32 L16 20 L22 26 L32 12 L40 18" stroke="#39ff14" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <circle cx="16" cy="20" r="3" fill="#39ff14"/>
+                                    <circle cx="32" cy="12" r="3" fill="#39ff14"/>
+                                    <rect x="6" y="36" width="8" height="6" fill="#39ff14" opacity="0.7"/>
+                                    <rect x="16" y="33" width="8" height="9" fill="#39ff14" opacity="0.8"/>
+                                    <rect x="26" y="30" width="8" height="12" fill="#39ff14" opacity="0.9"/>
+                                    <rect x="36" y="34" width="6" height="8" fill="#39ff14" opacity="0.6"/>
+                                </svg>
+                                <div className="flex flex-col">
+                                    <span className="text-4xl font-black tracking-tight" style={{fontFamily: 'monospace', color: '#00ff41'}}>
+                                        STOCK
+                                    </span>
+                                    <span className="text-2xl font-bold tracking-widest -mt-1" style={{fontFamily: 'monospace', color: '#ff2bd6'}}>
+                                        STICKIES
+                                    </span>
+                                </div>
+                            </div>
+                            <p className="text-center text-sm text-gray-400 mb-6">
+                                Capture stock ideas, track your portfolio value, and keep your investing notes organized.
+                            </p>
+                            {!auth && <div className="bg-yellow-900 border border-yellow-600 text-yellow-200 px-4 py-3 rounded mb-4 text-sm"><strong>Setup Required:</strong> Add Firebase credentials</div>}
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div><label className="block text-sm font-medium text-gray-300 mb-2">Email</label><input type="email" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none placeholder-gray-400" placeholder="Enter email"/></div>
+                                {!isResettingPassword && <div><label className="block text-sm font-medium text-gray-300 mb-2">Password</label><input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none placeholder-gray-400" placeholder="Enter password"/></div>}
+                                {loginError && <p className="text-red-400 text-sm">{loginError}</p>}
+                                {resetSuccess && <p className="text-green-400 text-sm">Password reset email sent!</p>}
+                                <button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-2 rounded-lg font-medium">{isResettingPassword ? 'Send Reset Email' : (isSignup ? 'Sign Up with Email' : 'Login')}</button>
+                                {!isResettingPassword && (
+                                    <>
+                                        <div className="flex items-center gap-3 text-gray-500 text-xs uppercase tracking-wide">
+                                            <div className="h-px bg-gray-600 flex-1"></div>
+                                            <span>or</span>
+                                            <div className="h-px bg-gray-600 flex-1"></div>
+                                        </div>
+                                        <button type="button" onClick={handleGoogleLogin} className="w-full bg-white text-gray-800 py-2 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-100">
+                                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold">G</span>
+                                            Continue with Google
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLoginHelpOpen(true)}
+                                            className="w-full text-center text-xs text-gray-400 hover:text-gray-200 underline underline-offset-4"
+                                        >
+                                            New here? How to create an account
+                                        </button>
+                                    </>
+                                )}
+                            </form>
+                            <div className="mt-4 text-center space-y-2">
+                                <button onClick={() => { setIsSignup(!isSignup); setIsResettingPassword(false); setLoginError(''); }} className="text-cyan-400 hover:text-cyan-300 text-sm block w-full">{isSignup ? 'Login' : 'Sign Up with Email'}</button>
+                                {!isSignup && !isResettingPassword && <button onClick={() => setIsResettingPassword(true)} className="text-gray-400 hover:text-gray-300 text-sm">Forgot password?</button>}
+                                {isResettingPassword && <button onClick={() => setIsResettingPassword(false)} className="text-gray-400 hover:text-gray-300 text-sm">Back to login</button>}
+                            </div>
+                            <div className="mt-6 text-center text-xs text-gray-400 space-x-2">
+                                <button type="button" onClick={() => setLegalView('privacy')} className="hover:text-gray-200">Privacy Policy</button>
+                                <span>·</span>
+                                <button type="button" onClick={() => setLegalView('terms')} className="hover:text-gray-200">Terms of Use</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <>
+                {quickStartOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                        <div className="bg-gray-900 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+                                <h2 className="text-xl font-bold text-white">Quick Start Guide</h2>
+                                <button onClick={() => setQuickStartOpen(false)} className="text-gray-400 hover:text-white">
+                                    <X size={22} />
+                                </button>
+                            </div>
+                            <div className="px-6 py-5 space-y-6 text-sm text-gray-200 overflow-auto max-h-[calc(90vh-72px)]">
+                                <p className="text-gray-400">
+                                    A beginner-friendly walkthrough of the basics. You can customize categories, colors, and your workflow anytime.
+                                </p>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">1) Create your first note</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                                                <li>Click <span className="text-white font-semibold">New Note</span>.</li>
+                                                <li>Type a ticker (e.g., <span className="text-white font-semibold">AMZN</span>) and your thesis/plan.</li>
+                                                <li>Your notes sync automatically when you’re signed in.</li>
+                                            </ol>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+                                                <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
+                                                <rect x="28" y="32" width="120" height="34" rx="10" fill="#3b82f6" />
+                                                <text x="88" y="55" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">New Note</text>
+                                                <rect x="28" y="82" width="220" height="106" rx="12" fill="#fde68a" stroke="#f59e0b" />
+                                                <text x="44" y="110" font-size="14" font-weight="800" fill="#111827">AMZN</text>
+                                                <text x="44" y="132" font-size="12" fill="#111827">Earnings run-up idea…</text>
+                                                <path d="M160 46 L270 100" stroke="#22c55e" stroke-width="4" marker-end="url(#arrow)" />
+                                                <defs>
+                                                    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                                                        <path d="M0,0 L12,6 L0,12 z" fill="#22c55e" />
+                                                    </marker>
+                                                </defs>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">2) Add shares for portfolio tracking</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                                                <li>Find the <span className="text-white font-semibold">Shares owned</span> input on a note.</li>
+                                                <li>Click the input box and enter the number of shares you own.</li>
+                                                <li>Switch to the <span className="text-white font-semibold">Portfolio</span> tab to see the pie chart.</li>
+                                            </ol>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+                                                <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
+                                                <rect x="28" y="34" width="220" height="24" rx="8" fill="#111827" stroke="#334155" />
+                                                <text x="40" y="51" font-size="12" fill="#e5e7eb">Shares</text>
+                                                <rect x="28" y="64" width="220" height="36" rx="10" fill="#0f172a" stroke="#38bdf8" />
+                                                <text x="44" y="88" font-size="16" font-weight="800" fill="#ffffff">10</text>
+                                                <rect x="300" y="40" width="150" height="150" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <circle cx="375" cy="115" r="56" fill="#1f2937" />
+                                                <path d="M375 115 L375 59 A56 56 0 0 1 424 143 Z" fill="#3b82f6" />
+                                                <path d="M375 115 L424 143 A56 56 0 0 1 326 143 Z" fill="#22c55e" />
+                                                <path d="M375 115 L326 143 A56 56 0 0 1 375 59 Z" fill="#f59e0b" />
+                                                <text x="375" y="200" text-anchor="middle" font-size="12" fill="#94a3b8">Portfolio</text>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">3) Sort notes by position size (optional)</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                                                <li>In the Notes tab, use the <span className="text-white font-semibold">Sort</span> toggle.</li>
+                                                <li>Select <span className="text-white font-semibold">Largest position</span> to order notes by market value (shares × price).</li>
+                                                <li>Tip: Add your <span className="text-white font-semibold">Finnhub API key</span> to enable market value sorting.</li>
+                                            </ol>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+                                                <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
+
+                                                <rect x="28" y="44" width="250" height="132" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <text x="46" y="74" font-size="14" font-weight="800" fill="#e5e7eb">Functionality Panel</text>
+
+                                                <rect x="46" y="92" width="110" height="34" rx="10" fill="#3b82f6" />
+                                                <text x="101" y="114" text-anchor="middle" font-size="13" font-weight="800" fill="#ffffff">New Note</text>
+
+                                                <text x="172" y="114" font-size="12" font-weight="700" fill="#94a3b8">Sort</text>
+                                                <rect x="200" y="92" width="190" height="34" rx="10" fill="#111827" stroke="#334155" />
+
+                                                <rect x="206" y="98" width="72" height="22" rx="8" fill="#0b1220" stroke="#475569" />
+                                                <text x="242" y="113" text-anchor="middle" font-size="11" font-weight="800" fill="#94a3b8">Default</text>
+
+                                                <rect x="282" y="98" width="102" height="22" rx="8" fill="#0b1220" stroke="#22c55e" />
+                                                <text x="333" y="113" text-anchor="middle" font-size="11" font-weight="800" fill="#e5e7eb">Largest position</text>
+
+                                                <path d="M400 110 L478 110" stroke="#22c55e" stroke-width="4" marker-end="url(#arrowSort)" />
+                                                <defs>
+                                                    <marker id="arrowSort" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                                                        <path d="M0,0 L12,6 L0,12 z" fill="#22c55e" />
+                                                    </marker>
+                                                </defs>
+
+                                                <rect x="300" y="64" width="190" height="112" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <text x="314" y="88" font-size="12" font-weight="800" fill="#e5e7eb">Notes</text>
+                                                <rect x="314" y="98" width="162" height="14" rx="7" fill="#bbf7d0" opacity="0.7" />
+                                                <rect x="314" y="118" width="128" height="14" rx="7" fill="#fde68a" opacity="0.7" />
+                                                <rect x="314" y="138" width="92" height="14" rx="7" fill="#93c5fd" opacity="0.7" />
+                                                <text x="314" y="168" font-size="11" fill="#94a3b8">Largest positions rise to the top</text>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">4) Customize categories</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                                                <li>Use the category controls to rename or recolor categories.</li>
+                                                <li>Add or delete categories as your strategy evolves (Core, Swing, Value, etc.).</li>
+                                                <li>Notes stay organized by category.</li>
+                                            </ol>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+                                                <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
+                                                <rect x="28" y="34" width="160" height="32" rx="12" fill="#93c5fd" stroke="#3b82f6" />
+                                                <text x="108" y="55" text-anchor="middle" font-size="13" font-weight="800" fill="#111827">Core Holding</text>
+                                                <rect x="200" y="34" width="32" height="32" rx="10" fill="#111827" stroke="#334155" />
+                                                <text x="216" y="55" text-anchor="middle" font-size="16" fill="#e5e7eb">✎</text>
+                                                <rect x="240" y="34" width="32" height="32" rx="10" fill="#111827" stroke="#334155" />
+                                                <circle cx="256" cy="50" r="8" fill="#f59e0b" />
+                                                <rect x="28" y="86" width="220" height="34" rx="12" fill="#fde68a" stroke="#f59e0b" />
+                                                <text x="44" y="108" font-size="12" font-weight="800" fill="#111827">BABA</text>
+                                                <rect x="28" y="128" width="220" height="34" rx="12" fill="#bbf7d0" stroke="#22c55e" />
+                                                <text x="44" y="150" font-size="12" font-weight="800" fill="#111827">SGOV</text>
+                                                <text x="310" y="108" font-size="12" fill="#94a3b8">Drag notes into categories</text>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">Optional: API keys (quotes + news)</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <p className="text-gray-300">You can use the app without keys, but keys unlock live quotes and news.</p>
+                                            <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                                <li>Finnhub → quotes, fundamentals, earnings dates</li>
+                                                <li>MarketAux → news feed</li>
+                                                <li>Click the <span className="text-white font-semibold">?</span> next to each input for instructions</li>
+                                            </ul>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+                                                <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
+                                                <rect x="28" y="50" width="210" height="42" rx="12" fill="#0f172a" stroke="#38bdf8" />
+                                                <text x="40" y="76" font-size="12" fill="#e5e7eb">Finnhub API Key</text>
+                                                <circle cx="260" cy="71" r="14" fill="#111827" stroke="#334155" />
+                                                <text x="260" y="77" text-anchor="middle" font-size="14" font-weight="800" fill="#e5e7eb">?</text>
+                                                <rect x="28" y="114" width="210" height="42" rx="12" fill="#0f172a" stroke="#38bdf8" />
+                                                <text x="40" y="140" font-size="12" fill="#e5e7eb">MarketAux API Key</text>
+                                                <circle cx="260" cy="135" r="14" fill="#111827" stroke="#334155" />
+                                                <text x="260" y="141" text-anchor="middle" font-size="14" font-weight="800" fill="#e5e7eb">?</text>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {legalView && (
+                    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                        <div className="bg-gray-900 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+                                <h2 className="text-xl font-bold text-white">
+                                    {legalView === 'privacy' ? 'Privacy Policy' : 'Terms of Use'}
+                                </h2>
+                                <button onClick={() => setLegalView(null)} className="text-gray-400 hover:text-white">
+                                    <X size={22} />
+                                </button>
+                            </div>
+                            <div className="px-6 py-5 space-y-4 text-sm text-gray-300 overflow-auto max-h-[calc(90vh-72px)]">
+                                <p className="text-gray-400">Effective date: February 4, 2026</p>
+                                {legalView === 'privacy' ? (
+                                    <>
+                                        <p>
+                                            This Privacy Policy explains how Stock Stickies collects, uses, and shares information when you use the app.
+                                        </p>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Information We Collect</h3>
+                                            <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                                <li>Account information such as email address and authentication identifiers.</li>
+                                                <li>Content you create, including notes, categories, and settings.</li>
+                                                <li>Usage and device information for security and performance.</li>
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">How We Use Information</h3>
+                                            <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                                <li>Provide and maintain the service, including syncing your data.</li>
+                                                <li>Improve reliability, security, and user experience.</li>
+                                                <li>Communicate important updates or security notices.</li>
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Sharing</h3>
+                                            <p>
+                                                We share information only with service providers needed to operate the app (such as authentication
+                                                and database services) or as required by law.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Data Retention</h3>
+                                            <p>
+                                                We retain your data for as long as your account is active. You can request deletion by contacting us.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Your Choices</h3>
+                                            <p>
+                                                You can update or delete your data by managing your account and notes. You may also disable
+                                                sync by signing out.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Contact</h3>
+                                            <p>For privacy questions, contact support at <a href="mailto:redonx99@gmail.com" className="text-cyan-300 hover:text-cyan-200">redonx99@gmail.com</a>.</p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p>
+                                            These Terms of Use govern your use of Stock Stickies. By using the app, you agree to these terms.
+                                        </p>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Use of the Service</h3>
+                                            <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                                <li>You must provide accurate account information and keep it updated.</li>
+                                                <li>You are responsible for the content you store in the app.</li>
+                                                <li>You may not use the service to violate laws or infringe rights.</li>
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Data and Security</h3>
+                                            <p>
+                                                We take reasonable measures to protect your data, but no system is 100% secure.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Third-Party Services</h3>
+                                            <p>
+                                                The app relies on third-party services (such as authentication and market data APIs). Their
+                                                availability and behavior may change without notice.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Termination</h3>
+                                            <p>
+                                                We may suspend or terminate access if you misuse the service or violate these terms.
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {expandedNote && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white w-full h-full max-w-[95vw] max-h-[95vh] rounded-lg shadow-2xl overflow-hidden flex flex-col">
+                            <div className="flex justify-between items-center p-4 border-b">
+                                <h2 className="text-2xl font-bold text-gray-800">{expandedNote.title || 'Untitled Note'}</h2>
+                                <button onClick={() => setExpandedNote(null)} className="text-gray-600 hover:text-gray-800">
+                                    <X size={24}/>
+                                </button>
+                            </div>
+                            <div className="flex flex-1 overflow-hidden">
+                                <div className={`w-1/2 p-6 ${expandedNote.color} overflow-auto`}>
+                                    <input
+                                        type="text"
+                                        value={expandedNote.title || ''}
+                                        onChange={(e) => updateNoteTitle(expandedNote.id, e.target.value)}
+                                        placeholder="TICKER"
+                                        className="w-full bg-transparent border-none outline-none text-gray-800 placeholder-gray-500 font-bold text-3xl mb-2 uppercase"
+                                        style={{letterSpacing: '0.05em'}}
+                                        maxLength={MAX_TITLE_LENGTH}
+                                    />
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <input
+                                            type="number"
+                                            value={expandedNote.shares || ''}
+                                            onChange={(e) => {
+                                                const newShares = parseFloat(e.target.value) || 0;
+                                                setNotes(notes.map(n => n.id === expandedNote.id ? {...n, shares: newShares} : n));
+                                                setExpandedNote({...expandedNote, shares: newShares});
+                                            }}
+                                            placeholder="# shares"
+                                            className="w-32 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700 placeholder-gray-400"
+                                        />
+                                        <span className="text-gray-600">shares owned (for portfolio)</span>
+                                    </div>
+                                    <textarea
+                                        value={expandedNote.text}
+                                        onChange={(e) => {
+                                            const newText = sanitizeContent(e.target.value);
+                                            if (!validateContent(newText)) {
+                                                alert(`Note content cannot exceed ${MAX_CONTENT_LENGTH} characters.`);
+                                                return;
+                                            }
+                                            setNotes(notes.map(n => n.id === expandedNote.id ? {...n, text: newText} : n));
+                                            setExpandedNote({...expandedNote, text: newText});
+                                        }}
+                                        placeholder="Notes..."
+                                        className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-500 text-lg"
+                                        maxLength={MAX_CONTENT_LENGTH}
+                                    />
+                                </div>
+                                <div className="w-1/2 bg-gray-50 overflow-auto p-6">
+                                    {stockLoading ? (
+                                        <div className="flex items-center justify-center h-full">
+                                            <p className="text-gray-500">Loading stock data...</p>
+                                        </div>
+                                    ) : stockError ? (
+                                        <div className="flex items-center justify-center h-full">
+                                            <p className="text-red-500">{stockError}</p>
+                                        </div>
+                                    ) : stockData ? (
+                                        <div className="space-y-6">
+                                            <div className="bg-white rounded-lg p-6 shadow">
+                                                <h3 className="text-3xl font-bold text-gray-800 mb-2">{stockData.symbol}</h3>
+                                                <div className="flex items-baseline gap-3">
+                                                    <span className="text-5xl font-bold text-gray-900">
+                                                        {stockData.currency === 'USD' ? '$' : ''}{stockData.currentPrice?.toFixed(2)}
+                                                    </span>
+                                                    <span className={`text-2xl font-semibold ${stockData.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {stockData.change >= 0 ? '+' : ''}{stockData.change?.toFixed(2)} ({stockData.changePercent?.toFixed(2)}%)
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white rounded-lg p-6 shadow">
+                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Market Data</h4>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Previous Close</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {stockData.currency === 'USD' ? '$' : ''}{stockData.previousClose?.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    {stockData.marketCap && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">Market Cap</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.currency === 'USD' ? '$' : ''}{(stockData.marketCap / 1e9).toFixed(2)}B
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Day High</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {stockData.currency === 'USD' ? '$' : ''}{stockData.dayHigh?.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Day Low</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {stockData.currency === 'USD' ? '$' : ''}{stockData.dayLow?.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    {stockData.week52High && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">52W High</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.currency === 'USD' ? '$' : ''}{stockData.week52High?.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {stockData.week52Low && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">52W Low</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.currency === 'USD' ? '$' : ''}{stockData.week52Low?.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {stockData.volume && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">Volume</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.volume?.toLocaleString()}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {stockData.nextEarningsDate && (
+                                                        <div className="col-span-2">
+                                                            <p className="text-sm text-gray-500">Next Earnings Date</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {new Date(stockData.nextEarningsDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white rounded-lg p-6 shadow">
+                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Fundamentals</h4>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    {stockData.peTTM && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">P/E (TTM)</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.peTTM.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {stockData.peForward && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">P/E (Forward)</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.peForward.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {stockData.pbRatio && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">P/B Ratio</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.pbRatio.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {stockData.dividendYield && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">Dividend Yield</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {(stockData.dividendYield * 100).toFixed(2)}%
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {stockData.dividendRate && (
+                                                        <div>
+                                                            <p className="text-sm text-gray-500">Annual Dividend</p>
+                                                            <p className="text-xl font-semibold text-gray-900">
+                                                                {stockData.currency === 'USD' ? '$' : ''}{stockData.dividendRate.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {!stockData.peTTM && !stockData.peForward && !stockData.pbRatio && !stockData.dividendYield && !stockData.dividendRate && (
+                                                        <div className="col-span-2 text-center text-gray-500">
+                                                            <p className="text-sm">Fundamental data not available</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Today's News Section */}
+                                            <div className="bg-white rounded-lg p-6 shadow">
+                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Today's News</h4>
+                                                {newsLoading ? (
+                                                    <div className="flex items-center justify-center py-4">
+                                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                                        <span className="ml-2 text-gray-500">Loading news...</span>
+                                                    </div>
+                                                ) : !marketauxApiKey ? (
+                                                    <p className="text-sm text-gray-500 text-center py-4">
+                                                        Add your MarketAux API key to see today's news with sentiment analysis.
+                                                        <br/>
+                                                        <a href="https://www.marketaux.com/register" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                                                            Get a free API key
+                                                        </a>
+                                                    </p>
+                                                ) : newsData && newsData.length > 0 ? (
+                                                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                                                        {newsData.map((article, index) => (
+                                                            <div key={index} className="border-b border-gray-100 pb-3 last:border-0">
+                                                                <div className="flex items-start gap-2">
+                                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                                                                        article.sentiment === 'bullish' ? 'bg-green-100 text-green-700' :
+                                                                        article.sentiment === 'bearish' ? 'bg-red-100 text-red-700' :
+                                                                        'bg-gray-100 text-gray-600'
+                                                                    }`}>
+                                                                        {article.sentiment === 'bullish' ? '↑ Bullish' :
+                                                                         article.sentiment === 'bearish' ? '↓ Bearish' : '• Neutral'}
+                                                                    </span>
+                                                                    <a href={article.url} target="_blank" rel="noopener noreferrer"
+                                                                       className="text-sm font-medium text-gray-800 hover:text-blue-600 line-clamp-2">
+                                                                        {article.title}
+                                                                    </a>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 mt-1 ml-0">
+                                                                    <span className="text-xs text-gray-400">{article.source}</span>
+                                                                    <span className="text-xs text-gray-300">•</span>
+                                                                    <span className="text-xs text-gray-400">
+                                                                        {new Date(article.publishedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-gray-500 text-center py-4">
+                                                        No news available for today
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-center h-full text-gray-500">
+                                            <p>Enter a ticker symbol to view stock data</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Watch List Modal */}
+                {watchListModalTicker && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white w-full h-full max-w-[95vw] max-h-[95vh] rounded-lg shadow-2xl overflow-hidden flex flex-col">
+                            <div className="flex justify-between items-center p-4 border-b">
+                                <h2 className="text-2xl font-bold text-gray-800">{watchListModalTicker}</h2>
+                                <button onClick={() => setWatchListModalTicker(null)} className="text-gray-600 hover:text-gray-800">
+                                    <X size={24}/>
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-auto p-6 bg-gray-50">
+                                {stockLoading ? (
+                                    <div className="flex items-center justify-center h-full">
+                                        <p className="text-gray-500">Loading stock data...</p>
+                                    </div>
+                                ) : stockError ? (
+                                    <div className="flex items-center justify-center h-full">
+                                        <p className="text-red-500">{stockError}</p>
+                                    </div>
+                                ) : stockData ? (
+                                    <div className="space-y-6">
+                                        {/* Price Overview */}
+                                        <div className="bg-white rounded-lg p-6 shadow">
+                                            <div className="flex items-baseline gap-4 mb-4">
+                                                <span className="text-4xl font-bold text-gray-900">
+                                                    ${stockData.currentPrice.toFixed(2)}
+                                                </span>
+                                                <span className={`text-xl font-semibold ${stockData.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {stockData.change >= 0 ? '+' : ''}{stockData.change.toFixed(2)} ({stockData.changePercent.toFixed(2)}%)
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                <div><span className="text-gray-500">Previous Close:</span> <span className="font-semibold">${stockData.previousClose.toFixed(2)}</span></div>
+                                                <div><span className="text-gray-500">Day High:</span> <span className="font-semibold">${stockData.dayHigh?.toFixed(2) || 'N/A'}</span></div>
+                                                <div><span className="text-gray-500">Day Low:</span> <span className="font-semibold">${stockData.dayLow?.toFixed(2) || 'N/A'}</span></div>
+                                                {stockData.marketCap && <div><span className="text-gray-500">Market Cap:</span> <span className="font-semibold">${(stockData.marketCap / 1e9).toFixed(2)}B</span></div>}
+                                            </div>
+                                        </div>
+
+                                        {/* 52 Week Range & Earnings */}
+                                        <div className="bg-white rounded-lg p-6 shadow">
+                                            <h4 className="text-lg font-semibold text-gray-700 mb-4">52 Week Range & Earnings</h4>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                                {stockData.week52High && (
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">52W High</p>
+                                                        <p className="text-xl font-semibold text-gray-900">${stockData.week52High.toFixed(2)}</p>
+                                                    </div>
+                                                )}
+                                                {stockData.week52Low && (
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">52W Low</p>
+                                                        <p className="text-xl font-semibold text-gray-900">${stockData.week52Low.toFixed(2)}</p>
+                                                    </div>
+                                                )}
+                                                {stockData.nextEarningsDate && (
+                                                    <div className="col-span-2 md:col-span-1">
+                                                        <p className="text-sm text-gray-500">Next Earnings Date</p>
+                                                        <p className="text-xl font-semibold text-gray-900">
+                                                            {new Date(stockData.nextEarningsDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Fundamentals */}
+                                        <div className="bg-white rounded-lg p-6 shadow">
+                                            <h4 className="text-lg font-semibold text-gray-700 mb-4">Fundamentals</h4>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                {stockData.peTTM && (
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">P/E (TTM)</p>
+                                                        <p className="text-xl font-semibold text-gray-900">{stockData.peTTM.toFixed(2)}</p>
+                                                    </div>
+                                                )}
+                                                {stockData.peForward && (
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">P/E (Forward)</p>
+                                                        <p className="text-xl font-semibold text-gray-900">{stockData.peForward.toFixed(2)}</p>
+                                                    </div>
+                                                )}
+                                                {stockData.pbRatio && (
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">P/B Ratio</p>
+                                                        <p className="text-xl font-semibold text-gray-900">{stockData.pbRatio.toFixed(2)}</p>
+                                                    </div>
+                                                )}
+                                                {stockData.dividendYield && (
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Dividend Yield</p>
+                                                        <p className="text-xl font-semibold text-gray-900">{(stockData.dividendYield * 100).toFixed(2)}%</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Today's News */}
+                                        <div className="bg-white rounded-lg p-6 shadow">
+                                            <h4 className="text-lg font-semibold text-gray-700 mb-4">Today's News</h4>
+                                            {newsLoading ? (
+                                                <div className="flex items-center justify-center py-4">
+                                                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                                    <span className="ml-2 text-gray-500">Loading news...</span>
+                                                </div>
+                                            ) : newsData && newsData.length > 0 ? (
+                                                <div className="space-y-3 max-h-64 overflow-y-auto">
+                                                    {newsData.map((article, index) => (
+                                                        <div key={index} className="border-b border-gray-100 pb-3 last:border-0">
+                                                            <div className="flex items-start gap-2">
+                                                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                                                                    article.sentiment === 'bullish' ? 'bg-green-100 text-green-700' :
+                                                                    article.sentiment === 'bearish' ? 'bg-red-100 text-red-700' :
+                                                                    'bg-gray-100 text-gray-600'
+                                                                }`}>
+                                                                    {article.sentiment === 'bullish' ? '↑ Bullish' :
+                                                                     article.sentiment === 'bearish' ? '↓ Bearish' : '• Neutral'}
+                                                                </span>
+                                                                <a href={article.url} target="_blank" rel="noopener noreferrer"
+                                                                   className="text-sm font-medium text-gray-800 hover:text-blue-600 line-clamp-2">
+                                                                    {article.title}
+                                                                </a>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="text-xs text-gray-400">{article.source}</span>
+                                                                <span className="text-xs text-gray-300">•</span>
+                                                                <span className="text-xs text-gray-400">
+                                                                    {new Date(article.publishedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-500 text-center py-4">No news available</p>
+                                            )}
+                                        </div>
+
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-gray-500">
+                                        <p>No stock data available</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Add Category Modal */}
+                {showAddCategoryModal && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                        <div className={`w-full max-w-md rounded-lg shadow-2xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className={`flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Add New Category</h2>
+                                <button onClick={() => { setShowAddCategoryModal(false); setNewCategoryLabel(''); setNewCategoryColor(null); }} className={`${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}>
+                                    <X size={24}/>
+                                </button>
+                            </div>
+                            <div className="p-6">
+                                <div className="mb-4">
+                                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category Name</label>
+                                    <input
+                                        type="text"
+                                        value={newCategoryLabel}
+                                        onChange={(e) => setNewCategoryLabel(e.target.value)}
+                                        placeholder="Enter category name..."
+                                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-800'}`}
+                                        maxLength={30}
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="mb-6">
+                                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Select Color</label>
+                                    <div className="grid grid-cols-6 gap-2">
+                                        {getAvailableColors().map(color => (
+                                            <button
+                                                key={color}
+                                                onClick={() => setNewCategoryColor(color)}
+                                                className={`w-8 h-8 ${color} rounded-lg border-2 ${newCategoryColor === color ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-300'} hover:scale-110 transition-transform`}
+                                            />
+                                        ))}
+                                    </div>
+                                    {getAvailableColors().length === 0 && (
+                                        <p className={`text-sm mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No colors available. Delete a category to free up colors.</p>
+                                    )}
+                                </div>
+                                <div className="flex gap-3 justify-end">
+                                    <button
+                                        onClick={() => { setShowAddCategoryModal(false); setNewCategoryLabel(''); setNewCategoryColor(null); }}
+                                        className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={() => newCategoryColor && addCategory(newCategoryColor, newCategoryLabel || 'New Category')}
+                                        disabled={!newCategoryColor}
+                                        className={`px-4 py-2 rounded-lg font-medium ${newCategoryColor ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                                    >
+                                        Add Category
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Reassign Notes Modal (when deleting category with notes) */}
+                {categoryToDelete && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                        <div className={`w-full max-w-md rounded-lg shadow-2xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className={`flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Reassign Notes</h2>
+                                <button onClick={() => { setCategoryToDelete(null); setReassignTarget(null); }} className={`${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}>
+                                    <X size={24}/>
+                                </button>
+                            </div>
+                            <div className="p-6">
+                                <div className={`mb-4 p-3 rounded-lg ${darkMode ? 'bg-yellow-900/30 border border-yellow-700' : 'bg-yellow-50 border border-yellow-200'}`}>
+                                    <p className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>
+                                        The category "<strong>{colorLabels[categoryToDelete]}</strong>" contains <strong>{getNotesCountForCategory(categoryToDelete)}</strong> note(s).
+                                        Please select a category to move them to before deletion.
+                                    </p>
+                                </div>
+                                <div className="mb-6">
+                                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Move notes to:</label>
+                                    <select
+                                        value={reassignTarget || ''}
+                                        onChange={(e) => setReassignTarget(e.target.value)}
+                                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+                                    >
+                                        {categories.filter(c => c !== categoryToDelete).map(c => (
+                                            <option key={c} value={c}>{colorLabels[c]}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex gap-3 justify-end">
+                                    <button
+                                        onClick={() => { setCategoryToDelete(null); setReassignTarget(null); }}
+                                        className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmDeleteCategory}
+                                        disabled={!reassignTarget}
+                                        className={`px-4 py-2 rounded-lg font-medium ${reassignTarget ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                                    >
+                                        Move & Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className={`min-h-screen p-8 ${darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-100 to-gray-200'}`}>
+                    <div className="flex gap-6 max-w-full mx-auto items-start">
+                        <div className="flex-grow" style={{width: '70%'}}>
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${darkMode ? '' : 'bg-gray-900/90 shadow-md'}`}>
+                                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <rect x="2" y="2" width="44" height="44" rx="4" fill={darkMode ? '#1a1a2e' : '#0f0f23'} stroke={darkMode ? '#00ff9f' : '#ff006e'} strokeWidth="2"/>
+                                            <path d="M8 32 L16 20 L22 26 L32 12 L40 18" stroke="#39ff14" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <circle cx="16" cy="20" r="3" fill="#39ff14"/>
+                                            <circle cx="32" cy="12" r="3" fill="#39ff14"/>
+                                            <rect x="6" y="36" width="8" height="6" fill="#39ff14" opacity="0.7"/>
+                                            <rect x="16" y="33" width="8" height="9" fill="#39ff14" opacity="0.8"/>
+                                            <rect x="26" y="30" width="8" height="12" fill="#39ff14" opacity="0.9"/>
+                                            <rect x="36" y="34" width="6" height="8" fill="#39ff14" opacity="0.6"/>
+                                        </svg>
+                                        <div className="flex flex-col">
+                                            <span className="text-3xl font-black tracking-tight" style={{fontFamily: 'monospace', color: '#00ff41'}}>
+                                                STOCK
+                                            </span>
+                                            <span className="text-xl font-bold tracking-widest -mt-1" style={{fontFamily: 'monospace', color: '#ff2bd6'}}>
+                                                STICKIES
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {syncStatus === 'syncing' && <span className="text-sm text-blue-500 flex items-center gap-1"><Cloud size={16}/> Syncing...</span>}
+                                    {syncStatus === 'synced' && <span className="text-sm text-green-500 flex items-center gap-1"><Cloud size={16}/> Synced</span>}
+                                    {syncStatus === 'offline' && <span className="text-sm text-red-500 flex items-center gap-1"><CloudOff size={16}/> Offline</span>}
+                                </div>
+                                <p className={`text-sm mt-1 flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                    Welcome,{' '}
+                                    {editingNickname || !nickname ? (
+                                        <input
+                                            type="text"
+                                            value={nickname}
+                                            onChange={(e) => {
+                                                const newNickname = e.target.value;
+                                                if (newNickname.length > MAX_NICKNAME_LENGTH) {
+                                                    alert(`Nickname cannot exceed ${MAX_NICKNAME_LENGTH} characters.`);
+                                                    return;
+                                                }
+                                                setNickname(newNickname);
+                                            }}
+                                            onBlur={() => {
+                                                const trimmed = nickname.trim();
+                                                if (trimmed && !validateNickname(trimmed)) {
+                                                    alert('Invalid nickname. Only letters, numbers, spaces, and basic punctuation are allowed.');
+                                                    setNickname('');
+                                                } else {
+                                                    setNickname(trimmed);
+                                                    if (trimmed) setEditingNickname(false);
+                                                }
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    const trimmed = nickname.trim();
+                                                    if (trimmed && validateNickname(trimmed)) {
+                                                        setNickname(trimmed);
+                                                        setEditingNickname(false);
+                                                    } else if (trimmed) {
+                                                        alert('Invalid nickname. Only letters, numbers, spaces, and basic punctuation are allowed.');
+                                                    }
+                                                }
+                                            }}
+                                            placeholder="Enter nickname..."
+                                            autoFocus={editingNickname}
+                                            className={`px-2 py-1 text-sm rounded border ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-1 focus:ring-blue-500 outline-none`}
+                                            style={{width: '140px'}}
+                                            maxLength={MAX_NICKNAME_LENGTH}
+                                        />
+                                    ) : (
+                                        <button
+                                            onClick={() => setEditingNickname(true)}
+                                            className={`font-semibold hover:underline cursor-pointer ${darkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-500'}`}
+                                            title="Click to edit nickname"
+                                        >
+                                            {nickname}
+                                        </button>
+                                    )}!
+                                    {!nickname && (
+                                        <button onClick={() => setHideEmail(!hideEmail)} className="ml-1 opacity-60 hover:opacity-100">
+                                            {hideEmail ? <Eye size={14}/> : <EyeOff size={14}/>}
+                                        </button>
+                                    )}
+                                </p>
+
+                                <div className="mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setQuickStartOpen(true)}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-extrabold tracking-wide border border-transparent bg-gradient-to-r from-fuchsia-500 via-purple-500 to-emerald-400 text-gray-900 shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60 ${darkMode ? 'ring-1 ring-white/10 shadow-fuchsia-500/25' : 'ring-1 ring-black/5 shadow-fuchsia-500/15'}`}
+                                        title="Open Quick Start Guide"
+                                    >
+                                        Quick Start Guide
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex gap-3 items-center">
+                                {!finnhubApiKey && (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={finnhubApiKey}
+                                            onChange={(e) => {
+                                                const newKey = e.target.value.trim();
+                                                if (newKey.length > MAX_API_KEY_LENGTH) {
+                                                    alert(`API key cannot exceed ${MAX_API_KEY_LENGTH} characters.`);
+                                                    return;
+                                                }
+                                                setFinnhubApiKey(newKey);
+                                                if (newKey && validateApiKey(newKey, 'finnhub')) {
+                                                    setShowApiKeySuccess(true);
+                                                    setTimeout(() => setShowApiKeySuccess(false), 3000);
+                                                } else if (newKey && newKey.length >= 20) {
+                                                    // Show success even if format validation is lenient
+                                                    setShowApiKeySuccess(true);
+                                                    setTimeout(() => setShowApiKeySuccess(false), 3000);
+                                                }
+                                            }}
+                                            onBlur={(e) => {
+                                                const key = e.target.value.trim();
+                                                if (key && !validateApiKey(key, 'finnhub')) {
+                                                    alert('Invalid Finnhub API key format. Please check your key.');
+                                                }
+                                            }}
+                                            placeholder="Finnhub API Key"
+                                            className={`px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-800 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                            style={{width: '200px'}}
+                                            maxLength={MAX_API_KEY_LENGTH}
+                                        />
+                                        <div className="relative" ref={finnhubHelpRef}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenHelp(openHelp === 'finnhub' ? null : 'finnhub')}
+                                                aria-expanded={openHelp === 'finnhub'}
+                                                aria-controls="finnhub-help"
+                                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${
+                                                    darkMode ? 'border-gray-500 text-gray-300 hover:bg-gray-800' : 'border-gray-600 text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                                title="How to get a Finnhub API key"
+                                            >
+                                                ?
+                                            </button>
+                                            {openHelp === 'finnhub' && (
+                                                <div id="finnhub-help" className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl z-20">
+                                                    <p className="font-semibold text-white mb-2">How to get a Finnhub API key</p>
+                                                    <ol className="list-decimal list-inside space-y-1">
+                                                        <li>Create a free account at finnhub.io.</li>
+                                                        <li>Verify your email and sign in.</li>
+                                                        <li>Open your dashboard and copy the API key.</li>
+                                                        <li>Paste it here.</li>
+                                                    </ol>
+                                                    <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-cyan-400 hover:text-cyan-300">Open Finnhub</a>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                {showApiKeySuccess && (
+                                    <div className="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+                                        <Check size={20}/>
+                                        <span>API Key added successfully!</span>
+                                    </div>
+                                )}
+                                {!marketauxApiKey && (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={marketauxApiKey}
+                                            onChange={(e) => {
+                                                const newKey = e.target.value.trim();
+                                                if (newKey.length > MAX_API_KEY_LENGTH) {
+                                                    alert(`API key cannot exceed ${MAX_API_KEY_LENGTH} characters.`);
+                                                    return;
+                                                }
+                                                setMarketauxApiKey(newKey);
+                                            }}
+                                            onBlur={(e) => {
+                                                const key = e.target.value.trim();
+                                                if (key && !validateApiKey(key, 'marketaux')) {
+                                                    alert('Invalid MarketAux API key format. Please check your key.');
+                                                }
+                                            }}
+                                            placeholder="MarketAux API Key"
+                                            className={`px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-800 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                            style={{width: '200px'}}
+                                            maxLength={MAX_API_KEY_LENGTH}
+                                        />
+                                        <div className="relative" ref={marketauxHelpRef}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenHelp(openHelp === 'marketaux' ? null : 'marketaux')}
+                                                aria-expanded={openHelp === 'marketaux'}
+                                                aria-controls="marketaux-help"
+                                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${
+                                                    darkMode ? 'border-gray-500 text-gray-300 hover:bg-gray-800' : 'border-gray-600 text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                                title="How to get a MarketAux API key"
+                                            >
+                                                ?
+                                            </button>
+                                            {openHelp === 'marketaux' && (
+                                                <div id="marketaux-help" className="absolute left-1/2 -translate-x-1/2 mt-3 w-72 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 text-xs p-3 shadow-xl z-20">
+                                                    <p className="font-semibold text-white mb-2">How to get a MarketAux API key</p>
+                                                    <ol className="list-decimal list-inside space-y-1">
+                                                        <li>Create a free account at marketaux.com.</li>
+                                                        <li>Verify your email and sign in.</li>
+                                                        <li>Go to your API settings and copy the API token.</li>
+                                                        <li>Paste it here.</li>
+                                                    </ol>
+                                                    <a href="https://www.marketaux.com/register" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-cyan-400 hover:text-cyan-300">Open MarketAux</a>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg">{darkMode ? <Sun size={20}/> : <Moon size={20}/>}</button>
+                                <button onClick={handleLogout} className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg shadow-lg"><LogOut size={20}/>Logout</button>
+                            </div>
+                        </div>
+
+                        {/* Main Tab Navigation */}
+                        <div className={`flex gap-1 mb-6 p-1 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+                            <button
+                                onClick={() => setMainTab('notes')}
+                                className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all ${
+                                    mainTab === 'notes'
+                                        ? (darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                                }`}
+                            >
+                                Notes
+                            </button>
+                            <button
+                                onClick={() => setMainTab('portfolio')}
+                                className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all ${
+                                    mainTab === 'portfolio'
+                                        ? (darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                                }`}
+                            >
+                                Portfolio {portfolioData.length > 0 && `(${portfolioData.length})`}
+                            </button>
+                        </div>
+
+                        {mainTab === 'notes' ? (
+                        <>
+                        <div className={`rounded-lg shadow-md p-3 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className="flex flex-wrap items-center gap-4">
+                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-700'}`}>Legend:</span>
+                                {categories.map(color => (
+                                    <div key={color} className="flex items-center gap-1.5 group relative">
+                                        {/* Color swatch - clickable to change color */}
+                                        <button
+                                            onClick={() => setEditingCategoryColor(editingCategoryColor === color ? null : color)}
+                                            className={`w-5 h-5 ${color} rounded border-2 ${editingCategoryColor === color ? 'border-blue-500' : 'border-gray-300'} hover:border-blue-400 cursor-pointer transition-all`}
+                                            title="Change color"
+                                        />
+                                        {/* Color picker dropdown */}
+                                        {editingCategoryColor === color && (
+                                            <div className={`absolute top-8 left-0 z-50 p-2 rounded-lg shadow-xl ${darkMode ? 'bg-gray-700' : 'bg-white'} border`}>
+                                                <div className="grid grid-cols-6 gap-1" style={{width: '156px'}}>
+                                                    {AVAILABLE_COLORS.filter(c => c === color || !categories.includes(c)).map(c => (
+                                                        <button
+                                                            key={c}
+                                                            onClick={() => changeCategoryColor(color, c)}
+                                                            className={`w-5 h-5 ${c} rounded border ${c === color ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-300'} hover:scale-110 transition-transform`}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Label editing */}
+                                        {editingLabel === color ? (
+                                            <div className="flex items-center gap-1">
+                                                <input type="text" value={tempLabel} onChange={(e) => setTempLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (setColorLabels({...colorLabels, [color]: tempLabel}), setEditingLabel(null))} className="border rounded px-1.5 py-0.5 text-xs w-20" autoFocus/>
+                                                <button onClick={() => (setColorLabels({...colorLabels, [color]: tempLabel}), setEditingLabel(null))} className="text-green-600"><Check size={12}/></button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1">
+                                                <span className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{colorLabels[color]}</span>
+                                                <button onClick={() => (setEditingLabel(color), setTempLabel(colorLabels[color] || ''))} className="text-gray-400 hover:text-gray-600"><Edit2 size={11}/></button>
+                                            </div>
+                                        )}
+                                        {/* Delete button - only show if more than 1 category */}
+                                        {categories.length > MIN_CATEGORIES && (
+                                            <button
+                                                onClick={() => handleDeleteCategory(color)}
+                                                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title={`Delete ${colorLabels[color]} category`}
+                                            >
+                                                <X size={12}/>
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                                {/* Add category button - only show if less than max */}
+                                {categories.length < MAX_CATEGORIES && (
+                                    <button
+                                        onClick={() => setShowAddCategoryModal(true)}
+                                        className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                        title="Add new category"
+                                    >
+                                        <Plus size={12}/> Add
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Functionality Panel (below legend, above notes) */}
+                        <div className={`rounded-lg shadow-md p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <button
+                                    onClick={() => {
+                                        setNotes([{id: nextId, title: '', text: '', color: UNCLASSIFIED_COLOR, classified: false}, ...notes]);
+                                        setNextId(nextId + 1);
+                                    }}
+                                    className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow-lg font-semibold"
+                                >
+                                    <Plus size={18}/> New Note
+                                </button>
+
+                                <div className="flex items-center gap-3">
+                                    <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sort</span>
+                                    <div className={`inline-flex rounded-lg p-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setNotesSortMode('default')}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesSortMode === 'default' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
+                                        >
+                                            Default
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => finnhubApiKey && setNotesSortMode('positionValue')}
+                                            disabled={!finnhubApiKey}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesSortMode === 'positionValue' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')} ${!finnhubApiKey ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            title={!finnhubApiKey ? 'Add a Finnhub API key to sort by market value' : 'Sort by largest position (market value)'}
+                                        >
+                                            Largest position
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {!finnhubApiKey && (
+                                <div className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    Add a <span className={darkMode ? 'text-cyan-300 font-semibold' : 'text-blue-600 font-semibold'}>Finnhub API key</span> above to enable market value sorting.
+                                </div>
+                            )}
+                        </div>
+
+                        {unclassifiedNotes.length > 0 && (
+                            <div className="mb-6">
+                                <div className={`p-4 rounded-lg mb-3 ${darkMode ? 'bg-yellow-900 border-2 border-yellow-600' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
+                                    <h2 className={`font-bold text-lg ${darkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>⚠️ Unclassified Notes - Please Categorize First</h2>
+                                    <p className={`text-sm mt-1 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>Select a category below before adding content to your note</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                    {unclassifiedNotes.map(note => (
+                                        <div key={note.id} className={`${UNCLASSIFIED_COLOR} p-6 rounded-lg shadow-lg relative border-4 border-yellow-500 animate-pulse`} style={{minHeight: '200px'}}>
+                                            <div className="absolute top-2 right-2">
+                                                <button onClick={() => deleteNote(note.id)} className="text-gray-600 hover:text-gray-800"><X size={18}/></button>
+                                            </div>
+                                            <div className="mb-4">
+                                                <p className="text-sm font-bold text-gray-700 mb-2">Select Category:</p>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {categories.map(color => (
+                                                        <button
+                                                            key={color}
+                                                            onClick={() => classifyNote(note.id, color)}
+                                                            className={`${color} px-3 py-2 rounded text-xs font-semibold hover:scale-105 transition-transform border-2 border-gray-400`}
+                                                        >
+                                                            {colorLabels[color]}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="text-center text-gray-500 text-sm mt-4">
+                                                Choose a category to start editing
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {categories.map(color => {
+                            const categoryNotes = groupedNotes[color];
+                            if (!categoryNotes.length) return null;
+                            return (
+                                <div key={color} className="mb-6">
+                                    <button onClick={() => setCollapsedCategories({...collapsedCategories, [color]: !collapsedCategories[color]})} className={`flex items-center gap-2 w-full p-3 rounded-lg mb-3 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
+                                        {collapsedCategories[color] ? <ChevronRight size={20}/> : <ChevronDown size={20}/>}
+                                        <div className={`w-6 h-6 ${color} rounded border-2 border-gray-300`}/>
+                                        <span className="font-semibold text-lg">{colorLabels[color]}</span>
+                                        <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({categoryNotes.length})</span>
+                                    </button>
+                                    {!collapsedCategories[color] && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                            {categoryNotes.map(note => (
+                                                <div key={note.id} className={`${note.color} p-6 rounded-lg shadow-lg relative hover:scale-105 transition-transform`} style={{minHeight: '200px'}}>
+                                                    {positionRankById[note.id] && (
+                                                        <div className="absolute top-1 left-1 group">
+                                                            <div className={`bg-white bg-opacity-70 border rounded px-1.5 py-0.5 text-[10px] leading-none font-bold ${darkMode ? 'text-gray-800 border-gray-300' : 'text-gray-700 border-gray-300'}`}>
+                                                                {positionRankById[note.id]} of {totalPositions}
+                                                            </div>
+                                                            <div className={`absolute left-0 top-8 z-40 hidden group-hover:block w-60 rounded-lg border shadow-xl p-3 text-xs ${darkMode ? 'bg-gray-900 text-gray-200 border-gray-700' : 'bg-white text-gray-800 border-gray-200'}`}>
+                                                                <div className="font-bold mb-1">Position ranking</div>
+                                                                <div className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                    <div>
+                                                                        <span className="font-semibold">Size:</span>{' '}
+                                                                        ${positionDetailsById[note.id].value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="font-semibold">% of total:</span>{' '}
+                                                                        {positionDetailsById[note.id].pctOfTotal.toFixed(1)}%
+                                                                    </div>
+                                                                    <div className="mt-2">
+                                                                        This is your <span className="font-semibold">{positionDetailsById[note.id].rank}{(positionDetailsById[note.id].rank % 10 === 1 && positionDetailsById[note.id].rank % 100 !== 11) ? 'st' : (positionDetailsById[note.id].rank % 10 === 2 && positionDetailsById[note.id].rank % 100 !== 12) ? 'nd' : (positionDetailsById[note.id].rank % 10 === 3 && positionDetailsById[note.id].rank % 100 !== 13) ? 'rd' : 'th'}</span>
+                                                                        {' '}largest position out of <span className="font-semibold">{positionDetailsById[note.id].totalPositions}</span>.
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute top-2 right-2 flex gap-2">
+                                                        <select value={note.color} onChange={(e) => setNotes(notes.map(n => n.id === note.id ? {...n, color: e.target.value} : n))} className="bg-white bg-opacity-70 border rounded px-2 py-1 text-xs">
+                                                            {categories.map(c => <option key={c} value={c}>{colorLabels[c]}</option>)}
+                                                        </select>
+                                                        <button onClick={() => deleteNote(note.id)} className="text-gray-600 hover:text-gray-800"><X size={18}/></button>
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={note.title || ''}
+                                                        onChange={(e) => updateNoteTitle(note.id, e.target.value)}
+                                                        placeholder="TICKER"
+                                                        className="w-full bg-transparent border-none outline-none text-gray-800 placeholder-gray-500 font-bold text-xl mb-1 uppercase"
+                                                        style={{letterSpacing: '0.05em'}}
+                                                    />
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <input
+                                                            type="number"
+                                                            value={note.shares || ''}
+                                                            onChange={(e) => updateNoteShares(note.id, e.target.value)}
+                                                            placeholder="# shares"
+                                                            className="w-24 bg-white bg-opacity-50 border border-gray-400 rounded px-2 py-1 text-sm text-gray-700 placeholder-gray-400"
+                                                        />
+                                                        {note.shares > 0 && <span className="text-xs text-gray-600">shares owned</span>}
+                                                    </div>
+                                                    <textarea 
+                                                        value={note.text} 
+                                                        onChange={(e) => {
+                                                            const newText = sanitizeContent(e.target.value);
+                                                            if (!validateContent(newText)) {
+                                                                alert(`Note content cannot exceed ${MAX_CONTENT_LENGTH} characters.`);
+                                                                return;
+                                                            }
+                                                            setNotes(notes.map(n => n.id === note.id ? {...n, text: newText} : n));
+                                                        }} 
+                                                        placeholder="Notes..." 
+                                                        className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-500" 
+                                                        style={{minHeight: '100px'}}
+                                                        maxLength={MAX_CONTENT_LENGTH}
+                                                    />
+                                                    <button
+                                                        onClick={() => setExpandedNote(note)}
+                                                        className="absolute bottom-2 right-2 bg-white bg-opacity-70 hover:bg-opacity-100 p-2 rounded-lg shadow transition-all"
+                                                        title="View with chart"
+                                                    >
+                                                        <Maximize size={16}/>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        {!notes.length && <div className="text-center py-20"><p className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No notes yet. Click "New Note" to get started!</p></div>}
+                        </>
+                        ) : (
+                        /* Portfolio View */
+                        <div className="w-full pb-16">
+                            {/* Portfolio Stats */}
+                            <div className={`rounded-lg shadow-lg p-6 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Portfolio Value</p>
+                                            <p className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} ${hidePortfolioValues ? 'blur-md select-none' : ''}`}>
+                                                ${totalPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => setHidePortfolioValues(!hidePortfolioValues)}
+                                            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                                            title={hidePortfolioValues ? 'Show values' : 'Hide values'}
+                                        >
+                                            {hidePortfolioValues ? <Eye size={20}/> : <EyeOff size={20}/>}
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={handleRefreshPortfolioPrices}
+                                            disabled={portfolioLoading}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border snapshot-hide inline-flex items-center gap-2 ${portfolioLoading ? (darkMode ? 'border-blue-400/40 text-blue-300/70 bg-blue-500/10 cursor-not-allowed' : 'border-blue-300 text-blue-400 bg-blue-50 cursor-not-allowed') : (darkMode ? 'border-blue-400/60 text-blue-200 hover:text-blue-100 hover:border-blue-300 hover:bg-blue-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50')}`}
+                                            title="Refresh portfolio prices"
+                                        >
+                                            {portfolioLoading && <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
+                                            {portfolioLoading ? 'Refreshing...' : 'Refresh Prices'}
+                                        </button>
+                                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            {portfolioData.length} position{portfolioData.length !== 1 ? 's' : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {portfolioData.length === 0 ? (
+                                <div className={`rounded-lg shadow-lg p-12 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <p className={`text-xl mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                        No positions in your portfolio yet
+                                    </p>
+                                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Add shares to your stock notes to see them here.<br/>
+                                        Go to Notes tab, create or edit a note with a ticker symbol, and add the number of shares you own.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-4">
+                                    {/* Pie Chart - Large */}
+                                    <div ref={portfolioCardRef} className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`} style={{height: '650px'}}>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative">
+                                                    <div className={`w-12 h-12 rounded-lg ${darkMode ? 'bg-gradient-to-br from-cyan-500 via-purple-600 to-pink-500' : 'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500'} flex items-center justify-center shadow-lg`} style={{boxShadow: darkMode ? '0 0 15px rgba(6, 182, 212, 0.5), 0 0 30px rgba(168, 85, 247, 0.3)' : '0 4px 12px rgba(0,0,0,0.2)'}}>
+                                                        <svg viewBox="0 0 24 24" className="w-7 h-7 text-white" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                                                            <path d="M2 17l10 5 10-5" />
+                                                            <path d="M2 12l10 5 10-5" />
+                                                            <circle cx="12" cy="12" r="2" fill="currentColor" />
+                                                        </svg>
+                                                    </div>
+                                                    <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full ${darkMode ? 'bg-green-400' : 'bg-green-500'} border-2 ${darkMode ? 'border-gray-800' : 'border-white'}`} style={{boxShadow: darkMode ? '0 0 6px rgba(74, 222, 128, 0.6)' : 'none'}}></div>
+                                                </div>
+                                                <h3 className={`text-xl font-bold tracking-tight portfolio-title ${darkMode ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400' : 'text-gray-800'}`} style={darkMode ? {textShadow: '0 0 20px rgba(6, 182, 212, 0.4)'} : {}}>
+                                                    {nickname || currentUser?.split('@')[0] || 'User'}'s Portfolio
+                                                    <span className="snapshot-only snapshot-timestamp text-sm font-semibold ml-2"></span>
+                                                </h3>
+                                            </div>
+                                            <button
+                                                onClick={handleDownloadPortfolioSnapshot}
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border snapshot-hide ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
+                                                title="Download portfolio snapshot"
+                                            >
+                                                <Download size={16}/>
+                                                Snapshot
+                                            </button>
+                                        </div>
+                                        <div style={{height: '560px'}}>
+                                            <canvas ref={chartRef}></canvas>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            )}
+                        </div>
+                        )}
+                        </div>
+
+                        {/* Watch List Panel */}
+                        <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '30%', maxHeight: 'calc(100vh - 9rem)', marginTop: '96px'}}>
+                            <div className="p-6 pb-4">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newWatchTicker}
+                                        onChange={(e) => {
+                                            const sanitized = sanitizeTicker(e.target.value);
+                                            setNewWatchTicker(sanitized);
+                                        }}
+                                        onKeyDown={(e) => e.key === 'Enter' && addToWatchList()}
+                                        placeholder="Add ticker..."
+                                        className={`flex-1 px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none uppercase`}
+                                        maxLength={MAX_TITLE_LENGTH}
+                                    />
+                                    <button
+                                        onClick={addToWatchList}
+                                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded shadow"
+                                    >
+                                        <Plus size={20}/>
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto px-6 pb-6">
+                                <div className="space-y-2">
+                                    {watchList.length === 0 ? (
+                                        <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            No tickers in watch list
+                                        </p>
+                                    ) : (
+                                        watchList.map((ticker) => (
+                                            <div
+                                                key={ticker}
+                                                className={`flex items-center justify-between p-3 rounded cursor-pointer ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} hover:shadow-md transition-all`}
+                                                onClick={() => setWatchListModalTicker(ticker)}
+                                            >
+                                                <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                                    {ticker}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
+                                                    className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
+                                                    aria-label={`Remove ${ticker} from watch list`}
+                                                    title="Remove from watch list"
+                                                >
+                                                    <X size={18}/>
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Fixed Footer */}
+                <footer className="fixed bottom-0 left-0 right-0 bg-black text-white text-center py-2 text-xs sm:text-sm whitespace-nowrap">
+                    <span>© {new Date().getFullYear()} Stock Stickies. All rights reserved.</span>
+                    <span className="mx-2">·</span>
+                    <button type="button" onClick={() => setLegalView('privacy')} className="text-red-400 hover:text-blue-300">Privacy Policy</button>
+                    <span className="mx-2">·</span>
+                    <button type="button" onClick={() => setLegalView('terms')} className="text-red-400 hover:text-blue-300">Terms of Use</button>
+                    <span className="mx-2">·</span>
+                    Website created by <a href="https://github.com/99redder" target="_blank" rel="noopener noreferrer" className="text-red-400 hover:text-blue-300">Red</a>
+                </footer>
+                </>
+            );
+        }
+
+export default StickyNotesApp
