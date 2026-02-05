@@ -2019,28 +2019,7 @@ const firebaseConfig = {
                                             <ol className="list-decimal list-inside space-y-1 text-gray-300">
                                                 <li>In the Notes tab, use the <span className="text-white font-semibold">Sort</span> toggle.</li>
                                                 <li>Select <span className="text-white font-semibold">Largest position</span> to order notes by market value (shares × price).</li>
-                                                <li>
-                                                    Tip: Add your{' '}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setQuickStartOpen(false);
-                                                            setMainTab('notes');
-                                                            setOpenHelp('finnhub');
-                                                            // allow UI to render before we try to scroll
-                                                            setTimeout(() => {
-                                                                if (finnhubHelpRef.current) {
-                                                                    finnhubHelpRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                                }
-                                                            }, 50);
-                                                        }}
-                                                        className="text-white font-semibold underline underline-offset-4 hover:text-cyan-300"
-                                                        title="Open Finnhub API key help"
-                                                    >
-                                                        Finnhub API key
-                                                    </button>
-                                                    {' '}to enable market value sorting.
-                                                </li>
+                                                <li>Tip: Add your <span className="text-white font-semibold">Finnhub API key</span> to enable market value sorting.</li>
                                             </ol>
                                         </div>
                                         <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
