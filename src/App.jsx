@@ -2060,7 +2060,64 @@ const firebaseConfig = {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <h3 className="text-white font-semibold text-base">4) Customize categories</h3>
+                                    <h3 className="text-white font-semibold text-base">4) Group by Category vs Size + reorder categories</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                                                <li>In the Notes tab, use the <span className="text-white font-semibold">Group By</span> toggle.</li>
+                                                <li><span className="text-white font-semibold">Category</span> shows notes grouped into sections (your categories).</li>
+                                                <li><span className="text-white font-semibold">Size</span> shows all notes in one list sorted by your largest positions.</li>
+                                                <li>In the <span className="text-white font-semibold">Legend</span>, drag the <span className="text-white font-semibold">grip icon</span> to reorder categories.</li>
+                                            </ol>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <svg viewBox="0 0 520 220" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+                                                <rect x="10" y="12" width="500" height="196" rx="14" fill="#0b1220" stroke="#334155" />
+
+                                                <rect x="28" y="40" width="250" height="72" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <text x="46" y="66" font-size="14" font-weight="800" fill="#e5e7eb">Functionality Panel</text>
+
+                                                <text x="46" y="92" font-size="12" font-weight="700" fill="#94a3b8">Group By</text>
+                                                <rect x="106" y="74" width="172" height="34" rx="10" fill="#111827" stroke="#334155" />
+                                                <rect x="112" y="80" width="74" height="22" rx="8" fill="#0b1220" stroke="#22c55e" />
+                                                <text x="149" y="95" text-anchor="middle" font-size="11" font-weight="800" fill="#e5e7eb">Category</text>
+                                                <rect x="190" y="80" width="74" height="22" rx="8" fill="#0b1220" stroke="#475569" />
+                                                <text x="227" y="95" text-anchor="middle" font-size="11" font-weight="800" fill="#94a3b8">Size</text>
+
+                                                <rect x="300" y="40" width="190" height="150" rx="14" fill="#0f172a" stroke="#334155" />
+                                                <text x="314" y="66" font-size="12" font-weight="800" fill="#e5e7eb">Legend</text>
+
+                                                <rect x="314" y="78" width="162" height="26" rx="10" fill="#111827" stroke="#334155" />
+                                                <circle cx="328" cy="91" r="1.6" fill="#94a3b8" />
+                                                <circle cx="336" cy="91" r="1.6" fill="#94a3b8" />
+                                                <circle cx="328" cy="97" r="1.6" fill="#94a3b8" />
+                                                <circle cx="336" cy="97" r="1.6" fill="#94a3b8" />
+                                                <rect x="344" y="85" width="14" height="14" rx="4" fill="#93c5fd" />
+                                                <rect x="364" y="87" width="90" height="10" rx="5" fill="#e5e7eb" opacity="0.9" />
+
+                                                <rect x="314" y="112" width="162" height="26" rx="10" fill="#111827" stroke="#334155" />
+                                                <circle cx="328" cy="125" r="1.6" fill="#94a3b8" />
+                                                <circle cx="336" cy="125" r="1.6" fill="#94a3b8" />
+                                                <circle cx="328" cy="131" r="1.6" fill="#94a3b8" />
+                                                <circle cx="336" cy="131" r="1.6" fill="#94a3b8" />
+                                                <rect x="344" y="119" width="14" height="14" rx="4" fill="#bbf7d0" />
+                                                <rect x="364" y="121" width="78" height="10" rx="5" fill="#e5e7eb" opacity="0.9" />
+
+                                                <path d="M288 120 L304 120" stroke="#22c55e" stroke-width="4" marker-end="url(#arrowGroup)" />
+                                                <defs>
+                                                    <marker id="arrowGroup" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                                                        <path d="M0,0 L12,6 L0,12 z" fill="#22c55e" />
+                                                    </marker>
+                                                </defs>
+
+                                                <text x="314" y="182" font-size="11" fill="#94a3b8">Drag the grip to reorder categories</text>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">5) Customize categories</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                         <div className="space-y-2">
                                             <ol className="list-decimal list-inside space-y-1 text-gray-300">
