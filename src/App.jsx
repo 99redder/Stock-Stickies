@@ -2979,7 +2979,7 @@ const firebaseConfig = {
                                 {categories.map((color, idx) => (
                                     <div
                                         key={color}
-                                        className={`flex items-center gap-1.5 group relative ${dragOverCategory === color ? (darkMode ? 'ring-2 ring-blue-400 rounded' : 'ring-2 ring-blue-500 rounded') : ''}`}
+                                        className={`flex items-center gap-1.5 group relative transition-all ${draggingCategory === color ? (darkMode ? 'opacity-60' : 'opacity-70') : ''} ${dragOverCategory === color ? (darkMode ? 'ring-2 ring-blue-400 rounded bg-gray-700/40' : 'ring-2 ring-blue-500 rounded bg-blue-50') : ''}`}
                                         onDragOver={(e) => {
                                             if (!draggingCategory) return;
                                             e.preventDefault();
@@ -3010,7 +3010,7 @@ const firebaseConfig = {
                                                 setDraggingCategory(null);
                                                 setDragOverCategory(null);
                                             }}
-                                            className={`cursor-grab active:cursor-grabbing select-none ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}
+                                            className={`cursor-grab active:cursor-grabbing select-none transition-transform ${draggingCategory === color ? 'scale-110' : ''} ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}
                                             title="Drag to reorder"
                                         >
                                             <Grip size={14} />
