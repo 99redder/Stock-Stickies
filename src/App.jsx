@@ -335,6 +335,8 @@ const firebaseConfig = {
             const [newWatchTicker, setNewWatchTicker] = useState('');
             const [hideEmail, setHideEmail] = useState(false);
             const [nickname, setNickname] = useState('');
+            const [profilePhoto, setProfilePhoto] = useState(''); // data URL or remote URL
+            const profilePhotoInputRef = useRef(null);
             const [editingNickname, setEditingNickname] = useState(false);
             const [hidePortfolioValues, setHidePortfolioValues] = useState(false);
             const [marketauxApiKey, setMarketauxApiKey] = useState('');
@@ -433,6 +435,7 @@ const firebaseConfig = {
                             setDarkMode(data.darkMode || false);
                             setWatchList(data.watchList || []);
                             setNickname(data.nickname || '');
+                            setProfilePhoto(data.profilePhoto || auth.currentUser?.photoURL || '');
                             setNotesSortMode(data.notesSortMode || 'default');
                             setNotesGroupMode(data.notesGroupMode || 'category');
 
@@ -497,6 +500,7 @@ const firebaseConfig = {
                             darkMode,
                             watchList,
                             nickname,
+                            profilePhoto,
                             notesSortMode,
                             notesGroupMode,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -543,7 +547,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, notesSortMode, notesGroupMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode]);
 
             useEffect(() => {
                 const handleBeforeUnload = async (e) => {
@@ -559,6 +563,7 @@ const firebaseConfig = {
                             darkMode,
                             watchList,
                             nickname,
+                            profilePhoto,
                             notesSortMode,
                             notesGroupMode,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -596,7 +601,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, notesSortMode, notesGroupMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -639,6 +644,80 @@ const firebaseConfig = {
                 }
             };
 
+            const MAX_PROFILE_PHOTO_BYTES = 250 * 1024; // Firestore-friendly (~250KB)
+
+            const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+
+            const resizeImageFileToJpegDataUrl = async (file, maxSize = 96, quality = 0.82) => {
+                const originalDataUrl = await fileToDataUrl(file);
+                const img = new Image();
+
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = originalDataUrl;
+                });
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return originalDataUrl;
+
+                const w = img.width || 1;
+                const h = img.height || 1;
+                const scale = Math.min(1, maxSize / Math.max(w, h));
+                const outW = Math.max(1, Math.round(w * scale));
+                const outH = Math.max(1, Math.round(h * scale));
+
+                canvas.width = outW;
+                canvas.height = outH;
+                ctx.drawImage(img, 0, 0, outW, outH);
+
+                const jpegDataUrl = canvas.toDataURL('image/jpeg', quality);
+                return jpegDataUrl;
+            };
+
+            const handlePickProfilePhoto = () => {
+                if (profilePhotoInputRef.current) profilePhotoInputRef.current.click();
+            };
+
+            const handleProfilePhotoSelected = async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                try {
+                    if (!file.type?.startsWith('image/')) {
+                        alert('Please choose an image file.');
+                        return;
+                    }
+
+                    // Reset input so selecting the same file again still triggers change
+                    e.target.value = '';
+
+                    const resized = await resizeImageFileToJpegDataUrl(file);
+                    const approxBytes = Math.ceil((resized.length * 3) / 4); // base64 → bytes (rough)
+                    if (approxBytes > MAX_PROFILE_PHOTO_BYTES) {
+                        alert('That image is still a bit large. Try a smaller file.');
+                        return;
+                    }
+
+                    isSavingRef.current = true;
+                    setProfilePhoto(resized);
+                } catch (err) {
+                    console.error('Profile photo error:', err);
+                    alert('Could not load that image. Try a different one.');
+                }
+            };
+
+            const clearProfilePhoto = () => {
+                isSavingRef.current = true;
+                setProfilePhoto('');
+            };
+
             const updateNoteTitle = (noteId, title) => {
                 // Sanitize and validate ticker input
                 const sanitized = sanitizeTicker(title);
@@ -662,6 +741,7 @@ const firebaseConfig = {
                         darkMode,
                         watchList,
                         nickname,
+                        profilePhoto,
                         notesSortMode,
                         notesGroupMode,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -2814,6 +2894,39 @@ const firebaseConfig = {
                                 </div>
                                 <p className={`text-sm mt-1 flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                     Welcome,{' '}
+                                    <span className="inline-flex items-center gap-2 mr-1">
+                                        <input
+                                            ref={profilePhotoInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleProfilePhotoSelected}
+                                            className="hidden"
+                                        />
+                                        {profilePhoto ? (
+                                            <button type="button" onClick={handlePickProfilePhoto} title="Change profile picture" className="shrink-0">
+                                                <img src={profilePhoto} alt="Profile" className="w-7 h-7 rounded-full object-cover border border-gray-500" />
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={handlePickProfilePhoto}
+                                                className={`text-xs font-semibold px-2 py-1 rounded border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-400 text-gray-600 hover:bg-gray-100'}`}
+                                                title="Add a profile picture"
+                                            >
+                                                + Photo
+                                            </button>
+                                        )}
+                                        {profilePhoto && (
+                                            <button
+                                                type="button"
+                                                onClick={clearProfilePhoto}
+                                                className={`text-xs underline underline-offset-2 ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+                                                title="Remove profile picture"
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                    </span>
                                     {editingNickname || !nickname ? (
                                         <input
                                             type="text"
