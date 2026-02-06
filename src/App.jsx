@@ -2924,7 +2924,7 @@ const firebaseConfig = {
                                     {syncStatus === 'synced' && <span className="text-sm text-green-500 flex items-center gap-1"><Cloud size={16}/> Synced</span>}
                                     {syncStatus === 'offline' && <span className="text-sm text-red-500 flex items-center gap-1"><CloudOff size={16}/> Offline</span>}
                                 </div>
-                                <p className={`text-sm mt-1 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                <p className={`text-sm mt-1 flex items-center gap-0 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                     <span className="inline-flex items-center gap-2">
                                         <input
                                             ref={profilePhotoInputRef}
@@ -2974,7 +2974,7 @@ const firebaseConfig = {
                                             </button>
                                         )}
                                     </span>
-                                    <span>Welcome,&nbsp;</span>
+                                    <span className="ml-2">Welcome,&nbsp;</span>
                                     {editingNickname || !nickname ? (
                                         <input
                                             type="text"
@@ -3022,7 +3022,8 @@ const firebaseConfig = {
                                         >
                                             {nickname}
                                         </button>
-                                    )}!
+                                    )}
+                                    <span>!</span>
                                     {!nickname && (
                                         <button onClick={() => setHideEmail(!hideEmail)} className="ml-1 opacity-60 hover:opacity-100">
                                             {hideEmail ? <Eye size={14}/> : <EyeOff size={14}/>}
