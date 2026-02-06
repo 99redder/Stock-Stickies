@@ -336,7 +336,9 @@ const firebaseConfig = {
             const [hideEmail, setHideEmail] = useState(false);
             const [nickname, setNickname] = useState('');
             const [profilePhoto, setProfilePhoto] = useState(''); // data URL or remote URL
+            const [profilePhotoMenuOpen, setProfilePhotoMenuOpen] = useState(false);
             const profilePhotoInputRef = useRef(null);
+            const profilePhotoMenuRef = useRef(null);
             const [editingNickname, setEditingNickname] = useState(false);
             const [hidePortfolioValues, setHidePortfolioValues] = useState(false);
             const [marketauxApiKey, setMarketauxApiKey] = useState('');
@@ -386,6 +388,26 @@ const firebaseConfig = {
                     document.removeEventListener('keydown', onKeyDown);
                 };
             }, [openHelp]);
+
+            // Close profile photo menu on outside click / Escape
+            useEffect(() => {
+                if (!profilePhotoMenuOpen) return;
+                const onMouseDown = (e) => {
+                    const t = e.target;
+                    if (profilePhotoMenuRef.current && !profilePhotoMenuRef.current.contains(t)) {
+                        setProfilePhotoMenuOpen(false);
+                    }
+                };
+                const onKeyDown = (e) => {
+                    if (e.key === 'Escape') setProfilePhotoMenuOpen(false);
+                };
+                document.addEventListener('mousedown', onMouseDown);
+                document.addEventListener('keydown', onKeyDown);
+                return () => {
+                    document.removeEventListener('mousedown', onMouseDown);
+                    document.removeEventListener('keydown', onKeyDown);
+                };
+            }, [profilePhotoMenuOpen]);
 
             // Close login help modal on outside click / Escape
             useEffect(() => {
@@ -2903,27 +2925,43 @@ const firebaseConfig = {
                                             className="hidden"
                                         />
                                         {profilePhoto ? (
-                                            <button type="button" onClick={handlePickProfilePhoto} title="Change profile picture" className="shrink-0">
-                                                <img src={profilePhoto} alt="Profile" className="w-7 h-7 rounded-full object-cover border border-gray-500" />
-                                            </button>
+                                            <div className="relative" ref={profilePhotoMenuRef}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setProfilePhotoMenuOpen(v => !v)}
+                                                    title="Profile photo"
+                                                    className="shrink-0"
+                                                >
+                                                    <img src={profilePhoto} alt="Profile" className="w-7 h-7 rounded-full object-cover border border-gray-500" />
+                                                </button>
+
+                                                {profilePhotoMenuOpen && (
+                                                    <div className={`absolute left-0 mt-2 z-20 w-40 rounded-lg border shadow-xl p-2 ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setProfilePhotoMenuOpen(false); handlePickProfilePhoto(); }}
+                                                            className={`w-full text-left px-2 py-1 rounded text-xs font-semibold ${darkMode ? 'text-gray-200 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100'}`}
+                                                        >
+                                                            Change photo
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setProfilePhotoMenuOpen(false); clearProfilePhoto(); }}
+                                                            className={`w-full text-left px-2 py-1 rounded text-xs font-semibold ${darkMode ? 'text-red-300 hover:bg-gray-800' : 'text-red-600 hover:bg-gray-100'}`}
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         ) : (
                                             <button
                                                 type="button"
                                                 onClick={handlePickProfilePhoto}
                                                 className={`text-xs font-semibold px-2 py-1 rounded border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-400 text-gray-600 hover:bg-gray-100'}`}
-                                                title="Add a profile picture"
+                                                title="Add a profile photo"
                                             >
-                                                + Photo
-                                            </button>
-                                        )}
-                                        {profilePhoto && (
-                                            <button
-                                                type="button"
-                                                onClick={clearProfilePhoto}
-                                                className={`text-xs underline underline-offset-2 ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
-                                                title="Remove profile picture"
-                                            >
-                                                Remove
+                                                Add profile photo
                                             </button>
                                         )}
                                     </span>
