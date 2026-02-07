@@ -432,6 +432,9 @@ const firebaseConfig = {
             // Compute the active ticker for data fetching (from expanded note or watch list modal)
             const activeTicker = expandedNote?.title || watchListModalTicker;
 
+            // Owner-only brokerage integrations
+            const isOwnerPortfolioUser = (currentUser || '').toLowerCase() === 'chris.gorham451@gmail.com';
+
             // Close API key help popovers on outside click / Escape
             useEffect(() => {
                 const onMouseDown = (e) => {
@@ -3814,13 +3817,18 @@ const firebaseConfig = {
                         )}
                         </div>
 
-                        {mainTab === 'notes' ? (
-                            /* Watch List Panel (Notes tab) */
+                        {(mainTab === 'notes' || !isOwnerPortfolioUser) ? (
+                            /* Watch List Panel */
                             <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '30%', maxHeight: 'calc(100vh - 9rem)', marginTop: '96px'}}>
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
                                         <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
                                     </div>
+                                    {mainTab === 'portfolio' && !isOwnerPortfolioUser && (
+                                        <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            For Brokerage integrations with IBKR, contact redonx99@gmail.com
+                                        </p>
+                                    )}
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
