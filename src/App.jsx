@@ -3293,6 +3293,24 @@ const firebaseConfig = {
                                     >
                                         Quick Start Guide
                                     </button>
+                                    {mainTab === 'notes' && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => setHideLegendPanel(!hideLegendPanel)}
+                                                className={`ml-2 px-2.5 py-1 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}
+                                            >
+                                                {hideLegendPanel ? 'Show Legend' : 'Hide Legend'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setHideToolbarPanel(!hideToolbarPanel)}
+                                                className={`ml-2 px-2.5 py-1 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}
+                                            >
+                                                {hideToolbarPanel ? 'Show Toolbar' : 'Hide Toolbar'}
+                                            </button>
+                                        </>
+                                    )}
                                 </p>
                             </div>
                             <div className="flex gap-3 items-center">
@@ -3445,15 +3463,6 @@ const firebaseConfig = {
 
                         {mainTab === 'notes' ? (
                         <>
-                        <div className="flex justify-end mb-2">
-                            <button
-                                type="button"
-                                onClick={() => setHideLegendPanel(!hideLegendPanel)}
-                                className={`px-3 py-1.5 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}
-                            >
-                                {hideLegendPanel ? 'Show Legend' : 'Hide Legend'}
-                            </button>
-                        </div>
                         {!hideLegendPanel && (
                         <div className={`rounded-lg shadow-md p-3 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <div className="flex flex-wrap items-center gap-4">
@@ -3564,16 +3573,6 @@ const firebaseConfig = {
                             </div>
                         </div>
                         )}
-
-                        <div className="flex justify-end mb-2">
-                            <button
-                                type="button"
-                                onClick={() => setHideToolbarPanel(!hideToolbarPanel)}
-                                className={`px-3 py-1.5 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}
-                            >
-                                {hideToolbarPanel ? 'Show Toolbar' : 'Hide Toolbar'}
-                            </button>
-                        </div>
 
                         {/* Functionality Panel (below legend, above notes) */}
                         {!hideToolbarPanel && (
