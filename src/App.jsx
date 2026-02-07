@@ -374,6 +374,15 @@ const firebaseConfig = {
             const [ibkrFilter, setIbkrFilter] = useState('');
             const [ibkrSortBy, setIbkrSortBy] = useState('marketValue'); // marketValue | symbol | pnl
 
+            // Robinhood Crypto API placeholders (proxy-backed, crypto-only)
+            const [rhProxyBaseUrl, setRhProxyBaseUrl] = useState('https://YOUR-STOCK-STICKIES-BACKEND.example.com');
+            const [rhProxyApiKey, setRhProxyApiKey] = useState('');
+            const [rhApiKeyId, setRhApiKeyId] = useState('');
+            const [rhPositions, setRhPositions] = useState([]);
+            const [rhLoading, setRhLoading] = useState(false);
+            const [rhError, setRhError] = useState('');
+            const [rhLastSync, setRhLastSync] = useState(null);
+
             // API key help popovers (click-to-toggle; closes on outside click / Escape)
             const [openHelp, setOpenHelp] = useState(null); // 'finnhub' | 'marketaux' | null
             const finnhubHelpRef = useRef(null);
@@ -524,6 +533,9 @@ const firebaseConfig = {
                             setIbkrProxyBaseUrl(data.ibkrProxyBaseUrl || 'https://YOUR-STOCK-STICKIES-BACKEND.example.com');
                             setIbkrProxyApiKey(data.ibkrProxyApiKey || '');
                             setIbkrAccountId(data.ibkrAccountId || '');
+                            setRhProxyBaseUrl(data.rhProxyBaseUrl || 'https://YOUR-STOCK-STICKIES-BACKEND.example.com');
+                            setRhProxyApiKey(data.rhProxyApiKey || '');
+                            setRhApiKeyId(data.rhApiKeyId || '');
 
                             // Reset loading flag after state updates settle
                             setTimeout(() => { isLoadingRef.current = false; }, 200);
@@ -592,6 +604,9 @@ const firebaseConfig = {
                             ibkrProxyBaseUrl,
                             ibkrProxyApiKey,
                             ibkrAccountId,
+                            rhProxyBaseUrl,
+                            rhProxyApiKey,
+                            rhApiKeyId,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
                         
@@ -636,7 +651,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId, rhProxyBaseUrl, rhProxyApiKey, rhApiKeyId]);
 
             useEffect(() => {
                 const handleBeforeUnload = async (e) => {
@@ -658,6 +673,9 @@ const firebaseConfig = {
                             ibkrProxyBaseUrl,
                             ibkrProxyApiKey,
                             ibkrAccountId,
+                            rhProxyBaseUrl,
+                            rhProxyApiKey,
+                            rhApiKeyId,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
                         
@@ -693,7 +711,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId, rhProxyBaseUrl, rhProxyApiKey, rhApiKeyId]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -959,13 +977,60 @@ const firebaseConfig = {
 
                 // Initial background refresh on entering Portfolio tab
                 fetchIbkrPortfolio({ silent: true });
+                fetchRobinhoodCryptoPortfolio({ silent: true });
 
                 const intervalId = setInterval(() => {
                     fetchIbkrPortfolio({ silent: true });
+                    fetchRobinhoodCryptoPortfolio({ silent: true });
                 }, 60000);
 
                 return () => clearInterval(intervalId);
-            }, [mainTab, ibkrAccountId, ibkrProxyBaseUrl]);
+            }, [mainTab, ibkrAccountId, ibkrProxyBaseUrl, rhProxyBaseUrl, rhProxyApiKey, rhApiKeyId]);
+
+
+            const fetchRobinhoodCryptoPortfolio = async ({ silent = false } = {}) => {
+                if (!silent) setRhError('');
+
+                if (!rhProxyBaseUrl.trim()) {
+                    if (!silent) setRhError('Add your backend proxy URL to load Robinhood crypto positions.');
+                    return;
+                }
+
+                if (!silent) setRhLoading(true);
+                try {
+                    const proxyUrl = `${rhProxyBaseUrl.replace(/\/$/, '')}/api/robinhood/crypto/holdings`;
+                    const response = await fetchWithRetry(proxyUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(rhProxyApiKey ? { 'x-api-key': rhProxyApiKey.trim() } : {})
+                        },
+                        body: JSON.stringify({
+                            apiKeyId: rhApiKeyId.trim() || undefined
+                        })
+                    }, { retries: 3, backoffMs: 800, timeoutMs: 15000 });
+
+                    const data = await response.json();
+                    const normalized = Array.isArray(data)
+                        ? data
+                        : (Array.isArray(data?.holdings) ? data.holdings : []);
+
+                    setRhPositions(normalized.map((h) => ({
+                        symbol: h?.asset_symbol || h?.symbol || h?.currency_pair_id || 'UNKNOWN',
+                        quantity: Number(h?.quantity || h?.total_quantity || 0),
+                        marketPrice: Number(h?.mark_price || h?.price || 0),
+                        marketValue: Number(h?.market_value || h?.value || 0),
+                        costBasis: Number(h?.cost_basis || 0),
+                        unrealizedPnl: Number(h?.unrealized_pnl || 0)
+                    })));
+                    setRhLastSync(new Date().toISOString());
+                } catch (err) {
+                    console.error('Robinhood crypto fetch failed:', err);
+                    if (!silent) setRhError(err?.message || 'Failed to load Robinhood crypto positions.');
+                } finally {
+                    if (!silent) setRhLoading(false);
+                }
+            };
 
             const handleRefreshPortfolioPrices = async () => {
                 if (!finnhubApiKey) {
@@ -1841,6 +1906,21 @@ const firebaseConfig = {
                 if (ageMs > 5 * 60 * 1000) return 'stale';
                 return 'connected';
             }, [ibkrLoading, ibkrError, ibkrLastSync]);
+
+
+            const totalRhMarketValue = useMemo(() =>
+                rhPositions.reduce((sum, p) => sum + (Number(p.marketValue) || 0), 0),
+            [rhPositions]);
+
+            const rhConnectionStatus = useMemo(() => {
+                if (rhLoading) return 'syncing';
+                if (rhError) return 'error';
+                if (!rhLastSync) return 'idle';
+
+                const ageMs = Date.now() - new Date(rhLastSync).getTime();
+                if (ageMs > 5 * 60 * 1000) return 'stale';
+                return 'connected';
+            }, [rhLoading, rhError, rhLastSync]);
 
             // Update shares for a note
             const updateNoteShares = (noteId, shares) => {
@@ -3786,6 +3866,80 @@ const firebaseConfig = {
                                                     >
                                                         <X size={18}/>
                                                     </button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="border-t border-gray-200 dark:border-gray-700 p-6">
+                                    <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Robinhood Crypto API</h3>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connection</span>
+                                        <span className={`px-2 py-1 rounded text-[10px] font-semibold uppercase ${rhConnectionStatus === 'connected' ? 'bg-green-600/20 text-green-400' : rhConnectionStatus === 'syncing' ? 'bg-blue-600/20 text-blue-400' : rhConnectionStatus === 'stale' ? 'bg-yellow-600/20 text-yellow-400' : rhConnectionStatus === 'error' ? 'bg-red-600/20 text-red-400' : 'bg-gray-600/20 text-gray-400'}`}>
+                                            {rhConnectionStatus}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <input
+                                            type="text"
+                                            value={rhProxyBaseUrl}
+                                            onChange={(e) => setRhProxyBaseUrl(e.target.value)}
+                                            placeholder="Proxy URL (https://your-backend...)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
+                                        <input
+                                            type="password"
+                                            value={rhProxyApiKey}
+                                            onChange={(e) => setRhProxyApiKey(e.target.value)}
+                                            placeholder="Proxy API key (optional)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
+                                        <input
+                                            type="text"
+                                            value={rhApiKeyId}
+                                            onChange={(e) => setRhApiKeyId(e.target.value)}
+                                            placeholder="Robinhood API key ID (placeholder)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
+                                        <button
+                                            onClick={fetchRobinhoodCryptoPortfolio}
+                                            disabled={rhLoading}
+                                            className={`w-full px-3 py-2 rounded text-sm font-semibold ${rhLoading ? 'bg-blue-400 cursor-not-allowed text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
+                                        >
+                                            {rhLoading ? 'Loading Robinhood...' : 'Load Robinhood Crypto Positions'}
+                                        </button>
+                                    </div>
+                                    <p className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Placeholder plan: backend signs Robinhood crypto requests (Ed25519) and returns holdings only.
+                                    </p>
+                                    {rhError && <p className="mt-2 text-xs text-red-400">{rhError}</p>}
+                                    <div className={`mt-3 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Total Robinhood Crypto Value: <span className="font-semibold">${totalRhMarketValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                    {rhLastSync && (
+                                        <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                            Last sync: {new Date(rhLastSync).toLocaleString()}
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
+                                        {rhPositions.length === 0 ? (
+                                            <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                No Robinhood crypto positions loaded yet
+                                            </p>
+                                        ) : (
+                                            rhPositions.map((position, idx) => (
+                                                <div key={`${position.symbol}-${idx}`} className={`p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{position.symbol}</span>
+                                                        <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{position.quantity}</span>
+                                                    </div>
+                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        MV: ${Number(position.marketValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        {' · '}
+                                                        PnL: {Number(position.unrealizedPnl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </div>
                                                 </div>
                                             ))
                                         )}
