@@ -3909,7 +3909,7 @@ const firebaseConfig = {
                             </div>
                         ) : (mainTab === 'portfolio' && isOwnerPortfolioUser ? (
                             /* IBKR Portfolio Panel (Portfolio tab) */
-                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col overflow-y-auto`} style={{width: '35%', maxHeight: 'calc(100vh - 15rem)', marginTop: '190px', paddingBottom: '16px'}}>
+                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '35%', marginTop: '190px', paddingBottom: '16px'}}>
                                 <div className="p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                                     <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>IBKR Portfolio</h3>
                                     <div className="flex items-center justify-between mb-2">
@@ -3980,7 +3980,7 @@ const firebaseConfig = {
                                             <option value="symbol">Sort: Symbol</option>
                                         </select>
                                     </div>
-                                    <div className="space-y-2 max-h-64 overflow-y-auto pb-2">
+                                    <div className="space-y-2 pb-2">
                                         {ibkrVisiblePositions.length === 0 ? (
                                             <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                                 No IBKR positions loaded yet
@@ -4002,7 +4002,7 @@ const firebaseConfig = {
                                         )}
                                     </div>
                                 </div>
-                                <div className="mt-10 pt-8 px-6 pb-6 border-t-2 border-gray-400 dark:border-gray-500 bg-black/5 dark:bg-white/5 rounded-t-xl">
+                                <div className="mt-8 pt-6 px-6 pb-6 border-t border-gray-300 dark:border-gray-600">
                                     <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Robinhood Crypto API</h3>
                                     <div className="flex items-center justify-between mb-2">
                                         <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connection</span>
