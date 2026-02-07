@@ -364,16 +364,15 @@ const firebaseConfig = {
             const [watchList, setWatchList] = useState([]);
 
             // IBKR integration placeholders (individual account flow)
-            const [ibkrApiBaseUrl, setIbkrApiBaseUrl] = useState('https://api.ibkr.com/v1/api');
-            const [ibkrUseProxy, setIbkrUseProxy] = useState(true);
             const [ibkrProxyBaseUrl, setIbkrProxyBaseUrl] = useState('https://YOUR-STOCK-STICKIES-BACKEND.example.com');
             const [ibkrProxyApiKey, setIbkrProxyApiKey] = useState('');
-            const [ibkrSessionToken, setIbkrSessionToken] = useState(''); // legacy fallback from /tickle flow
             const [ibkrAccountId, setIbkrAccountId] = useState(''); // e.g., U1234567
             const [ibkrPositions, setIbkrPositions] = useState([]);
             const [ibkrLoading, setIbkrLoading] = useState(false);
             const [ibkrError, setIbkrError] = useState('');
             const [ibkrLastSync, setIbkrLastSync] = useState(null);
+            const [ibkrFilter, setIbkrFilter] = useState('');
+            const [ibkrSortBy, setIbkrSortBy] = useState('marketValue'); // marketValue | symbol | pnl
 
             // API key help popovers (click-to-toggle; closes on outside click / Escape)
             const [openHelp, setOpenHelp] = useState(null); // 'finnhub' | 'marketaux' | null
@@ -522,10 +521,8 @@ const firebaseConfig = {
                             setProfilePhoto(data.profilePhoto || auth.currentUser?.photoURL || '');
                             setNotesSortMode(data.notesSortMode || 'default');
                             setNotesGroupMode(data.notesGroupMode || 'category');
-                            setIbkrUseProxy(data.ibkrUseProxy ?? true);
                             setIbkrProxyBaseUrl(data.ibkrProxyBaseUrl || 'https://YOUR-STOCK-STICKIES-BACKEND.example.com');
                             setIbkrProxyApiKey(data.ibkrProxyApiKey || '');
-                            setIbkrApiBaseUrl(data.ibkrApiBaseUrl || 'https://api.ibkr.com/v1/api');
                             setIbkrAccountId(data.ibkrAccountId || '');
 
                             // Reset loading flag after state updates settle
@@ -592,10 +589,8 @@ const firebaseConfig = {
                             profilePhoto,
                             notesSortMode,
                             notesGroupMode,
-                            ibkrUseProxy,
                             ibkrProxyBaseUrl,
                             ibkrProxyApiKey,
-                            ibkrApiBaseUrl,
                             ibkrAccountId,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
@@ -641,7 +636,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrUseProxy, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrApiBaseUrl, ibkrAccountId]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId]);
 
             useEffect(() => {
                 const handleBeforeUnload = async (e) => {
@@ -660,10 +655,8 @@ const firebaseConfig = {
                             profilePhoto,
                             notesSortMode,
                             notesGroupMode,
-                            ibkrUseProxy,
                             ibkrProxyBaseUrl,
                             ibkrProxyApiKey,
-                            ibkrApiBaseUrl,
                             ibkrAccountId,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
@@ -700,7 +693,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrUseProxy, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrApiBaseUrl, ibkrAccountId]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -843,10 +836,8 @@ const firebaseConfig = {
                         profilePhoto,
                         notesSortMode,
                         notesGroupMode,
-                        ibkrUseProxy,
                         ibkrProxyBaseUrl,
                         ibkrProxyApiKey,
-                        ibkrApiBaseUrl,
                         ibkrAccountId,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
@@ -918,44 +909,24 @@ const firebaseConfig = {
 
                 if (!silent) setIbkrLoading(true);
                 try {
-                    let response;
-
-                    if (ibkrUseProxy) {
-                        if (!ibkrProxyBaseUrl.trim()) {
-                            if (!silent) setIbkrError('Add your backend proxy URL to load IBKR positions.');
-                            if (!silent) setIbkrLoading(false);
-                            return;
-                        }
-
-                        const proxyUrl = `${ibkrProxyBaseUrl.replace(/\/$/, '')}/api/ibkr/portfolio/positions`;
-                        response = await fetchWithRetry(proxyUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                ...(ibkrProxyApiKey ? { 'x-api-key': ibkrProxyApiKey.trim() } : {})
-                            },
-                            body: JSON.stringify({
-                                accountId: ibkrAccountId.trim(),
-                                pageId: 0,
-                                ibkrSessionToken: ibkrSessionToken.trim() || undefined
-                            })
-                        }, { retries: 3, backoffMs: 800, timeoutMs: 15000 });
-                    } else {
-                        if (!ibkrSessionToken.trim()) {
-                            if (!silent) setIbkrError('Add your IBKR session token (from /tickle) to load positions.');
-                            if (!silent) setIbkrLoading(false);
-                            return;
-                        }
-
-                        const positionsUrl = `${ibkrApiBaseUrl}/portfolio/${encodeURIComponent(ibkrAccountId.trim())}/positions/0`;
-                        response = await fetchWithRetry(positionsUrl, {
-                            method: 'GET',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Cookie': `api=${ibkrSessionToken.trim()}`
-                            }
-                        }, { retries: 2, backoffMs: 700, timeoutMs: 12000 });
+                    if (!ibkrProxyBaseUrl.trim()) {
+                        if (!silent) setIbkrError('Add your backend proxy URL to load IBKR positions.');
+                        if (!silent) setIbkrLoading(false);
+                        return;
                     }
+
+                    const proxyUrl = `${ibkrProxyBaseUrl.replace(/\/$/, '')}/api/ibkr/portfolio/positions`;
+                    const response = await fetchWithRetry(proxyUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(ibkrProxyApiKey ? { 'x-api-key': ibkrProxyApiKey.trim() } : {})
+                        },
+                        body: JSON.stringify({
+                            accountId: ibkrAccountId.trim(),
+                            pageId: 0
+                        })
+                    }, { retries: 3, backoffMs: 800, timeoutMs: 15000 });
 
                     const data = await response.json();
                     const normalized = Array.isArray(data)
@@ -982,7 +953,7 @@ const firebaseConfig = {
             useEffect(() => {
                 const canAutoRefresh = mainTab === 'portfolio'
                     && !!ibkrAccountId.trim()
-                    && (ibkrUseProxy ? !!ibkrProxyBaseUrl.trim() : !!ibkrSessionToken.trim());
+                    && !!ibkrProxyBaseUrl.trim();
 
                 if (!canAutoRefresh) return;
 
@@ -994,7 +965,7 @@ const firebaseConfig = {
                 }, 60000);
 
                 return () => clearInterval(intervalId);
-            }, [mainTab, ibkrAccountId, ibkrUseProxy, ibkrProxyBaseUrl, ibkrSessionToken]);
+            }, [mainTab, ibkrAccountId, ibkrProxyBaseUrl]);
 
             const handleRefreshPortfolioPrices = async () => {
                 if (!finnhubApiKey) {
@@ -1843,6 +1814,33 @@ const firebaseConfig = {
             const totalIbkrMarketValue = useMemo(() =>
                 ibkrPositions.reduce((sum, p) => sum + (Number(p.marketValue) || 0), 0),
             [ibkrPositions]);
+
+            const ibkrVisiblePositions = useMemo(() => {
+                const query = ibkrFilter.trim().toUpperCase();
+                let list = ibkrPositions;
+
+                if (query) {
+                    list = list.filter((p) => String(p.symbol || '').toUpperCase().includes(query));
+                }
+
+                const sorted = [...list].sort((a, b) => {
+                    if (ibkrSortBy === 'symbol') return String(a.symbol || '').localeCompare(String(b.symbol || ''));
+                    if (ibkrSortBy === 'pnl') return (Number(b.unrealizedPnl) || 0) - (Number(a.unrealizedPnl) || 0);
+                    return (Number(b.marketValue) || 0) - (Number(a.marketValue) || 0);
+                });
+
+                return sorted;
+            }, [ibkrPositions, ibkrFilter, ibkrSortBy]);
+
+            const ibkrConnectionStatus = useMemo(() => {
+                if (ibkrLoading) return 'syncing';
+                if (ibkrError) return 'error';
+                if (!ibkrLastSync) return 'idle';
+
+                const ageMs = Date.now() - new Date(ibkrLastSync).getTime();
+                if (ageMs > 5 * 60 * 1000) return 'stale';
+                return 'connected';
+            }, [ibkrLoading, ibkrError, ibkrLastSync]);
 
             // Update shares for a note
             const updateNoteShares = (noteId, shares) => {
@@ -3800,14 +3798,10 @@ const firebaseConfig = {
                                 <div className="p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                                     <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>IBKR Portfolio</h3>
                                     <div className="flex items-center justify-between mb-2">
-                                        <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connection Mode</span>
-                                        <button
-                                            onClick={() => setIbkrUseProxy(!ibkrUseProxy)}
-                                            className={`px-2 py-1 text-xs rounded border ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
-                                            title="Toggle between backend proxy and direct session-token mode"
-                                        >
-                                            {ibkrUseProxy ? 'Proxy (recommended)' : 'Direct (legacy)'}
-                                        </button>
+                                        <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connection</span>
+                                        <span className={`px-2 py-1 rounded text-[10px] font-semibold uppercase ${ibkrConnectionStatus === 'connected' ? 'bg-green-600/20 text-green-400' : ibkrConnectionStatus === 'syncing' ? 'bg-blue-600/20 text-blue-400' : ibkrConnectionStatus === 'stale' ? 'bg-yellow-600/20 text-yellow-400' : ibkrConnectionStatus === 'error' ? 'bg-red-600/20 text-red-400' : 'bg-gray-600/20 text-gray-400'}`}>
+                                            {ibkrConnectionStatus}
+                                        </span>
                                     </div>
                                     <div className="space-y-2">
                                         <input
@@ -3817,50 +3811,20 @@ const firebaseConfig = {
                                             placeholder="Account ID (e.g., U1234567)"
                                             className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
                                         />
-
-                                        {ibkrUseProxy ? (
-                                            <>
-                                                <input
-                                                    type="text"
-                                                    value={ibkrProxyBaseUrl}
-                                                    onChange={(e) => setIbkrProxyBaseUrl(e.target.value)}
-                                                    placeholder="Proxy URL (https://your-backend...)"
-                                                    className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                                />
-                                                <input
-                                                    type="password"
-                                                    value={ibkrProxyApiKey}
-                                                    onChange={(e) => setIbkrProxyApiKey(e.target.value)}
-                                                    placeholder="Proxy API key (optional)"
-                                                    className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                                />
-                                                <input
-                                                    type="password"
-                                                    value={ibkrSessionToken}
-                                                    onChange={(e) => setIbkrSessionToken(e.target.value)}
-                                                    placeholder="IBKR session token (temporary placeholder)"
-                                                    className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                                />
-                                            </>
-                                        ) : (
-                                            <>
-                                                <input
-                                                    type="text"
-                                                    value={ibkrApiBaseUrl}
-                                                    onChange={(e) => setIbkrApiBaseUrl(e.target.value)}
-                                                    placeholder="IBKR API base URL"
-                                                    className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                                />
-                                                <input
-                                                    type="password"
-                                                    value={ibkrSessionToken}
-                                                    onChange={(e) => setIbkrSessionToken(e.target.value)}
-                                                    placeholder="Session token from /tickle"
-                                                    className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                                />
-                                            </>
-                                        )}
-
+                                        <input
+                                            type="text"
+                                            value={ibkrProxyBaseUrl}
+                                            onChange={(e) => setIbkrProxyBaseUrl(e.target.value)}
+                                            placeholder="Proxy URL (https://your-backend...)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
+                                        <input
+                                            type="password"
+                                            value={ibkrProxyApiKey}
+                                            onChange={(e) => setIbkrProxyApiKey(e.target.value)}
+                                            placeholder="Proxy API key (optional)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
                                         <button
                                             onClick={fetchIbkrPortfolio}
                                             disabled={ibkrLoading}
@@ -3870,9 +3834,7 @@ const firebaseConfig = {
                                         </button>
                                     </div>
                                     <p className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        {ibkrUseProxy
-                                            ? 'Proxy mode keeps IBKR session/cookies server-side (recommended).'
-                                            : 'Direct mode is placeholder-only and should be replaced by proxy mode for production.'}
+                                        Proxy mode keeps IBKR session/cookies server-side (recommended).
                                     </p>
                                     {ibkrError && <p className="mt-2 text-xs text-red-400">{ibkrError}</p>}
                                     <div className={`mt-3 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -3885,13 +3847,31 @@ const firebaseConfig = {
                                     )}
                                 </div>
                                 <div className="flex-1 overflow-y-auto px-6 py-4">
+                                    <div className="flex gap-2 mb-3">
+                                        <input
+                                            type="text"
+                                            value={ibkrFilter}
+                                            onChange={(e) => setIbkrFilter(e.target.value)}
+                                            placeholder="Filter symbol..."
+                                            className={`flex-1 px-2 py-1.5 rounded border text-xs ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'}`}
+                                        />
+                                        <select
+                                            value={ibkrSortBy}
+                                            onChange={(e) => setIbkrSortBy(e.target.value)}
+                                            className={`px-2 py-1.5 rounded border text-xs ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'}`}
+                                        >
+                                            <option value="marketValue">Sort: MV</option>
+                                            <option value="pnl">Sort: PnL</option>
+                                            <option value="symbol">Sort: Symbol</option>
+                                        </select>
+                                    </div>
                                     <div className="space-y-2">
-                                        {ibkrPositions.length === 0 ? (
+                                        {ibkrVisiblePositions.length === 0 ? (
                                             <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                                 No IBKR positions loaded yet
                                             </p>
                                         ) : (
-                                            ibkrPositions.map((position, idx) => (
+                                            ibkrVisiblePositions.map((position, idx) => (
                                                 <div key={`${position.conid || position.symbol}-${idx}`} className={`p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                                                     <div className="flex items-center justify-between">
                                                         <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{position.symbol}</span>

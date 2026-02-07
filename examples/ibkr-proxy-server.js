@@ -10,6 +10,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 8787;
 const STOCK_STICKIES_PROXY_KEY = process.env.STOCK_STICKIES_PROXY_KEY || '';
 const IBKR_BASE_URL = process.env.IBKR_BASE_URL || 'https://api.ibkr.com/v1/api';
+const IBKR_SESSION_TOKEN = process.env.IBKR_SESSION_TOKEN || '';
 
 function requireProxyKey(req, res, next) {
   if (!STOCK_STICKIES_PROXY_KEY) return next();
@@ -22,17 +23,17 @@ function requireProxyKey(req, res, next) {
 
 // NOTE:
 // In production, session token should be managed server-side (gateway login flow + /tickle refresh).
-// This placeholder allows token pass-through for initial testing.
+// This placeholder reads token from server env (IBKR_SESSION_TOKEN) only.
 app.post('/api/ibkr/portfolio/positions', requireProxyKey, async (req, res) => {
   try {
-    const { accountId, pageId = 0, ibkrSessionToken } = req.body || {};
+    const { accountId, pageId = 0 } = req.body || {};
     if (!accountId) {
       return res.status(400).json({ error: 'accountId is required' });
     }
 
-    if (!ibkrSessionToken) {
-      return res.status(400).json({
-        error: 'ibkrSessionToken is required for this placeholder server. Move this token management to backend before production.'
+    if (!IBKR_SESSION_TOKEN) {
+      return res.status(500).json({
+        error: 'Server missing IBKR_SESSION_TOKEN. Configure backend session handling before production.'
       });
     }
 
@@ -41,7 +42,7 @@ app.post('/api/ibkr/portfolio/positions', requireProxyKey, async (req, res) => {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `api=${ibkrSessionToken}`
+        Cookie: `api=${IBKR_SESSION_TOKEN}`
       }
     });
 

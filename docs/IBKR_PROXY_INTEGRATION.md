@@ -17,8 +17,7 @@ Request body:
 ```json
 {
   "accountId": "U1234567",
-  "pageId": 0,
-  "ibkrSessionToken": "<temporary-placeholder-token>"
+  "pageId": 0
 }
 ```
 
@@ -33,8 +32,8 @@ Expected response:
 
 ## Production Notes
 
-1. Remove browser token dependency:
-   - Replace `ibkrSessionToken` request body usage with server-side session store.
+1. Keep browser token-free:
+   - Frontend should never send IBKR session tokens; backend owns session state.
 2. Server should own:
    - login/session establishment,
    - `/tickle` keepalive,
