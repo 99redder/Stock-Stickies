@@ -3438,10 +3438,10 @@ const firebaseConfig = {
                         </div>
 
                         {/* Main Tab Navigation */}
-                        <div className={`flex gap-1 mb-6 p-1 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+                        <div className={`flex gap-1 mb-6 p-0.5 rounded-lg w-full max-w-xl mx-auto ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
                             <button
                                 onClick={() => setMainTab('notes')}
-                                className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all ${
+                                className={`flex-1 py-2 px-6 rounded-lg font-semibold transition-all ${
                                     mainTab === 'notes'
                                         ? (darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow')
                                         : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
@@ -3451,7 +3451,7 @@ const firebaseConfig = {
                             </button>
                             <button
                                 onClick={() => setMainTab('portfolio')}
-                                className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all ${
+                                className={`flex-1 py-2 px-6 rounded-lg font-semibold transition-all ${
                                     mainTab === 'portfolio'
                                         ? (darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow')
                                         : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
@@ -3846,7 +3846,7 @@ const firebaseConfig = {
 
                         {(mainTab === 'notes') ? (
                             /* Watch List Panel */
-                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '23%', maxHeight: 'calc(100vh - 9rem)'}}>
+                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '23%', maxHeight: 'calc(100vh - 9rem)', marginTop: '86px'}}>
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
                                         <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
@@ -3909,7 +3909,7 @@ const firebaseConfig = {
                             </div>
                         ) : (mainTab === 'portfolio' && isOwnerPortfolioUser ? (
                             /* IBKR Portfolio Panel (Portfolio tab) */
-                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '35%', maxHeight: 'calc(100vh - 9rem)'}}>
+                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '35%', maxHeight: 'calc(100vh - 9rem)', marginTop: '86px'}}>
                                 <div className="p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                                     <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>IBKR Portfolio</h3>
                                     <div className="flex items-center justify-between mb-2">
@@ -4002,7 +4002,7 @@ const firebaseConfig = {
                                         )}
                                     </div>
                                 </div>
-                                <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-6 px-6 pb-6">
+                                <div className="mt-8 pt-6 px-6 pb-6 border-t-2 border-gray-300 dark:border-gray-600">
                                     <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Robinhood Crypto API</h3>
                                     <div className="flex items-center justify-between mb-2">
                                         <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connection</span>
