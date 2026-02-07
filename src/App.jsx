@@ -3909,7 +3909,7 @@ const firebaseConfig = {
                             </div>
                         ) : (mainTab === 'portfolio' && isOwnerPortfolioUser ? (
                             /* IBKR Portfolio Panel (Portfolio tab) */
-                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '35%', maxHeight: 'calc(100vh - 9rem)'}}>
+                            <div className={`flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`} style={{width: '35%', maxHeight: 'calc(100vh - 9rem)', marginTop: '190px'}}>
                                 <div className="p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                                     <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>IBKR Portfolio</h3>
                                     <div className="flex items-center justify-between mb-2">
