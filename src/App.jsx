@@ -118,11 +118,11 @@ const firebaseConfig = {
             if (!key || typeof key !== 'string') return false;
             const trimmed = key.trim();
             if (trimmed.length === 0 || trimmed.length > MAX_API_KEY_LENGTH) return false;
-            
+
             // Basic format validation - alphanumeric and common special chars
             const apiKeyRegex = /^[a-zA-Z0-9\-_]+$/;
             if (!apiKeyRegex.test(trimmed)) return false;
-            
+
             // Type-specific validation
             if (type === 'finnhub') {
                 // Finnhub keys are typically 20+ characters
@@ -224,10 +224,10 @@ const firebaseConfig = {
                 false,
                 ['deriveBits', 'deriveKey']
             );
-            
+
             // Use a fixed salt for consistency (in production, consider storing per-user salt)
             const salt = encoder.encode('StockStickiesSalt2024');
-            
+
             const derivedKey = await crypto.subtle.deriveKey(
                 {
                     name: 'PBKDF2',
@@ -240,32 +240,32 @@ const firebaseConfig = {
                 false,
                 ['encrypt', 'decrypt']
             );
-            
+
             return derivedKey;
         };
 
         // Encrypt API key before storing in Firestore
         const encryptApiKey = async (apiKey, userId) => {
             if (!apiKey || !userId) return null;
-            
+
             try {
                 const key = await getEncryptionKey(userId);
                 const encoder = new TextEncoder();
                 const data = encoder.encode(apiKey);
-                
+
                 // Generate a random IV for each encryption
                 const iv = crypto.getRandomValues(new Uint8Array(12));
-                
+
                 const encrypted = await crypto.subtle.encrypt(
                     { name: 'AES-GCM', iv: iv },
                     key,
                     data
                 );
-                
+
                 // Convert to base64 for storage in Firestore
                 const encryptedArray = Array.from(new Uint8Array(encrypted));
                 const ivArray = Array.from(iv);
-                
+
                 return {
                     encrypted: btoa(String.fromCharCode(...encryptedArray)),
                     iv: btoa(String.fromCharCode(...ivArray)),
@@ -281,24 +281,24 @@ const firebaseConfig = {
         const decryptApiKey = async (encryptedData, userId) => {
             if (!encryptedData) return '';
             if (!userId) return '';
-            
+
             // Handle legacy unencrypted keys (for migration)
             if (typeof encryptedData === 'string') {
                 return encryptedData; // Return as-is if it's a plain string
             }
-            
+
             // Handle encrypted keys
             if (!encryptedData || typeof encryptedData !== 'object') {
                 return '';
             }
-            
+
             if (!encryptedData.encrypted || !encryptedData.iv) {
                 return '';
             }
-            
+
             try {
                 const key = await getEncryptionKey(userId);
-                
+
                 // Decode from base64
                 const encrypted = Uint8Array.from(
                     atob(encryptedData.encrypted),
@@ -308,13 +308,13 @@ const firebaseConfig = {
                     atob(encryptedData.iv),
                     c => c.charCodeAt(0)
                 );
-                
+
                 const decrypted = await crypto.subtle.decrypt(
                     { name: 'AES-GCM', iv: iv },
                     key,
                     encrypted
                 );
-                
+
                 const decoder = new TextDecoder();
                 return decoder.decode(decrypted);
             } catch (error) {
@@ -424,6 +424,8 @@ const firebaseConfig = {
             const [mainTab, setMainTab] = useState('notes');
             const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
             const [notesGroupMode, setNotesGroupMode] = useState('category'); // 'category' | 'size'
+            const [hideLegendPanel, setHideLegendPanel] = useState(false);
+            const [hideToolbarPanel, setHideToolbarPanel] = useState(false);
             const [draggingCategory, setDraggingCategory] = useState(null);
             const [dragOverCategory, setDragOverCategory] = useState(null);
             const chartRef = useRef(null);
@@ -533,6 +535,8 @@ const firebaseConfig = {
                             setProfilePhoto(data.profilePhoto || auth.currentUser?.photoURL || '');
                             setNotesSortMode(data.notesSortMode || 'default');
                             setNotesGroupMode(data.notesGroupMode || 'category');
+                            setHideLegendPanel(data.hideLegendPanel || false);
+                            setHideToolbarPanel(data.hideToolbarPanel || false);
                             setIbkrProxyBaseUrl(data.ibkrProxyBaseUrl || 'https://YOUR-STOCK-STICKIES-BACKEND.example.com');
                             setIbkrProxyApiKey(data.ibkrProxyApiKey || '');
                             setIbkrAccountId(data.ibkrAccountId || '');
@@ -542,7 +546,7 @@ const firebaseConfig = {
 
                             // Reset loading flag after state updates settle
                             setTimeout(() => { isLoadingRef.current = false; }, 200);
-                            
+
                             // Handle API keys - support both encrypted and plain text formats
                             // Try to decrypt, but fallback to plain string if decryption fails or data is plain text
                             const handleApiKey = async (apiKeyData, setter) => {
@@ -550,13 +554,13 @@ const firebaseConfig = {
                                     setter('');
                                     return;
                                 }
-                                
+
                                 // If it's already a plain string, use it directly
                                 if (typeof apiKeyData === 'string') {
                                     setter(apiKeyData);
                                     return;
                                 }
-                                
+
                                 // If it's an object, try to decrypt
                                 if (typeof apiKeyData === 'object' && apiKeyData.encrypted && apiKeyData.iv) {
                                     try {
@@ -570,7 +574,7 @@ const firebaseConfig = {
                                     setter(''); // Unknown format
                                 }
                             };
-                            
+
                             // Decrypt API keys asynchronously (non-blocking)
                             handleApiKey(data.finnhubApiKey, setFinnhubApiKey);
                             handleApiKey(data.marketauxApiKey, setMarketauxApiKey);
@@ -591,7 +595,7 @@ const firebaseConfig = {
                     const timeout = setTimeout(async () => {
                         setSyncStatus('syncing');
                         const userId = auth.currentUser.uid;
-                        
+
                         const updateData = {
                             notes,
                             colorLabels,
@@ -604,6 +608,8 @@ const firebaseConfig = {
                             profilePhoto,
                             notesSortMode,
                             notesGroupMode,
+                            hideLegendPanel,
+                            hideToolbarPanel,
                             ibkrProxyBaseUrl,
                             ibkrProxyApiKey,
                             ibkrAccountId,
@@ -612,7 +618,7 @@ const firebaseConfig = {
                             rhApiKeyId,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
-                        
+
                         // Try to encrypt API keys, but fallback to plain text if encryption fails
                         // This ensures data is always saved even if encryption has issues
                         if (finnhubApiKey) {
@@ -626,7 +632,7 @@ const firebaseConfig = {
                         } else {
                             updateData.finnhubApiKey = null;
                         }
-                        
+
                         if (marketauxApiKey) {
                             try {
                                 const encrypted = await encryptApiKey(marketauxApiKey, userId);
@@ -638,7 +644,7 @@ const firebaseConfig = {
                         } else {
                             updateData.marketauxApiKey = null;
                         }
-                        
+
                         db.collection('users').doc(userId).set(updateData, { merge: false }).then(() => {
                             setSyncStatus('synced');
                             setTimeout(() => { isSavingRef.current = false; }, 1000);
@@ -654,7 +660,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId, rhProxyBaseUrl, rhProxyApiKey, rhApiKeyId]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, hideLegendPanel, hideToolbarPanel, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId, rhProxyBaseUrl, rhProxyApiKey, rhApiKeyId]);
 
             useEffect(() => {
                 const handleBeforeUnload = async (e) => {
@@ -673,6 +679,8 @@ const firebaseConfig = {
                             profilePhoto,
                             notesSortMode,
                             notesGroupMode,
+                            hideLegendPanel,
+                            hideToolbarPanel,
                             ibkrProxyBaseUrl,
                             ibkrProxyApiKey,
                             ibkrAccountId,
@@ -681,7 +689,7 @@ const firebaseConfig = {
                             rhApiKeyId,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
-                        
+
                         // Try to encrypt, but fallback to plain text if encryption fails
                         if (finnhubApiKey) {
                             try {
@@ -693,7 +701,7 @@ const firebaseConfig = {
                         } else {
                             updateData.finnhubApiKey = null;
                         }
-                        
+
                         if (marketauxApiKey) {
                             try {
                                 const encrypted = await encryptApiKey(marketauxApiKey, userId);
@@ -704,7 +712,7 @@ const firebaseConfig = {
                         } else {
                             updateData.marketauxApiKey = null;
                         }
-                        
+
                         // Use sendBeacon or fire-and-forget to avoid blocking page unload
                         db.collection('users').doc(userId).set(updateData, { merge: false }).catch(() => {
                             // Ignore errors on unload
@@ -714,7 +722,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId, rhProxyBaseUrl, rhProxyApiKey, rhApiKeyId]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, hideLegendPanel, hideToolbarPanel, ibkrProxyBaseUrl, ibkrProxyApiKey, ibkrAccountId, rhProxyBaseUrl, rhProxyApiKey, rhApiKeyId]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -2084,7 +2092,7 @@ const firebaseConfig = {
                                             <ol className="list-decimal list-inside space-y-1">
                                                 <li>Click <span className="text-white font-semibold">Continue with Google</span>.</li>
                                                 <li>Select your Google account.</li>
-                                                <li>That’s it — your account is created automatically on first sign-in.</li>
+                                                <li>That's it - your account is created automatically on first sign-in.</li>
                                             </ol>
                                         </div>
 
@@ -2095,7 +2103,7 @@ const firebaseConfig = {
                                                 <li>Enter your email and a password.</li>
                                                 <li>Click <span className="text-white font-semibold">Sign Up with Email</span> to create your account.</li>
                                             </ol>
-                                            <p className="text-xs text-gray-400">Tip: If you already have an account, click “Login” instead.</p>
+                                            <p className="text-xs text-gray-400">Tip: If you already have an account, click "Login" instead.</p>
                                         </div>
 
                                         <div className="space-y-2">
@@ -2322,7 +2330,7 @@ const firebaseConfig = {
                                             <ol className="list-decimal list-inside space-y-1 text-gray-300">
                                                 <li>Click <span className="text-white font-semibold">New Note</span>.</li>
                                                 <li>Type a ticker (e.g., <span className="text-white font-semibold">AMZN</span>) and your thesis/plan.</li>
-                                                <li>Your notes sync automatically when you’re signed in.</li>
+                                                <li>Your notes sync automatically when you're signed in.</li>
                                             </ol>
                                         </div>
                                         <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
@@ -3274,21 +3282,18 @@ const firebaseConfig = {
                                     <span>!</span>
                                     {!nickname && (
                                         <button onClick={() => setHideEmail(!hideEmail)} className="ml-1 opacity-60 hover:opacity-100">
-                                            {hideEmail ? <Eye size={14}/> : <EyeOff size={14}/>}
+                                            {hideEmail ? <Eye size={14}/> : <EyeOff size={14}/>} 
                                         </button>
                                     )}
-                                </p>
-
-                                <div className="mt-3">
                                     <button
                                         type="button"
                                         onClick={() => setQuickStartOpen(true)}
-                                        className={`px-3 py-1.5 rounded-md text-xs font-extrabold tracking-wide border border-transparent bg-gradient-to-r from-fuchsia-500 via-purple-500 to-emerald-400 text-gray-900 shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60 ${darkMode ? 'ring-1 ring-white/10 shadow-fuchsia-500/25' : 'ring-1 ring-black/5 shadow-fuchsia-500/15'}`}
+                                        className={`ml-3 px-3 py-1 rounded-md text-xs font-extrabold tracking-wide border border-transparent bg-gradient-to-r from-fuchsia-500 via-purple-500 to-emerald-400 text-gray-900 shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60 ${darkMode ? 'ring-1 ring-white/10 shadow-fuchsia-500/25' : 'ring-1 ring-black/5 shadow-fuchsia-500/15'}`}
                                         title="Open Quick Start Guide"
                                     >
                                         Quick Start Guide
                                     </button>
-                                </div>
+                                </p>
                             </div>
                             <div className="flex gap-3 items-center">
                                 {!finnhubApiKey && (
@@ -3440,6 +3445,16 @@ const firebaseConfig = {
 
                         {mainTab === 'notes' ? (
                         <>
+                        <div className="flex justify-end mb-2">
+                            <button
+                                type="button"
+                                onClick={() => setHideLegendPanel(!hideLegendPanel)}
+                                className={`px-3 py-1.5 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}
+                            >
+                                {hideLegendPanel ? 'Show Legend' : 'Hide Legend'}
+                            </button>
+                        </div>
+                        {!hideLegendPanel && (
                         <div className={`rounded-lg shadow-md p-3 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <div className="flex flex-wrap items-center gap-4">
                                 <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-700'}`}>Legend:</span>
@@ -3548,8 +3563,20 @@ const firebaseConfig = {
                                 )}
                             </div>
                         </div>
+                        )}
+
+                        <div className="flex justify-end mb-2">
+                            <button
+                                type="button"
+                                onClick={() => setHideToolbarPanel(!hideToolbarPanel)}
+                                className={`px-3 py-1.5 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}
+                            >
+                                {hideToolbarPanel ? 'Show Toolbar' : 'Hide Toolbar'}
+                            </button>
+                        </div>
 
                         {/* Functionality Panel (below legend, above notes) */}
+                        {!hideToolbarPanel && (
                         <div className={`rounded-lg shadow-md p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <button
@@ -3616,6 +3643,7 @@ const firebaseConfig = {
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {unclassifiedNotes.length > 0 && (
                             <div className="mb-6">
@@ -3879,80 +3907,6 @@ const firebaseConfig = {
                                         )}
                                     </div>
                                 </div>
-
-                                <div className="border-t border-gray-200 dark:border-gray-700 p-6">
-                                    <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Robinhood Crypto API</h3>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connection</span>
-                                        <span className={`px-2 py-1 rounded text-[10px] font-semibold uppercase ${rhConnectionStatus === 'connected' ? 'bg-green-600/20 text-green-400' : rhConnectionStatus === 'syncing' ? 'bg-blue-600/20 text-blue-400' : rhConnectionStatus === 'stale' ? 'bg-yellow-600/20 text-yellow-400' : rhConnectionStatus === 'error' ? 'bg-red-600/20 text-red-400' : 'bg-gray-600/20 text-gray-400'}`}>
-                                            {rhConnectionStatus}
-                                        </span>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <input
-                                            type="text"
-                                            value={rhProxyBaseUrl}
-                                            onChange={(e) => setRhProxyBaseUrl(e.target.value)}
-                                            placeholder="Proxy URL (https://your-backend...)"
-                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                        />
-                                        <input
-                                            type="password"
-                                            value={rhProxyApiKey}
-                                            onChange={(e) => setRhProxyApiKey(e.target.value)}
-                                            placeholder="Proxy API key (optional)"
-                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                        />
-                                        <input
-                                            type="text"
-                                            value={rhApiKeyId}
-                                            onChange={(e) => setRhApiKeyId(e.target.value)}
-                                            placeholder="Robinhood API key ID (placeholder)"
-                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
-                                        />
-                                        <button
-                                            onClick={fetchRobinhoodCryptoPortfolio}
-                                            disabled={rhLoading}
-                                            className={`w-full px-3 py-2 rounded text-sm font-semibold ${rhLoading ? 'bg-blue-400 cursor-not-allowed text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
-                                        >
-                                            {rhLoading ? 'Loading Robinhood...' : 'Load Robinhood Crypto Positions'}
-                                        </button>
-                                    </div>
-                                    <p className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        Placeholder plan: backend signs Robinhood crypto requests (Ed25519) and returns holdings only.
-                                    </p>
-                                    {rhError && <p className="mt-2 text-xs text-red-400">{rhError}</p>}
-                                    <div className={`mt-3 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        Total Robinhood Crypto Value: <span className="font-semibold">${totalRhMarketValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                    </div>
-                                    {rhLastSync && (
-                                        <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                            Last sync: {new Date(rhLastSync).toLocaleString()}
-                                        </div>
-                                    )}
-
-                                    <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
-                                        {rhPositions.length === 0 ? (
-                                            <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                No Robinhood crypto positions loaded yet
-                                            </p>
-                                        ) : (
-                                            rhPositions.map((position, idx) => (
-                                                <div key={`${position.symbol}-${idx}`} className={`p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{position.symbol}</span>
-                                                        <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{position.quantity}</span>
-                                                    </div>
-                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        MV: ${Number(position.marketValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        {' · '}
-                                                        PnL: {Number(position.unrealizedPnl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </div>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
                             </div>
                         ) : (
                             /* IBKR Portfolio Panel (Portfolio tab) */
@@ -4038,6 +3992,79 @@ const firebaseConfig = {
                                                     <div className="flex items-center justify-between">
                                                         <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{position.symbol}</span>
                                                         <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{position.position} sh</span>
+                                                    </div>
+                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        MV: ${Number(position.marketValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        {' · '}
+                                                        PnL: {Number(position.unrealizedPnl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="border-t border-gray-200 dark:border-gray-700 p-6">
+                                    <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Robinhood Crypto API</h3>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connection</span>
+                                        <span className={`px-2 py-1 rounded text-[10px] font-semibold uppercase ${rhConnectionStatus === 'connected' ? 'bg-green-600/20 text-green-400' : rhConnectionStatus === 'syncing' ? 'bg-blue-600/20 text-blue-400' : rhConnectionStatus === 'stale' ? 'bg-yellow-600/20 text-yellow-400' : rhConnectionStatus === 'error' ? 'bg-red-600/20 text-red-400' : 'bg-gray-600/20 text-gray-400'}`}>
+                                            {rhConnectionStatus}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <input
+                                            type="text"
+                                            value={rhProxyBaseUrl}
+                                            onChange={(e) => setRhProxyBaseUrl(e.target.value)}
+                                            placeholder="Proxy URL (https://your-backend...)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
+                                        <input
+                                            type="password"
+                                            value={rhProxyApiKey}
+                                            onChange={(e) => setRhProxyApiKey(e.target.value)}
+                                            placeholder="Proxy API key (optional)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
+                                        <input
+                                            type="text"
+                                            value={rhApiKeyId}
+                                            onChange={(e) => setRhApiKeyId(e.target.value)}
+                                            placeholder="Robinhood API key ID (placeholder)"
+                                            className={`w-full px-3 py-2 rounded border-2 text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        />
+                                        <button
+                                            onClick={fetchRobinhoodCryptoPortfolio}
+                                            disabled={rhLoading}
+                                            className={`w-full px-3 py-2 rounded text-sm font-semibold ${rhLoading ? 'bg-blue-400 cursor-not-allowed text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
+                                        >
+                                            {rhLoading ? 'Loading Robinhood...' : 'Load Robinhood Crypto Positions'}
+                                        </button>
+                                    </div>
+                                    <p className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Placeholder plan: backend signs Robinhood crypto requests (Ed25519) and returns holdings only.
+                                    </p>
+                                    {rhError && <p className="mt-2 text-xs text-red-400">{rhError}</p>}
+                                    <div className={`mt-3 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Total Robinhood Crypto Value: <span className="font-semibold">${totalRhMarketValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                    {rhLastSync && (
+                                        <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                            Last sync: {new Date(rhLastSync).toLocaleString()}
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
+                                        {rhPositions.length === 0 ? (
+                                            <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                No Robinhood crypto positions loaded yet
+                                            </p>
+                                        ) : (
+                                            rhPositions.map((position, idx) => (
+                                                <div key={`${position.symbol}-${idx}`} className={`p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{position.symbol}</span>
+                                                        <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{position.quantity}</span>
                                                     </div>
                                                     <div className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                         MV: ${Number(position.marketValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
