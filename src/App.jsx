@@ -2428,7 +2428,25 @@ const firebaseConfig = {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <h3 className="text-white font-semibold text-base">4) Group by Category vs Size + reorder categories</h3>
+                                    <h3 className="text-white font-semibold text-base">4) Show/Hide Legend and Toolbar panels</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                        <div className="space-y-2">
+                                            <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                                                <li>In the Notes tab header, use <span className="text-white font-semibold">Show Legend</span>/<span className="text-white font-semibold">Hide Legend</span>.</li>
+                                                <li>Use <span className="text-white font-semibold">Show Toolbar</span>/<span className="text-white font-semibold">Hide Toolbar</span> to collapse the Functionality panel.</li>
+                                                <li>Your visibility choices are saved and will persist the next time you open the app.</li>
+                                            </ol>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-3 -mt-1">
+                                            <p className="text-xs text-gray-300 leading-relaxed">
+                                                Tip: Hide both panels for a cleaner note-reading view, then turn them back on anytime from the same header buttons.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">5) Group by Category vs Size + reorder categories</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                         <div className="space-y-2">
                                             <ol className="list-decimal list-inside space-y-1 text-gray-300">
@@ -2485,7 +2503,7 @@ const firebaseConfig = {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <h3 className="text-white font-semibold text-base">5) Customize categories</h3>
+                                    <h3 className="text-white font-semibold text-base">6) Customize categories</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                         <div className="space-y-2">
                                             <ol className="list-decimal list-inside space-y-1 text-gray-300">
