@@ -2668,10 +2668,10 @@ const firebaseConfig = {
 
                 {expandedNote && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white w-full h-full max-w-[95vw] max-h-[95vh] rounded-lg shadow-2xl overflow-hidden flex flex-col">
-                            <div className="flex justify-between items-center p-4 border-b">
-                                <h2 className="text-2xl font-bold text-gray-800">{expandedNote.title || 'Untitled Note'}</h2>
-                                <button onClick={() => setExpandedNote(null)} className="text-gray-600 hover:text-gray-800">
+                        <div className={`w-full h-full max-w-[95vw] max-h-[95vh] rounded-lg shadow-2xl overflow-hidden flex flex-col ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white'}`}>
+                            <div className={`flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{expandedNote.title || 'Untitled Note'}</h2>
+                                <button onClick={() => setExpandedNote(null)} className={`${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-800'}`}>
                                     <X size={24}/>
                                 </button>
                             </div>
@@ -2682,7 +2682,7 @@ const firebaseConfig = {
                                         value={expandedNote.title || ''}
                                         onChange={(e) => updateNoteTitle(expandedNote.id, e.target.value)}
                                         placeholder="TICKER"
-                                        className="w-full bg-transparent border-none outline-none text-gray-800 placeholder-gray-500 font-bold text-3xl mb-2 uppercase"
+                                        className={`w-full bg-transparent border-none outline-none font-bold text-3xl mb-2 uppercase ${darkMode ? 'text-gray-900 placeholder-gray-700' : 'text-gray-800 placeholder-gray-500'}`}
                                         style={{letterSpacing: '0.05em'}}
                                         maxLength={MAX_TITLE_LENGTH}
                                     />
@@ -2720,10 +2720,10 @@ const firebaseConfig = {
                                         maxLength={MAX_CONTENT_LENGTH}
                                     />
                                 </div>
-                                <div className="w-1/2 bg-gray-50 overflow-auto p-6">
+                                <div className={`w-1/2 overflow-auto p-6 ${darkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
                                     {stockLoading ? (
                                         <div className="flex items-center justify-center h-full">
-                                            <p className="text-gray-500">Loading stock data...</p>
+                                            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Loading stock data...</p>
                                         </div>
                                     ) : stockError ? (
                                         <div className="flex items-center justify-center h-full">
@@ -2731,10 +2731,10 @@ const firebaseConfig = {
                                         </div>
                                     ) : stockData ? (
                                         <div className="space-y-6">
-                                            <div className="bg-white rounded-lg p-6 shadow">
-                                                <h3 className="text-3xl font-bold text-gray-800 mb-2">{stockData.symbol}</h3>
+                                            <div className={`${darkMode ? 'bg-gray-900 border border-gray-700 [&_p.text-gray-500]:text-gray-400 [&_p.text-gray-900]:text-gray-100 [&_span.text-gray-400]:text-gray-500' : 'bg-white'} rounded-lg p-6 shadow`}>
+                                                <h3 className={`text-3xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{stockData.symbol}</h3>
                                                 <div className="flex items-baseline gap-3">
-                                                    <span className="text-5xl font-bold text-gray-900">
+                                                    <span className={`text-5xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                         {stockData.currency === 'USD' ? '$' : ''}{stockData.currentPrice?.toFixed(2)}
                                                     </span>
                                                     <span className={`text-2xl font-semibold ${stockData.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -2743,8 +2743,8 @@ const firebaseConfig = {
                                                 </div>
                                             </div>
 
-                                            <div className="bg-white rounded-lg p-6 shadow">
-                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Market Data</h4>
+                                            <div className={`${darkMode ? 'bg-gray-900 border border-gray-700 [&_p.text-gray-500]:text-gray-400 [&_p.text-gray-900]:text-gray-100 [&_span.text-gray-400]:text-gray-500' : 'bg-white'} rounded-lg p-6 shadow`}>
+                                                <h4 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-gray-100' : 'text-gray-700'}`}>Market Data</h4>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
                                                         <p className="text-sm text-gray-500">Previous Close</p>
@@ -2807,8 +2807,8 @@ const firebaseConfig = {
                                                 </div>
                                             </div>
 
-                                            <div className="bg-white rounded-lg p-6 shadow">
-                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Fundamentals</h4>
+                                            <div className={`${darkMode ? 'bg-gray-900 border border-gray-700 [&_p.text-gray-500]:text-gray-400 [&_p.text-gray-900]:text-gray-100 [&_span.text-gray-400]:text-gray-500' : 'bg-white'} rounded-lg p-6 shadow`}>
+                                                <h4 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-gray-100' : 'text-gray-700'}`}>Fundamentals</h4>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     {stockData.peTTM && (
                                                         <div>
@@ -2859,25 +2859,25 @@ const firebaseConfig = {
                                             </div>
 
                                             {/* Today's News Section */}
-                                            <div className="bg-white rounded-lg p-6 shadow">
-                                                <h4 className="text-lg font-semibold text-gray-700 mb-4">Today's News</h4>
+                                            <div className={`${darkMode ? 'bg-gray-900 border border-gray-700 [&_span.text-gray-400]:text-gray-500 [&_span.text-gray-300]:text-gray-600' : 'bg-white'} rounded-lg p-6 shadow`}>
+                                                <h4 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-gray-100' : 'text-gray-700'}`}>Today's News</h4>
                                                 {newsLoading ? (
                                                     <div className="flex items-center justify-center py-4">
                                                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-                                                        <span className="ml-2 text-gray-500">Loading news...</span>
+                                                        <span className={`ml-2 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Loading news...</span>
                                                     </div>
                                                 ) : !marketauxApiKey ? (
-                                                    <p className="text-sm text-gray-500 text-center py-4">
+                                                    <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
                                                         Add your MarketAux API key to see today's news with sentiment analysis.
                                                         <br/>
-                                                        <a href="https://www.marketaux.com/register" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                                                        <a href="https://www.marketaux.com/register" target="_blank" rel="noopener noreferrer" className={`${darkMode ? 'text-blue-400' : 'text-blue-500'} hover:underline`}>
                                                             Get a free API key
                                                         </a>
                                                     </p>
                                                 ) : newsData && newsData.length > 0 ? (
                                                     <div className="space-y-3 max-h-64 overflow-y-auto">
                                                         {newsData.map((article, index) => (
-                                                            <div key={index} className="border-b border-gray-100 pb-3 last:border-0">
+                                                            <div key={index} className={`border-b pb-3 last:border-0 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                                                 <div className="flex items-start gap-2">
                                                                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
                                                                         article.sentiment === 'bullish' ? 'bg-green-100 text-green-700' :
@@ -2888,7 +2888,7 @@ const firebaseConfig = {
                                                                          article.sentiment === 'bearish' ? '↓ Bearish' : '• Neutral'}
                                                                     </span>
                                                                     <a href={article.url} target="_blank" rel="noopener noreferrer"
-                                                                       className="text-sm font-medium text-gray-800 hover:text-blue-600 line-clamp-2">
+                                                                       className={`text-sm font-medium line-clamp-2 ${darkMode ? 'text-gray-100 hover:text-blue-400' : 'text-gray-800 hover:text-blue-600'}`}>
                                                                         {article.title}
                                                                     </a>
                                                                 </div>
@@ -2903,7 +2903,7 @@ const firebaseConfig = {
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <p className="text-sm text-gray-500 text-center py-4">
+                                                    <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
                                                         No news available for today
                                                     </p>
                                                 )}
@@ -2911,7 +2911,7 @@ const firebaseConfig = {
 
                                         </div>
                                     ) : (
-                                        <div className="flex items-center justify-center h-full text-gray-500">
+                                        <div className={`flex items-center justify-center h-full ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
                                             <p>Enter a ticker symbol to view stock data</p>
                                         </div>
                                     )}
