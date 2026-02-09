@@ -3142,6 +3142,15 @@ const firebaseConfig = {
                                             >
                                                 {sharesPrivacyMode === 'hide' ? 'Show Shares' : 'Hide Shares'}
                                             </button>
+                                            <button
+                                                onClick={handleRefreshPortfolioPrices}
+                                                disabled={portfolioLoading}
+                                                className={`ml-2 px-3 py-1.5 rounded-lg text-xs font-semibold border inline-flex items-center gap-2 ${portfolioLoading ? (darkMode ? 'border-blue-400/40 text-blue-300/70 bg-blue-500/10 cursor-not-allowed' : 'border-blue-300 text-blue-400 bg-blue-50 cursor-not-allowed') : (darkMode ? 'border-blue-400/60 text-blue-200 hover:text-blue-100 hover:border-blue-300 hover:bg-blue-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50')}`}
+                                                title="Refresh portfolio prices"
+                                            >
+                                                {portfolioLoading && <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
+                                                {portfolioLoading ? 'Refreshing...' : 'Refresh Prices'}
+                                            </button>
                                         </>
                                     )}
                                 </p>
