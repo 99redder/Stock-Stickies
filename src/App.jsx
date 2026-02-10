@@ -2338,7 +2338,7 @@ const firebaseConfig = {
                                     <h3 className="text-white font-semibold text-base">Optional: API keys (quotes + news)</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                         <div className="space-y-2">
-                                            <p className="text-gray-300">You can use the app without keys, but keys unlock live quotes and news.</p>
+                                            <p className="text-gray-300">You can use the app without keys, but keys unlock live quotes and news. Finnhub and MarketAux both have generous free tiers, so you can usually get everything working without spending money.</p>
                                             <ul className="list-disc list-inside space-y-1 text-gray-300">
                                                 <li>Finnhub → quotes, fundamentals, earnings dates</li>
                                                 <li>MarketAux → news feed</li>
