@@ -3690,7 +3690,7 @@ const firebaseConfig = {
 
                         {(mainTab === 'notes') ? (
                             /* Watch List Panel */
-                            <div className={`flex-shrink-0 w-full xl:w-[23%] mt-4 xl:mt-[198px] max-h-none xl:max-h-[calc(100vh-15rem)] ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`}>
+                            <div className={`flex-shrink-0 w-full xl:w-[23%] mt-4 xl:mt-[198px] ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`}>
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
                                         <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
@@ -3716,7 +3716,7 @@ const firebaseConfig = {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto px-6 pb-6">
+                                <div className="px-6 pb-6">
                                     <div className="space-y-2">
                                         {watchList.length === 0 ? (
                                             <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -3748,7 +3748,7 @@ const firebaseConfig = {
                             </div>
                         ) : (mainTab === 'portfolio' ? (
                             /* Watch List Panel */
-                            <div className={`flex-shrink-0 w-full xl:w-[23%] mt-4 xl:mt-[198px] max-h-none xl:max-h-[calc(100vh-15rem)] ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`}>
+                            <div className={`flex-shrink-0 w-full xl:w-[23%] mt-4 xl:mt-[198px] ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg flex flex-col`}>
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
                                         <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
@@ -3774,7 +3774,7 @@ const firebaseConfig = {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto px-6 pb-6">
+                                <div className="px-6 pb-6">
                                     <div className="space-y-2">
                                         {watchList.length === 0 ? (
                                             <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
