@@ -3813,15 +3813,17 @@ const firebaseConfig = {
                     </div>
                 </div>
 
-                {/* Fixed Footer */}
-                <footer className="fixed bottom-0 left-0 right-0 bg-black text-white text-center py-2 text-xs sm:text-sm whitespace-nowrap">
-                    <span>© {new Date().getFullYear()} Stock Stickies. All rights reserved.</span>
-                    <span className="mx-2">·</span>
-                    <button type="button" onClick={() => setLegalView('privacy')} className="text-red-400 hover:text-blue-300">Privacy Policy</button>
-                    <span className="mx-2">·</span>
-                    <button type="button" onClick={() => setLegalView('terms')} className="text-red-400 hover:text-blue-300">Terms of Use</button>
-                    <span className="mx-2">·</span>
-                    Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noopener noreferrer" className="text-red-400 hover:text-blue-300">Eastern Shore AI, LLC</a>
+                {/* Footer */}
+                <footer className="bg-black text-white text-center mt-12 py-4 px-4 text-xs sm:text-sm">
+                    <div className="mb-1">© {new Date().getFullYear()} Stock Stickies. All rights reserved.</div>
+                    <div className="mb-1 space-x-2">
+                        <button type="button" onClick={() => setLegalView('privacy')} className="text-red-400 hover:text-blue-300">Privacy Policy</button>
+                        <span>·</span>
+                        <button type="button" onClick={() => setLegalView('terms')} className="text-red-400 hover:text-blue-300">Terms of Use</button>
+                    </div>
+                    <div>
+                        Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noopener noreferrer" className="text-red-400 hover:text-blue-300">Eastern Shore AI, LLC</a>
+                    </div>
                 </footer>
                 </>
             );
