@@ -2099,10 +2099,15 @@ const firebaseConfig = {
                                 {!isSignup && !isResettingPassword && <button onClick={() => setIsResettingPassword(true)} className="text-gray-400 hover:text-gray-300 text-sm">Forgot password?</button>}
                                 {isResettingPassword && <button onClick={() => setIsResettingPassword(false)} className="text-gray-400 hover:text-gray-300 text-sm">Back to login</button>}
                             </div>
-                            <div className="mt-6 text-center text-xs text-gray-400 space-x-2">
-                                <button type="button" onClick={() => setLegalView('privacy')} className="hover:text-gray-200">Privacy Policy</button>
-                                <span>·</span>
-                                <button type="button" onClick={() => setLegalView('terms')} className="hover:text-gray-200">Terms of Use</button>
+                            <div className="mt-6 text-center text-xs text-gray-400 space-y-2">
+                                <div>
+                                    Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:text-cyan-200">Eastern Shore AI, LLC</a>
+                                </div>
+                                <div className="space-x-2">
+                                    <button type="button" onClick={() => setLegalView('privacy')} className="hover:text-gray-200">Privacy Policy</button>
+                                    <span>·</span>
+                                    <button type="button" onClick={() => setLegalView('terms')} className="hover:text-gray-200">Terms of Use</button>
+                                </div>
                             </div>
                         </div>
                     </div>
