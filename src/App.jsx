@@ -3814,15 +3814,15 @@ const firebaseConfig = {
                 </div>
 
                 {/* Footer */}
-                <footer className="bg-black text-white text-center mt-12 py-4 px-4 text-xs sm:text-sm">
+                <footer className={`text-center pt-8 pb-4 px-4 text-xs sm:text-sm border-t ${darkMode ? 'bg-gray-900 text-white border-gray-700' : 'bg-white text-gray-800 border-gray-200'}`}>
                     <div className="mb-1">© {new Date().getFullYear()} Stock Stickies. All rights reserved.</div>
                     <div className="mb-1 space-x-2">
-                        <button type="button" onClick={() => setLegalView('privacy')} className="text-red-400 hover:text-blue-300">Privacy Policy</button>
+                        <button type="button" onClick={() => setLegalView('privacy')} className={`${darkMode ? 'text-red-400 hover:text-blue-300' : 'text-blue-700 hover:text-blue-900'}`}>Privacy Policy</button>
                         <span>·</span>
-                        <button type="button" onClick={() => setLegalView('terms')} className="text-red-400 hover:text-blue-300">Terms of Use</button>
+                        <button type="button" onClick={() => setLegalView('terms')} className={`${darkMode ? 'text-red-400 hover:text-blue-300' : 'text-blue-700 hover:text-blue-900'}`}>Terms of Use</button>
                     </div>
                     <div>
-                        Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noopener noreferrer" className="text-red-400 hover:text-blue-300">Eastern Shore AI, LLC</a>
+                        Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noopener noreferrer" className={`${darkMode ? 'text-red-400 hover:text-blue-300' : 'text-blue-700 hover:text-blue-900'}`}>Eastern Shore AI, LLC</a>
                     </div>
                 </footer>
                 </>
