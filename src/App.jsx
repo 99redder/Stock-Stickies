@@ -416,6 +416,7 @@ const firebaseConfig = {
             const [categoryToDelete, setCategoryToDelete] = useState(null);
             const [reassignTarget, setReassignTarget] = useState(null);
             const [editingCategoryColor, setEditingCategoryColor] = useState(null);
+            const [noteToDelete, setNoteToDelete] = useState(null);
             const [expandedNote, setExpandedNote] = useState(null);
             const [stockData, setStockData] = useState(null);
             const [stockLoading, setStockLoading] = useState(false);
@@ -1148,9 +1149,13 @@ const firebaseConfig = {
             };
 
             const deleteNote = (noteId) => {
-                if (window.confirm('Are you sure you want to delete this note?')) {
-                    setNotes(notes.filter(n => n.id !== noteId));
-                }
+                setNoteToDelete(noteId);
+            };
+
+            const confirmDeleteNote = () => {
+                if (!noteToDelete) return;
+                setNotes(notes.filter(n => n.id !== noteToDelete));
+                setNoteToDelete(null);
             };
 
             // Category management functions
@@ -2936,6 +2941,46 @@ const firebaseConfig = {
                                         <p>No stock data available</p>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Delete Note Confirmation Modal */}
+                {noteToDelete && (
+                    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                        <div className={`w-full max-w-md rounded-xl shadow-2xl border ${darkMode ? 'bg-gray-900 border-fuchsia-500/40' : 'bg-white border-fuchsia-200'}`}>
+                            <div className={`flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                <h2 className={`text-xl font-black tracking-wide ${darkMode ? 'text-fuchsia-300' : 'text-fuchsia-700'}`}>
+                                    Confirm Delete
+                                </h2>
+                                <button onClick={() => setNoteToDelete(null)} className={`${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}>
+                                    <X size={24}/>
+                                </button>
+                            </div>
+                            <div className="p-6">
+                                <div className={`mb-5 p-4 rounded-lg border ${darkMode ? 'bg-gray-800 border-cyan-500/30' : 'bg-cyan-50 border-cyan-200'}`}>
+                                    <p className={`text-sm leading-relaxed ${darkMode ? 'text-cyan-100' : 'text-cyan-900'}`}>
+                                        This note will be permanently deleted from your stickies and portfolio view.
+                                    </p>
+                                </div>
+                                <p className={`text-sm mb-6 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                    Are you sure you want to continue?
+                                </p>
+                                <div className="flex gap-3 justify-end">
+                                    <button
+                                        onClick={() => setNoteToDelete(null)}
+                                        className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    >
+                                        Keep Note
+                                    </button>
+                                    <button
+                                        onClick={confirmDeleteNote}
+                                        className="px-4 py-2 rounded-lg font-semibold text-white bg-gradient-to-r from-fuchsia-600 to-cyan-500 hover:from-fuchsia-500 hover:to-cyan-400"
+                                    >
+                                        Delete Note
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
