@@ -69,14 +69,14 @@ import ChartDataLabels from 'chartjs-plugin-datalabels'
 import html2canvas from 'html2canvas'
 import NoteCard from './components/NoteCard.jsx'
 
-// my credentials from Firebase
+// Firebase web config (public client config; restrict key in Google Cloud Console)
 const firebaseConfig = {
-  apiKey: "__REMOVED_GOOGLE_API_KEY__",
-  authDomain: "red-s-stickies.firebaseapp.com",
-  projectId: "red-s-stickies",
-  storageBucket: "red-s-stickies.firebasestorage.app",
-  messagingSenderId: "896398882822",
-  appId: "1:896398882822:web:dcfc3217a949601916eb87"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || ''
 
 };
 
@@ -89,9 +89,12 @@ const firebaseConfig = {
                 firebase.initializeApp(firebaseConfig);
             }
 
-            // Initialize App Check with reCAPTCHA v3
-            const appCheck = firebase.appCheck();
-            appCheck.activate('6Ld6FE4sAAAAANxjvc3zRPUlAvZ5s-0gpKNUcRpN', true);
+            // Initialize App Check with reCAPTCHA v3 (public site key)
+            const appCheckSiteKey = import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY || '';
+            if (appCheckSiteKey) {
+                const appCheck = firebase.appCheck();
+                appCheck.activate(appCheckSiteKey, true);
+            }
 
             db = firebase.firestore();
             auth = firebase.auth();
