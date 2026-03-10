@@ -462,13 +462,28 @@ const firebaseConfig = {
             const [newsLoading, setNewsLoading] = useState(false);
             const [watchListModalTicker, setWatchListModalTicker] = useState(null);
             const portfolioCardRef = useRef(null);
+
+            const normalizeTicker = (value) => String(value || '').trim().toUpperCase();
+            const normalizePriceMap = (prices) => {
+                const normalized = {};
+                if (!prices || typeof prices !== 'object') return normalized;
+                Object.entries(prices).forEach(([key, value]) => {
+                    const ticker = normalizeTicker(key);
+                    const numeric = typeof value === 'number' ? value : parseFloat(value);
+                    if (ticker && Number.isFinite(numeric) && numeric > 0) {
+                        normalized[ticker] = numeric;
+                    }
+                });
+                return normalized;
+            };
+
             // Load cached portfolio prices immediately on init for instant chart display
             const [portfolioPrices, setPortfolioPrices] = useState(() => {
                 try {
                     const cached = localStorage.getItem('portfolio_prices_cache');
                     if (cached) {
                         const { prices } = JSON.parse(cached);
-                        return prices || {};
+                        return normalizePriceMap(prices || {});
                     }
                 } catch (e) {}
                 return {};
@@ -978,22 +993,25 @@ const firebaseConfig = {
                 const prices = {};
                 for (const note of portfolioNotes) {
                     try {
+                        const ticker = normalizeTicker(note.title);
                         const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                            symbol: note.title,
+                            symbol: ticker,
                             token: finnhubApiKey
                         });
                         const response = await fetch(portfolioQuoteUrl);
                         const data = await response.json();
-                        if (data.c) prices[note.title] = data.c;
+                        const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
+                        if (ticker && Number.isFinite(currentPrice) && currentPrice > 0) prices[ticker] = currentPrice;
                     } catch (e) {
                         console.error(`Failed to fetch ${note.title}`);
                     }
                 }
 
-                setPortfolioPrices(prices);
+                const normalizedPrices = normalizePriceMap(prices);
+                setPortfolioPrices(normalizedPrices);
                 setPortfolioLoading(false);
                 localStorage.setItem('portfolio_prices_cache', JSON.stringify({
-                    prices,
+                    prices: normalizedPrices,
                     timestamp: Date.now(),
                     fetchedWindow: `manual-${Date.now()}`
                 }));
@@ -1771,23 +1789,26 @@ const firebaseConfig = {
                     const prices = {};
                     for (const note of portfolioNotes) {
                         try {
+                            const ticker = normalizeTicker(note.title);
                             const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                                symbol: note.title,
+                                symbol: ticker,
                                 token: finnhubApiKey
                             });
                             const response = await fetch(portfolioQuoteUrl);
                             const data = await response.json();
-                            if (data.c) prices[note.title] = data.c;
+                            const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
+                            if (ticker && Number.isFinite(currentPrice) && currentPrice > 0) prices[ticker] = currentPrice;
                         } catch (e) {
                             console.error(`Failed to fetch ${note.title}`);
                         }
                     }
+                    const normalizedPrices = normalizePriceMap(prices);
                     if (isMounted) {
-                        setPortfolioPrices(prices);
+                        setPortfolioPrices(normalizedPrices);
                         setPortfolioLoading(false);
                         // Cache the prices with timestamp and window identifier
                         localStorage.setItem('portfolio_prices_cache', JSON.stringify({
-                            prices,
+                            prices: normalizedPrices,
                             timestamp: Date.now(),
                             fetchedWindow: currentWindow || `manual-${Date.now()}`
                         }));
