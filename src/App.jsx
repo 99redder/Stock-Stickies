@@ -990,7 +990,7 @@ const firebaseConfig = {
                 }
 
                 setPortfolioLoading(true);
-                const prices = {};
+                const prices = { ...normalizePriceMap(portfolioPrices) };
                 for (const note of portfolioNotes) {
                     try {
                         const ticker = normalizeTicker(note.title);
@@ -1001,7 +1001,9 @@ const firebaseConfig = {
                         const response = await fetch(portfolioQuoteUrl);
                         const data = await response.json();
                         const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
-                        if (ticker && Number.isFinite(currentPrice) && currentPrice > 0) prices[ticker] = currentPrice;
+                        if (ticker && Number.isFinite(currentPrice) && currentPrice > 0) {
+                            prices[ticker] = currentPrice;
+                        }
                     } catch (e) {
                         console.error(`Failed to fetch ${note.title}`);
                     }
@@ -1786,7 +1788,7 @@ const firebaseConfig = {
                 setPortfolioLoading(true);
 
                 const fetchPrices = async () => {
-                    const prices = {};
+                    const prices = { ...normalizePriceMap(portfolioPrices) };
                     for (const note of portfolioNotes) {
                         try {
                             const ticker = normalizeTicker(note.title);
