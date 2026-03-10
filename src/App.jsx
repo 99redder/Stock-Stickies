@@ -1822,9 +1822,10 @@ const firebaseConfig = {
             // Portfolio computed data - derived from notes
             const portfolioData = useMemo(() => {
                 const holdings = portfolioNotes.map(n => {
-                    const price = portfolioPrices[n.title] || 0;
+                    const ticker = normalizeTicker(n.title);
+                    const price = portfolioPrices[ticker] || 0;
                     const value = price * n.shares;
-                    return { ticker: n.title, shares: n.shares, price, value, noteId: n.id, color: n.color };
+                    return { ticker: ticker || n.title, shares: n.shares, price, value, noteId: n.id, color: n.color };
                 });
                 const totalValue = holdings.reduce((sum, h) => sum + h.value, 0);
                 return holdings.map(h => ({
@@ -1836,6 +1837,11 @@ const firebaseConfig = {
             const totalPortfolioValue = useMemo(() =>
                 portfolioData.reduce((sum, h) => sum + h.value, 0),
             [portfolioData]);
+
+            const missingPortfolioPriceCount = useMemo(
+                () => portfolioData.filter(h => !Number.isFinite(h.price) || h.price <= 0).length,
+                [portfolioData]
+            );
 
             // Update shares for a note
             const updateNoteShares = (noteId, shares) => {
@@ -3803,8 +3809,15 @@ const firebaseConfig = {
                                             {portfolioLoading && <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
                                             {portfolioLoading ? 'Refreshing...' : 'Refresh Prices'}
                                         </button>
-                                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                            {portfolioData.length} position{portfolioData.length !== 1 ? 's' : ''}
+                                        <div className="flex flex-col items-end gap-1">
+                                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                {portfolioData.length} position{portfolioData.length !== 1 ? 's' : ''}
+                                            </div>
+                                            {missingPortfolioPriceCount > 0 && (
+                                                <div className={`text-xs font-semibold px-2 py-1 rounded ${darkMode ? 'bg-amber-500/15 text-amber-300 border border-amber-400/30' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                                                    {missingPortfolioPriceCount} position{missingPortfolioPriceCount !== 1 ? 's' : ''} missing live price
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
