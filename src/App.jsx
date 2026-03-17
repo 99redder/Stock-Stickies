@@ -405,6 +405,8 @@ const firebaseConfig = {
             const isSavingRef = useRef(false);
             const isLoadingRef = useRef(false);
             const saveTimeoutRef = useRef(null);
+            const lastBackupSignatureRef = useRef('');
+            const lastBackupAtRef = useRef(0);
             const [notes, setNotes] = useState([]);
             const [nextId, setNextId] = useState(1);
             const [colorLabels, setColorLabels] = useState(DEFAULT_COLOR_LABELS);
@@ -707,7 +709,7 @@ const firebaseConfig = {
                             updateData.marketauxApiKey = null;
                         }
 
-                        saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData).then(() => {
+                        saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData, { reason: 'autosave' }).then(() => {
                             setSyncStatus('synced');
                             setTimeout(() => { isSavingRef.current = false; }, 1000);
                         }).catch((err) => {
@@ -771,7 +773,7 @@ const firebaseConfig = {
                         }
 
                         // Use sendBeacon or fire-and-forget to avoid blocking page unload
-                        saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData).catch(() => {
+                        saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData, { reason: 'beforeunload' }).catch(() => {
                             // Ignore errors on unload
                         });
                     }
@@ -972,7 +974,7 @@ const firebaseConfig = {
                     }
 
                     try {
-                        await saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData);
+                        await saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData, { reason: 'manual-sync', forceBackup: true, minIntervalMs: 0 });
                         console.log('Sync completed successfully');
                     } catch (err) {
                         console.error('Sync error:', err);
