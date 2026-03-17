@@ -570,6 +570,9 @@ const firebaseConfig = {
                 const unsubscribe = auth.onAuthStateChanged((user) => {
                     if (user) {
                         setCurrentUser(user.email);
+                        maybeAdoptCanonicalUserDoc(user).then((migrated) => {
+                            if (migrated) showBrandedNotice('We found your existing StickyNotes data and reattached it to this login method.', 'Account recovered');
+                        }).catch((err) => console.warn('Account adoption check failed:', err));
                         // If this is a Google sign-in (or any provider with an avatar), auto-seed from auth photoURL
                         setProfilePhoto((prev) => prev || user.photoURL || '');
                     } else {
@@ -704,7 +707,7 @@ const firebaseConfig = {
                             updateData.marketauxApiKey = null;
                         }
 
-                        db.collection('users').doc(userId).set(updateData, { merge: false }).then(() => {
+                        saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData).then(() => {
                             setSyncStatus('synced');
                             setTimeout(() => { isSavingRef.current = false; }, 1000);
                         }).catch((err) => {
@@ -768,7 +771,7 @@ const firebaseConfig = {
                         }
 
                         // Use sendBeacon or fire-and-forget to avoid blocking page unload
-                        db.collection('users').doc(userId).set(updateData, { merge: false }).catch(() => {
+                        saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData).catch(() => {
                             // Ignore errors on unload
                         });
                     }
@@ -791,12 +794,31 @@ const firebaseConfig = {
                     return;
                 }
                 try {
-                    if (isSignup) await auth.createUserWithEmailAndPassword(loginUsername, loginPassword);
+                    const normalizedLoginEmail = normalizeEmail(loginUsername);
+                    if (isSignup) {
+                        const methods = await auth.fetchSignInMethodsForEmail(normalizedLoginEmail);
+                        if (methods.includes('google.com')) {
+                            setLoginError('That email already exists with Google sign-in. Use Continue with Google first, then link email/password from inside the account later.');
+                            return;
+                        }
+                        if (methods.length && !methods.includes('password')) {
+                            setLoginError(`That email already exists with a different sign-in method: ${methods.join(', ')}`);
+                            return;
+                        }
+                        await auth.createUserWithEmailAndPassword(normalizedLoginEmail, loginPassword);
+                    }
                     else if (isResettingPassword) {
-                        await auth.sendPasswordResetEmail(loginUsername);
+                        await auth.sendPasswordResetEmail(normalizedLoginEmail);
                         setResetSuccess(true);
                         setIsResettingPassword(false);
-                    } else await auth.signInWithEmailAndPassword(loginUsername, loginPassword);
+                    } else {
+                        const methods = await auth.fetchSignInMethodsForEmail(normalizedLoginEmail);
+                        if (methods.includes('google.com') && !methods.includes('password')) {
+                            setLoginError('This email is set up with Google sign-in. Use Continue with Google.');
+                            return;
+                        }
+                        await auth.signInWithEmailAndPassword(normalizedLoginEmail, loginPassword);
+                    }
                     setLoginUsername('');
                     setLoginPassword('');
                 } catch (error) {
@@ -815,6 +837,10 @@ const firebaseConfig = {
                     const provider = new firebase.auth.GoogleAuthProvider();
                     await auth.signInWithPopup(provider);
                 } catch (error) {
+                    if (error?.code === 'auth/account-exists-with-different-credential') {
+                        setLoginError('That email already exists with email/password. Sign in with your password first, then we can link Google to the same account.');
+                        return;
+                    }
                     setLoginError(error.message);
                 }
             };
@@ -946,7 +972,7 @@ const firebaseConfig = {
                     }
 
                     try {
-                        await db.collection('users').doc(userId).set(updateData, { merge: false });
+                        await saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData);
                         console.log('Sync completed successfully');
                     } catch (err) {
                         console.error('Sync error:', err);
