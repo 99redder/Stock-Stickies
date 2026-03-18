@@ -162,6 +162,11 @@ const firebaseConfig = {
         const MAX_API_KEY_LENGTH = 200;
 
         // Input validation functions
+        const normalizeEmail = (email) => {
+            if (!email || typeof email !== 'string') return '';
+            return email.trim().toLowerCase();
+        };
+
         const validateTicker = (ticker) => {
             if (!ticker || typeof ticker !== 'string') return false;
             const trimmed = ticker.trim().toUpperCase();
