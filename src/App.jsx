@@ -396,6 +396,15 @@ const firebaseConfig = {
             }
         };
 
+        // Strip undefined values from a data object before writing to Firestore
+        const sanitizeUserDocForSave = (data) => {
+            const out = {};
+            for (const [k, v] of Object.entries(data)) {
+                if (v !== undefined) out[k] = v;
+            }
+            return out;
+        };
+
         function StickyNotesApp() {
             const [currentUser, setCurrentUser] = useState(null);
             const [loginUsername, setLoginUsername] = useState('');
@@ -937,6 +946,49 @@ const firebaseConfig = {
                 setNotes(notes.map(n => n.id === noteId ? {...n, title: sanitized} : n));
                 if (expandedNote && expandedNote.id === noteId) {
                     setExpandedNote({...expandedNote, title: sanitized});
+                }
+            };
+
+            // Write user data to Firestore and optionally create a snapshot backup
+            const saveUserDoc = async (userId, email, data, options = {}) => {
+                const { reason = 'save', forceBackup = false, minIntervalMs = 10 * 60 * 1000 } = options;
+                const cleanData = sanitizeUserDocForSave(data);
+                await db.collection('users').doc(userId).set(cleanData, { merge: false });
+
+                const now = Date.now();
+                const signature = JSON.stringify({ notes: cleanData.notes, categories: cleanData.categories });
+                const timeSinceLastBackup = now - lastBackupAtRef.current;
+                const signatureChanged = signature !== lastBackupSignatureRef.current;
+
+                if (forceBackup || (signatureChanged && timeSinceLastBackup >= minIntervalMs)) {
+                    lastBackupSignatureRef.current = signature;
+                    lastBackupAtRef.current = now;
+                    const snapshotData = {
+                        ...cleanData,
+                        backupCreatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        backupReason: reason
+                    };
+                    db.collection('users').doc(userId).collection('snapshots').add(snapshotData)
+                        .catch((err) => console.warn('Snapshot backup failed:', err));
+                }
+            };
+
+            // Check if a user's data exists under an old email-keyed doc and migrate it to UID key
+            const maybeAdoptCanonicalUserDoc = async (user) => {
+                if (!db || !user?.uid) return false;
+                try {
+                    const uidDoc = await db.collection('users').doc(user.uid).get();
+                    if (uidDoc.exists) return false;
+                    if (!user.email) return false;
+                    // Legacy docs were keyed by sanitized email (dots replaced with underscores)
+                    const emailKey = normalizeEmail(user.email).replace(/\./g, '_');
+                    const emailDoc = await db.collection('users').doc(emailKey).get();
+                    if (!emailDoc.exists) return false;
+                    await db.collection('users').doc(user.uid).set(emailDoc.data(), { merge: false });
+                    return true;
+                } catch (err) {
+                    console.warn('maybeAdoptCanonicalUserDoc error:', err);
+                    return false;
                 }
             };
 
