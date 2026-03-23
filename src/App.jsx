@@ -758,11 +758,15 @@ const firebaseConfig = {
             }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, nickname, profilePhoto, notesSortMode, notesGroupMode, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
-                const handleBeforeUnload = async (e) => {
+                // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
+                // before any awaited Promise resolves, so async encryption cannot be used here.
+                // We save API keys as plain text in this emergency path — better than losing data.
+                // Firestore persistence (IndexedDB) queues the write locally even if the tab closes
+                // before the server ACK, so the data survives.
+                const handleBeforeUnload = () => {
                     if (currentUser && auth.currentUser && db) {
                         const userId = auth.currentUser.uid;
-
-                        const updateData = {
+                        const updateData = sanitizeUserDocForSave({
                             notes,
                             colorLabels,
                             categories,
@@ -777,36 +781,13 @@ const firebaseConfig = {
                             hideLegendPanel,
                             hideToolbarPanel,
                             sharesPrivacyMode,
+                            // Store as plain text — async encryption cannot run in beforeunload
+                            finnhubApiKey: finnhubApiKey || null,
+                            marketauxApiKey: marketauxApiKey || null,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        };
-
-                        // Try to encrypt, but fallback to plain text if encryption fails
-                        if (finnhubApiKey) {
-                            try {
-                                const encrypted = await encryptApiKey(finnhubApiKey, userId);
-                                updateData.finnhubApiKey = encrypted || finnhubApiKey;
-                            } catch (err) {
-                                updateData.finnhubApiKey = finnhubApiKey;
-                            }
-                        } else {
-                            updateData.finnhubApiKey = null;
-                        }
-
-                        if (marketauxApiKey) {
-                            try {
-                                const encrypted = await encryptApiKey(marketauxApiKey, userId);
-                                updateData.marketauxApiKey = encrypted || marketauxApiKey;
-                            } catch (err) {
-                                updateData.marketauxApiKey = marketauxApiKey;
-                            }
-                        } else {
-                            updateData.marketauxApiKey = null;
-                        }
-
-                        // Use sendBeacon or fire-and-forget to avoid blocking page unload
-                        saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData, { reason: 'beforeunload' }).catch(() => {
-                            // Ignore errors on unload
                         });
+                        // Fire-and-forget — Firestore persistence queues this to IndexedDB synchronously
+                        db.collection('users').doc(userId).set(updateData, { merge: false });
                     }
                 };
 
