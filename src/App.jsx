@@ -1088,7 +1088,7 @@ const firebaseConfig = {
                 if (cashSecuredPutsSortMode === 'obligation_asc') return getPutObligation(a) - getPutObligation(b);
                 return String(a.ticker || '').localeCompare(String(b.ticker || ''));
             });
-            const portfolioTickerKey = useMemo(() => portfolioNotes.map(n => `${normalizeTicker(n.title)}:${n.shares || 0}`).sort().join('|'), [portfolioNotes]);
+            const portfolioTickerKey = portfolioNotes.map(n => `${normalizeTicker(n.title)}:${n.shares || 0}`).sort().join('|');
 
             const addCashSecuredPut = () => {
                 const ticker = sanitizeTicker(newPutTicker);
