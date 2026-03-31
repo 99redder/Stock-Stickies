@@ -498,6 +498,57 @@ const firebaseConfig = {
             const [newPutExpiry, setNewPutExpiry] = useState('');
             const [editingPutId, setEditingPutId] = useState(null);
             const [cashSecuredPutsSortMode, setCashSecuredPutsSortMode] = useState('alpha');
+
+            const parseMoneyNumber = (value) => {
+                const n = parseFloat(String(value || '').replace(/[^0-9.\-]/g, ''));
+                return Number.isFinite(n) ? n : 0;
+            };
+
+            const formatUsd = (value) => new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                maximumFractionDigits: 2,
+            }).format(Number(value || 0));
+
+            const getPutObligation = (put) => parseMoneyNumber(put?.strike) * parseMoneyNumber(put?.qty) * 100;
+            const totalPutObligation = cashSecuredPuts.reduce((sum, put) => sum + getPutObligation(put), 0);
+            const sortedCashSecuredPuts = [...cashSecuredPuts].sort((a, b) => {
+                if (cashSecuredPutsSortMode === 'obligation_desc') return getPutObligation(b) - getPutObligation(a);
+                if (cashSecuredPutsSortMode === 'obligation_asc') return getPutObligation(a) - getPutObligation(b);
+                return String(a.ticker || '').localeCompare(String(b.ticker || ''));
+            });
+
+            const addCashSecuredPut = () => {
+                const ticker = sanitizeTicker(newPutTicker);
+                const strike = String(newPutStrike || '').trim();
+                const qty = String(newPutQty || '').trim();
+                const expiry = String(newPutExpiry || '').trim();
+                if (!ticker || !strike || !qty || !expiry) return;
+                if (editingPutId) {
+                    setCashSecuredPuts((prev) => prev.map((item) => item.id === editingPutId ? { ...item, ticker, strike, qty, expiry } : item));
+                } else {
+                    setCashSecuredPuts((prev) => ([...prev, { id: Date.now(), ticker, strike, qty, expiry }]));
+                }
+                setNewPutTicker('');
+                setNewPutStrike('');
+                setNewPutQty('');
+                setNewPutExpiry('');
+                setEditingPutId(null);
+                setShowCashSecuredPutModal(false);
+            };
+
+            const startEditCashSecuredPut = (put) => {
+                setEditingPutId(put.id);
+                setNewPutTicker(put.ticker || '');
+                setNewPutStrike(put.strike || '');
+                setNewPutQty(put.qty || '');
+                setNewPutExpiry(put.expiry || '');
+                setShowCashSecuredPutModal(true);
+            };
+
+            const removeCashSecuredPut = (id) => {
+                setCashSecuredPuts((prev) => prev.filter((item) => item.id !== id));
+            };
             const portfolioCardRef = useRef(null);
 
             const normalizeTicker = (value) => String(value || '').trim().toUpperCase();
@@ -1072,56 +1123,6 @@ const firebaseConfig = {
 
 
 
-            const parseMoneyNumber = (value) => {
-                const n = parseFloat(String(value || '').replace(/[^0-9.\-]/g, ''));
-                return Number.isFinite(n) ? n : 0;
-            };
-
-            const formatUsd = (value) => new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-                maximumFractionDigits: 2,
-            }).format(Number(value || 0));
-
-            const getPutObligation = (put) => parseMoneyNumber(put?.strike) * parseMoneyNumber(put?.qty) * 100;
-            const totalPutObligation = cashSecuredPuts.reduce((sum, put) => sum + getPutObligation(put), 0);
-            const sortedCashSecuredPuts = [...cashSecuredPuts].sort((a, b) => {
-                if (cashSecuredPutsSortMode === 'obligation_desc') return getPutObligation(b) - getPutObligation(a);
-                if (cashSecuredPutsSortMode === 'obligation_asc') return getPutObligation(a) - getPutObligation(b);
-                return String(a.ticker || '').localeCompare(String(b.ticker || ''));
-            });
-
-            const addCashSecuredPut = () => {
-                const ticker = sanitizeTicker(newPutTicker);
-                const strike = String(newPutStrike || '').trim();
-                const qty = String(newPutQty || '').trim();
-                const expiry = String(newPutExpiry || '').trim();
-                if (!ticker || !strike || !qty || !expiry) return;
-                if (editingPutId) {
-                    setCashSecuredPuts((prev) => prev.map((item) => item.id === editingPutId ? { ...item, ticker, strike, qty, expiry } : item));
-                } else {
-                    setCashSecuredPuts((prev) => ([...prev, { id: Date.now(), ticker, strike, qty, expiry }]));
-                }
-                setNewPutTicker('');
-                setNewPutStrike('');
-                setNewPutQty('');
-                setNewPutExpiry('');
-                setEditingPutId(null);
-                setShowCashSecuredPutModal(false);
-            };
-
-            const startEditCashSecuredPut = (put) => {
-                setEditingPutId(put.id);
-                setNewPutTicker(put.ticker || '');
-                setNewPutStrike(put.strike || '');
-                setNewPutQty(put.qty || '');
-                setNewPutExpiry(put.expiry || '');
-                setShowCashSecuredPutModal(true);
-            };
-
-            const removeCashSecuredPut = (id) => {
-                setCashSecuredPuts((prev) => prev.filter((item) => item.id !== id));
-            };
             const addToWatchList = () => {
                 const sanitized = sanitizeTicker(newWatchTicker);
                 if (!sanitized) {
