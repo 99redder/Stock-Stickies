@@ -4201,21 +4201,52 @@ const firebaseConfig = {
                                             <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Cash Secured Puts</h3>
                                             <div className={`text-sm mt-1 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Total buying obligation: {formatUsd(totalPutObligation)}</div>
                                         </div>
-                                        <select
-                                            value={cashSecuredPutsSortMode}
-                                            onChange={(e) => setCashSecuredPutsSortMode(e.target.value)}
-                                            className={`ml-3 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'}`}
-                                        >
-                                            <option value="alpha">Alphabetical</option>
-                                            <option value="obligation_desc">Obligation High → Low</option>
-                                            <option value="obligation_asc">Obligation Low → High</option>
-                                        </select>
                                         <button
                                             onClick={() => setShowCashSecuredPutModal(true)}
                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded shadow"
                                             title="Add cash secured put"
                                         >
                                             <Plus size={18}/>
+                                        </button>
+                                    </div>
+                                    <div className={`inline-flex rounded-lg p-1 mb-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                        <button
+                                            onClick={() => setCashSecuredPutsSortMode('alpha')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${cashSecuredPutsSortMode === 'alpha' ? (darkMode ? 'bg-blue-500 text-white' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200')}`}
+                                        >
+                                            A–Z
+                                        </button>
+                                        <button
+                                            onClick={() => setCashSecuredPutsSortMode('obligation_desc')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${cashSecuredPutsSortMode === 'obligation_desc' ? (darkMode ? 'bg-blue-500 text-white' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200')}`}
+                                        >
+                                            High → Low
+                                        </button>
+                                        <button
+                                            onClick={() => setCashSecuredPutsSortMode('obligation_asc')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${cashSecuredPutsSortMode === 'obligation_asc' ? (darkMode ? 'bg-blue-500 text-white' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200')}`}
+                                        >
+                                            Low → High
+                                        </button>
+                                    </div>
+                                    <div className={`inline-flex rounded-lg p-1 mb-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                        <button
+                                            onClick={() => setCashSecuredPutsSortMode('alpha')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${cashSecuredPutsSortMode === 'alpha' ? (darkMode ? 'bg-blue-500 text-white' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200')}`}
+                                        >
+                                            A–Z
+                                        </button>
+                                        <button
+                                            onClick={() => setCashSecuredPutsSortMode('obligation_desc')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${cashSecuredPutsSortMode === 'obligation_desc' ? (darkMode ? 'bg-blue-500 text-white' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200')}`}
+                                        >
+                                            High → Low
+                                        </button>
+                                        <button
+                                            onClick={() => setCashSecuredPutsSortMode('obligation_asc')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${cashSecuredPutsSortMode === 'obligation_asc' ? (darkMode ? 'bg-blue-500 text-white' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200')}`}
+                                        >
+                                            Low → High
                                         </button>
                                     </div>
                                     <div className="space-y-2 mb-4">
@@ -4307,15 +4338,6 @@ const firebaseConfig = {
                                             <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Cash Secured Puts</h3>
                                             <div className={`text-sm mt-1 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Total buying obligation: {formatUsd(totalPutObligation)}</div>
                                         </div>
-                                        <select
-                                            value={cashSecuredPutsSortMode}
-                                            onChange={(e) => setCashSecuredPutsSortMode(e.target.value)}
-                                            className={`ml-3 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'}`}
-                                        >
-                                            <option value="alpha">Alphabetical</option>
-                                            <option value="obligation_desc">Obligation High → Low</option>
-                                            <option value="obligation_asc">Obligation Low → High</option>
-                                        </select>
                                         <button
                                             onClick={() => setShowCashSecuredPutModal(true)}
                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded shadow"
