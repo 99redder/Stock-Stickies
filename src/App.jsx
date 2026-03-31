@@ -1082,13 +1082,13 @@ const firebaseConfig = {
             }).format(Number(value || 0));
 
             const getPutObligation = (put) => parseMoneyNumber(put?.strike) * parseMoneyNumber(put?.qty) * 100;
+            const portfolioTickerKey = portfolioNotes.map(n => `${normalizeTicker(n.title)}:${n.shares || 0}`).sort().join('|');
             const totalPutObligation = cashSecuredPuts.reduce((sum, put) => sum + getPutObligation(put), 0);
             const sortedCashSecuredPuts = [...cashSecuredPuts].sort((a, b) => {
                 if (cashSecuredPutsSortMode === 'obligation_desc') return getPutObligation(b) - getPutObligation(a);
                 if (cashSecuredPutsSortMode === 'obligation_asc') return getPutObligation(a) - getPutObligation(b);
                 return String(a.ticker || '').localeCompare(String(b.ticker || ''));
             });
-            const portfolioTickerKey = portfolioNotes.map(n => `${normalizeTicker(n.title)}:${n.shares || 0}`).sort().join('|');
 
             const addCashSecuredPut = () => {
                 const ticker = sanitizeTicker(newPutTicker);
