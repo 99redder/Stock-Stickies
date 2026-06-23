@@ -183,51 +183,52 @@ const firebaseConfig = {
             '#0f766e', '#b91c1c', '#2563eb', '#be123c', '#4d7c0f',
             '#c2410c', '#4338ca', '#047857', '#991b1b', '#0369a1'
         ];
-        const layoutTreemapRows = (rows, width = 100, height = 100) => {
-            const validRows = rows
-                .map(row => row.filter(item => item.value > 0))
-                .filter(row => row.length > 0);
-            const rowValues = validRows.map(row => row.reduce((sum, item) => sum + item.value, 0));
-            const total = rowValues.reduce((sum, value) => sum + value, 0);
-            if (!total) return [];
-
-            const minRowHeight = Math.min(8, (height / validRows.length) * 0.7);
-            const heights = rowValues.map(value => (value / total) * height);
-            const locked = heights.map(rowHeight => rowHeight < minRowHeight);
-            const lockedHeight = heights.reduce((sum, rowHeight, index) => sum + (locked[index] ? minRowHeight : 0), 0);
-            const unlockedValue = rowValues.reduce((sum, value, index) => sum + (locked[index] ? 0 : value), 0);
-            if (lockedHeight < height && unlockedValue > 0) {
-                heights.forEach((_, index) => {
-                    if (locked[index]) {
-                        heights[index] = minRowHeight;
-                    } else {
-                        heights[index] = ((height - lockedHeight) * rowValues[index]) / unlockedValue;
-                    }
-                });
-            }
+        const layoutPortfolioMajorTiles = (tiles, width = 100, height = 100) => {
+            const validTiles = tiles
+                .filter(tile => tile.value > 0)
+                .sort((a, b) => b.value - a.value);
+            const totalValue = validTiles.reduce((sum, tile) => sum + tile.value, 0);
+            if (!totalValue) return [];
 
             const out = [];
-            let y = 0;
-            validRows.forEach((row, rowIndex) => {
-                const rowHeight = rowIndex === validRows.length - 1 ? Math.max(0, height - y) : heights[rowIndex];
-                const rowValue = rowValues[rowIndex];
-                let x = 0;
-                row.forEach((item, itemIndex) => {
-                    const itemWidth = itemIndex === row.length - 1 ? Math.max(0, width - x) : (item.value / rowValue) * width;
-                    out.push({ ...item, x, y, w: itemWidth, h: rowHeight });
-                    x += itemWidth;
-                });
-                y += rowHeight;
-            });
+            const partition = (items, x, y, w, h) => {
+                if (items.length === 1) {
+                    out.push({ ...items[0], x, y, w, h });
+                    return;
+                }
+
+                const groupTotal = items.reduce((sum, item) => sum + item.value, 0);
+                const half = groupTotal / 2;
+                let splitIndex = 1;
+                let running = 0;
+                let bestGap = Infinity;
+                for (let index = 0; index < items.length - 1; index += 1) {
+                    running += items[index].value;
+                    const gap = Math.abs(half - running);
+                    if (gap < bestGap) {
+                        bestGap = gap;
+                        splitIndex = index + 1;
+                    }
+                }
+
+                const first = items.slice(0, splitIndex);
+                const second = items.slice(splitIndex);
+                const firstValue = first.reduce((sum, item) => sum + item.value, 0);
+                const firstShare = groupTotal ? firstValue / groupTotal : 0.5;
+
+                if (w >= h) {
+                    const firstW = w * firstShare;
+                    partition(first, x, y, firstW, h);
+                    partition(second, x + firstW, y, w - firstW, h);
+                } else {
+                    const firstH = h * firstShare;
+                    partition(first, x, y, w, firstH);
+                    partition(second, x, y + firstH, w, h - firstH);
+                }
+            };
+
+            partition(validTiles, 0, 0, width, height);
             return out;
-        };
-        const layoutPortfolioMajorTiles = (tiles, width = 100, height = 100) => {
-            if (tiles.length <= 2) return layoutTreemapRows([tiles], width, height);
-            const rows = [tiles.slice(0, 2)];
-            for (let index = 2; index < tiles.length; index += 2) {
-                rows.push(tiles.slice(index, index + 2));
-            }
-            return layoutTreemapRows(rows, width, height);
         };
         const MIN_CATEGORIES = 1;
         const MAX_CATEGORIES = 10;
