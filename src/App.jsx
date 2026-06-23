@@ -178,6 +178,75 @@ const firebaseConfig = {
             const b = Math.max(0, Math.min(255, Math.round((n & 255) * factor)));
             return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
         };
+        const TREEMAP_COLORS = [
+            '#16a34a', '#c92a24', '#3b82f6', '#a16207', '#7c3aed',
+            '#0f766e', '#b91c1c', '#2563eb', '#be123c', '#4d7c0f',
+            '#c2410c', '#4338ca', '#047857', '#991b1b', '#0369a1'
+        ];
+        const squarifyTreemap = (items, width = 100, height = 100) => {
+            const validItems = items.filter(item => item.value > 0);
+            const total = validItems.reduce((sum, item) => sum + item.value, 0);
+            if (!total) return [];
+
+            const worstAspect = (row, side) => {
+                if (!row.length || side <= 0) return Infinity;
+                const rowSum = row.reduce((sum, item) => sum + item.area, 0);
+                const maxArea = Math.max(...row.map(item => item.area));
+                const minArea = Math.min(...row.map(item => item.area));
+                if (minArea <= 0 || rowSum <= 0) return Infinity;
+                return Math.max(
+                    (side * side * maxArea) / (rowSum * rowSum),
+                    (rowSum * rowSum) / (side * side * minArea)
+                );
+            };
+
+            const layoutRow = (row, box, out) => {
+                const rowArea = row.reduce((sum, item) => sum + item.area, 0);
+                if (box.w >= box.h) {
+                    const rowH = rowArea / box.w;
+                    let x = box.x;
+                    row.forEach(item => {
+                        const itemW = item.area / rowH;
+                        out.push({ ...item, x, y: box.y, w: itemW, h: rowH });
+                        x += itemW;
+                    });
+                    box.y += rowH;
+                    box.h -= rowH;
+                } else {
+                    const rowW = rowArea / box.h;
+                    let y = box.y;
+                    row.forEach(item => {
+                        const itemH = item.area / rowW;
+                        out.push({ ...item, x: box.x, y, w: rowW, h: itemH });
+                        y += itemH;
+                    });
+                    box.x += rowW;
+                    box.w -= rowW;
+                }
+            };
+
+            const scaled = validItems
+                .map(item => ({ ...item, area: (item.value / total) * width * height }))
+                .sort((a, b) => b.value - a.value);
+            const out = [];
+            const box = { x: 0, y: 0, w: width, h: height };
+            let row = [];
+            let remaining = [...scaled];
+
+            while (remaining.length) {
+                const item = remaining[0];
+                const side = Math.min(box.w, box.h);
+                if (!row.length || worstAspect([...row, item], side) <= worstAspect(row, side)) {
+                    row.push(item);
+                    remaining.shift();
+                } else {
+                    layoutRow(row, box, out);
+                    row = [];
+                }
+            }
+            if (row.length) layoutRow(row, box, out);
+            return out;
+        };
         const MIN_CATEGORIES = 1;
         const MAX_CATEGORIES = 10;
 
@@ -597,6 +666,7 @@ const firebaseConfig = {
             });
             const [portfolioLoading, setPortfolioLoading] = useState(false);
             const [mainTab, setMainTab] = useState('notes');
+            const [portfolioViewMode, setPortfolioViewMode] = useState('donut'); // 'donut' | 'map'
             const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
             const [notesGroupMode, setNotesGroupMode] = useState('category'); // 'category' | 'size'
             const [hideLegendPanel, setHideLegendPanel] = useState(false);
@@ -2138,6 +2208,44 @@ const firebaseConfig = {
                     .filter(h => (colorLabels[h.color] || '').trim().toLowerCase() === 'cash')
                     .reduce((sum, h) => sum + h.value, 0),
             [portfolioData, colorLabels]);
+            const portfolioMapTiles = useMemo(() => {
+                const isCashPosition = (h) => (colorLabels[h.color] || '').trim().toLowerCase() === 'cash';
+                const cashPositions = portfolioData.filter(isCashPosition);
+                const stockPositions = portfolioData.filter(h => !isCashPosition(h));
+                const cashValue = cashPositions.reduce((sum, h) => sum + h.value, 0);
+                const cashPercentage = cashPositions.reduce((sum, h) => sum + h.percentage, 0);
+                const minNamedStockCount = Math.ceil(stockPositions.length * 0.5);
+                const preferredNamedStockCount = Math.min(16, stockPositions.length);
+                const namedStockCount = Math.min(
+                    stockPositions.length,
+                    Math.max(minNamedStockCount, preferredNamedStockCount)
+                );
+                const namedStocks = stockPositions.slice(0, namedStockCount);
+                const others = stockPositions.slice(namedStockCount);
+                const tiles = [
+                    ...(cashValue > 0 ? [{
+                        ticker: 'Cash',
+                        value: cashValue,
+                        percentage: cashPercentage,
+                        color: '#16a34a'
+                    }] : []),
+                    ...namedStocks.map((h, i) => ({
+                        ticker: h.ticker,
+                        value: h.value,
+                        percentage: h.percentage,
+                        color: TREEMAP_COLORS[(i + 1) % TREEMAP_COLORS.length]
+                    }))
+                ];
+                if (others.length > 0) {
+                    tiles.push({
+                        ticker: 'OTHERS',
+                        value: others.reduce((sum, h) => sum + h.value, 0),
+                        percentage: others.reduce((sum, h) => sum + h.percentage, 0),
+                        color: '#6b7280'
+                    });
+                }
+                return squarifyTreemap(tiles, 100, 100);
+            }, [portfolioData, colorLabels]);
             const cspObligatedCashValue = Math.min(Math.max(totalPutObligation, 0), cashPortfolioValue);
             const freeCashValue = Math.max(cashPortfolioValue - cspObligatedCashValue, 0);
 
@@ -2215,7 +2323,13 @@ const firebaseConfig = {
 
             // Chart rendering effect - runs when tab changes, data changes, or after a short delay to ensure canvas is mounted
             useEffect(() => {
-                if (mainTab !== 'portfolio' || portfolioChartDataKey.length === 0) return;
+                if (mainTab !== 'portfolio' || portfolioViewMode !== 'donut' || portfolioChartDataKey.length === 0) {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                        chartInstance.current = null;
+                    }
+                    return;
+                }
 
                 // Small delay to ensure canvas is mounted in DOM
                 const timeoutId = setTimeout(() => {
@@ -2502,7 +2616,7 @@ const firebaseConfig = {
                     clearTimeout(timeoutId);
                     if (chartInstance.current) chartInstance.current.destroy();
                 };
-            }, [mainTab, portfolioChartDataKey, darkMode, hidePortfolioValues, colorLabels, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
+            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, colorLabels, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
 
             if (!currentUser) {
                 return (
@@ -4508,19 +4622,70 @@ const firebaseConfig = {
                                                     <span className="snapshot-only snapshot-timestamp text-sm font-semibold ml-2"></span>
                                                 </h3>
                                             </div>
-                                            <button
-                                                onClick={handleDownloadPortfolioSnapshot}
-                                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border snapshot-hide ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
-                                                title="Download portfolio snapshot"
-                                            >
-                                                <Download size={16}/>
-                                                Snapshot
-                                            </button>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
+                                                    <button
+                                                        onClick={() => setPortfolioViewMode('donut')}
+                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${portfolioViewMode === 'donut' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                    >
+                                                        Donut
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setPortfolioViewMode('map')}
+                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${portfolioViewMode === 'map' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                    >
+                                                        Map
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    onClick={handleDownloadPortfolioSnapshot}
+                                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border snapshot-hide ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
+                                                    title="Download portfolio snapshot"
+                                                >
+                                                    <Download size={16}/>
+                                                    Snapshot
+                                                </button>
+                                            </div>
                                         </div>
                                         <div className="h-[520px]">
-                                            <div className="min-h-0 h-full">
-                                                <canvas ref={chartRef}></canvas>
-                                            </div>
+                                            {portfolioViewMode === 'donut' ? (
+                                                <div className="min-h-0 h-full">
+                                                    <canvas ref={chartRef}></canvas>
+                                                </div>
+                                            ) : (
+                                                <div className={`relative h-full overflow-hidden rounded-md border ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
+                                                    {portfolioMapTiles.map((tile) => {
+                                                        const showDetail = tile.w >= 11 && tile.h >= 10;
+                                                        const showPercent = tile.w >= 8 && tile.h >= 8;
+                                                        const fontSize = Math.max(18, Math.min(54, Math.min(tile.w, tile.h) * 1.7));
+                                                        return (
+                                                            <div
+                                                                key={tile.ticker}
+                                                                className="absolute flex items-center justify-center overflow-hidden border border-black/20"
+                                                                style={{
+                                                                    left: `${tile.x}%`,
+                                                                    top: `${tile.y}%`,
+                                                                    width: `${tile.w}%`,
+                                                                    height: `${tile.h}%`,
+                                                                    backgroundColor: tile.color
+                                                                }}
+                                                                title={`${tile.ticker}: ${tile.percentage.toFixed(1)}%`}
+                                                            >
+                                                                <div className="w-full px-2 text-center leading-tight text-white/90" style={{textShadow: '0 1px 2px rgba(0,0,0,0.45)'}}>
+                                                                    <div className="truncate font-semibold" style={{fontSize: `${fontSize}px`}}>
+                                                                        {tile.ticker}
+                                                                    </div>
+                                                                    {showPercent && (
+                                                                        <div className={`mt-1 font-semibold ${showDetail ? 'text-base' : 'text-xs'}`}>
+                                                                            {tile.percentage.toFixed(1)}%
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                         {cashPortfolioValue > 0 && totalPutObligation > 0 && (
                                             <div className={`mt-2 text-xs leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
