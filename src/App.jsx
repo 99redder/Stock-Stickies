@@ -667,6 +667,8 @@ const firebaseConfig = {
             const [portfolioLoading, setPortfolioLoading] = useState(false);
             const [mainTab, setMainTab] = useState('notes');
             const [portfolioViewMode, setPortfolioViewMode] = useState('donut'); // 'donut' | 'map'
+            const [portfolioLegendVisible, setPortfolioLegendVisible] = useState(true);
+            const [portfolioLegendDollarAmounts, setPortfolioLegendDollarAmounts] = useState(false);
             const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
             const [notesGroupMode, setNotesGroupMode] = useState('category'); // 'category' | 'size'
             const [hideLegendPanel, setHideLegendPanel] = useState(false);
@@ -801,6 +803,8 @@ const firebaseConfig = {
                             setProfilePhoto(data.profilePhoto || auth.currentUser?.photoURL || '');
                             setNotesSortMode(data.notesSortMode || 'default');
                             setNotesGroupMode(data.notesGroupMode || 'category');
+                            setPortfolioLegendVisible(data.portfolioLegendVisible !== false);
+                            setPortfolioLegendDollarAmounts(!!data.portfolioLegendDollarAmounts);
                             setHideLegendPanel(data.hideLegendPanel || false);
                             setHideToolbarPanel(data.hideToolbarPanel || false);
                             setSharesPrivacyMode(data.sharesPrivacyMode || 'show');
@@ -875,6 +879,8 @@ const firebaseConfig = {
                             profilePhoto,
                             notesSortMode,
                             notesGroupMode,
+                            portfolioLegendVisible,
+                            portfolioLegendDollarAmounts,
                             hideLegendPanel,
                             hideToolbarPanel,
                             sharesPrivacyMode,
@@ -922,7 +928,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -947,6 +953,8 @@ const firebaseConfig = {
                             profilePhoto,
                             notesSortMode,
                             notesGroupMode,
+                            portfolioLegendVisible,
+                            portfolioLegendDollarAmounts,
                             hideLegendPanel,
                             hideToolbarPanel,
                             sharesPrivacyMode,
@@ -962,7 +970,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1171,6 +1179,8 @@ const firebaseConfig = {
                         profilePhoto,
                         notesSortMode,
                         notesGroupMode,
+                        portfolioLegendVisible,
+                        portfolioLegendDollarAmounts,
                         hideLegendPanel,
                         hideToolbarPanel,
                         sharesPrivacyMode,
@@ -1505,6 +1515,8 @@ const firebaseConfig = {
                         profilePhoto: data.profilePhoto || '',
                         notesSortMode: data.notesSortMode || 'default',
                         notesGroupMode: data.notesGroupMode || 'category',
+                        portfolioLegendVisible: data.portfolioLegendVisible !== false,
+                        portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
                         hideLegendPanel: !!data.hideLegendPanel,
                         hideToolbarPanel: !!data.hideToolbarPanel,
                         sharesPrivacyMode: data.sharesPrivacyMode || 'show',
@@ -2448,6 +2460,7 @@ const firebaseConfig = {
                         };
                     });
                     const formatPortfolioCalloutPercent = (percentage) => `${percentage.toFixed(1)}%`;
+                    const formatPortfolioCalloutValue = (value) => formatUsd(value).replace(/\.00$/, '');
                     const portfolioCalloutPlugin = {
                         id: 'portfolioCalloutLabels',
                         afterDatasetsDraw: (chart) => {
@@ -2478,7 +2491,9 @@ const firebaseConfig = {
                                     .sort((a, b) => a.textY - b.textY);
                                 const minY = chartArea.top + 30;
                                 const maxY = chartArea.bottom - 30;
-                                const minGap = chart.width < 900 ? 38 : 44;
+                                const minGap = portfolioLegendDollarAmounts && !hidePortfolioValues
+                                    ? (chart.width < 900 ? 50 : 56)
+                                    : (chart.width < 900 ? 38 : 44);
                                 let nextY = minY;
                                 sideItems.forEach(item => {
                                     item.textY = Math.max(item.textY, nextY);
@@ -2498,25 +2513,31 @@ const firebaseConfig = {
                             });
 
                             ctx.save();
-                            lineItems.forEach((item) => {
-                                const slice = chartSlices[item.index];
-                                ctx.strokeStyle = slice.color;
-                                ctx.lineWidth = 1.45;
-                                ctx.beginPath();
-                                ctx.moveTo(item.outerX, item.outerY);
-                                ctx.lineTo(item.radialX, item.radialY);
-                                ctx.lineTo(item.lineEndX, item.textY);
-                                ctx.stroke();
+                            if (portfolioLegendVisible) {
+                                lineItems.forEach((item) => {
+                                    const slice = chartSlices[item.index];
+                                    ctx.strokeStyle = slice.color;
+                                    ctx.lineWidth = 1.45;
+                                    ctx.beginPath();
+                                    ctx.moveTo(item.outerX, item.outerY);
+                                    ctx.lineTo(item.radialX, item.radialY);
+                                    ctx.lineTo(item.lineEndX, item.textY);
+                                    ctx.stroke();
 
-                                ctx.textAlign = item.side === 'right' ? 'left' : 'right';
-                                ctx.textBaseline = 'alphabetic';
-                                ctx.fillStyle = valueColor;
-                                ctx.font = '800 19px Inter, system-ui, sans-serif';
-                                ctx.fillText(slice.label, item.textX, item.textY - 2);
-                                ctx.fillStyle = labelColor;
-                                ctx.font = '600 12px Inter, system-ui, sans-serif';
-                                ctx.fillText(formatPortfolioCalloutPercent(slice.percentage), item.textX, item.textY + 15);
-                            });
+                                    ctx.textAlign = item.side === 'right' ? 'left' : 'right';
+                                    ctx.textBaseline = 'alphabetic';
+                                    ctx.fillStyle = valueColor;
+                                    ctx.font = '800 19px Inter, system-ui, sans-serif';
+                                    ctx.fillText(slice.label, item.textX, item.textY - 2);
+                                    ctx.fillStyle = labelColor;
+                                    ctx.font = '600 12px Inter, system-ui, sans-serif';
+                                    ctx.fillText(formatPortfolioCalloutPercent(slice.percentage), item.textX, item.textY + 15);
+                                    if (portfolioLegendDollarAmounts && !hidePortfolioValues) {
+                                        ctx.font = '600 11px Inter, system-ui, sans-serif';
+                                        ctx.fillText(formatPortfolioCalloutValue(slice.value), item.textX, item.textY + 30);
+                                    }
+                                });
+                            }
 
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
@@ -2544,7 +2565,9 @@ const firebaseConfig = {
                             maintainAspectRatio: false,
                             cutout: '40%',
                             layout: {
-                                padding: { top: 32, right: 76, bottom: 32, left: 76 }
+                                padding: portfolioLegendVisible
+                                    ? { top: 32, right: 76, bottom: 32, left: 76 }
+                                    : { top: 24, right: 24, bottom: 24, left: 24 }
                             },
                             plugins: {
                                 legend: {
@@ -2616,7 +2639,7 @@ const firebaseConfig = {
                     clearTimeout(timeoutId);
                     if (chartInstance.current) chartInstance.current.destroy();
                 };
-            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, colorLabels, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
+            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, colorLabels, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
 
             if (!currentUser) {
                 return (
@@ -4622,7 +4645,7 @@ const firebaseConfig = {
                                                     <span className="snapshot-only snapshot-timestamp text-sm font-semibold ml-2"></span>
                                                 </h3>
                                             </div>
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex flex-wrap items-center justify-end gap-3">
                                                 <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
                                                     <button
                                                         onClick={() => setPortfolioViewMode('donut')}
@@ -4635,6 +4658,22 @@ const firebaseConfig = {
                                                         className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${portfolioViewMode === 'map' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
                                                     >
                                                         Map
+                                                    </button>
+                                                </div>
+                                                <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
+                                                    <button
+                                                        onClick={() => setPortfolioLegendVisible(!portfolioLegendVisible)}
+                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${!portfolioLegendVisible ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                        title={portfolioLegendVisible ? 'Hide portfolio labels' : 'Show portfolio labels'}
+                                                    >
+                                                        {portfolioLegendVisible ? 'Hide Legend' : 'Show Legend'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setPortfolioLegendDollarAmounts(!portfolioLegendDollarAmounts)}
+                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${portfolioLegendDollarAmounts ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                        title={hidePortfolioValues ? 'Dollar amounts are hidden while portfolio values are hidden' : (portfolioLegendDollarAmounts ? 'Hide dollar amounts from labels' : 'Add dollar amounts to labels')}
+                                                    >
+                                                        {portfolioLegendDollarAmounts ? 'Hide $' : 'Add $'}
                                                     </button>
                                                 </div>
                                                 <button
@@ -4671,16 +4710,23 @@ const firebaseConfig = {
                                                                 }}
                                                                 title={`${tile.ticker}: ${tile.percentage.toFixed(1)}%`}
                                                             >
-                                                                <div className="w-full px-2 text-center leading-tight text-white/90" style={{textShadow: '0 1px 2px rgba(0,0,0,0.45)'}}>
-                                                                    <div className="truncate font-semibold" style={{fontSize: `${fontSize}px`}}>
-                                                                        {tile.ticker}
-                                                                    </div>
-                                                                    {showPercent && (
-                                                                        <div className={`mt-1 font-semibold ${showDetail ? 'text-base' : 'text-xs'}`}>
-                                                                            {tile.percentage.toFixed(1)}%
+                                                                {portfolioLegendVisible && (
+                                                                    <div className="w-full px-2 text-center leading-tight text-white/90" style={{textShadow: '0 1px 2px rgba(0,0,0,0.45)'}}>
+                                                                        <div className="truncate font-semibold" style={{fontSize: `${fontSize}px`}}>
+                                                                            {tile.ticker}
                                                                         </div>
-                                                                    )}
-                                                                </div>
+                                                                        {showPercent && (
+                                                                            <div className={`mt-1 font-semibold ${showDetail ? 'text-base' : 'text-xs'}`}>
+                                                                                {tile.percentage.toFixed(1)}%
+                                                                            </div>
+                                                                        )}
+                                                                        {showDetail && portfolioLegendDollarAmounts && !hidePortfolioValues && (
+                                                                            <div className="mt-0.5 text-xs font-semibold opacity-90">
+                                                                                {formatUsd(tile.value).replace(/\.00$/, '')}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}
