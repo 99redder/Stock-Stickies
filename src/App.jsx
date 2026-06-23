@@ -183,69 +183,51 @@ const firebaseConfig = {
             '#0f766e', '#b91c1c', '#2563eb', '#be123c', '#4d7c0f',
             '#c2410c', '#4338ca', '#047857', '#991b1b', '#0369a1'
         ];
-        const squarifyTreemap = (items, width = 100, height = 100) => {
-            const validItems = items.filter(item => item.value > 0);
-            const total = validItems.reduce((sum, item) => sum + item.value, 0);
+        const layoutTreemapRows = (rows, width = 100, height = 100) => {
+            const validRows = rows
+                .map(row => row.filter(item => item.value > 0))
+                .filter(row => row.length > 0);
+            const rowValues = validRows.map(row => row.reduce((sum, item) => sum + item.value, 0));
+            const total = rowValues.reduce((sum, value) => sum + value, 0);
             if (!total) return [];
 
-            const worstAspect = (row, side) => {
-                if (!row.length || side <= 0) return Infinity;
-                const rowSum = row.reduce((sum, item) => sum + item.area, 0);
-                const maxArea = Math.max(...row.map(item => item.area));
-                const minArea = Math.min(...row.map(item => item.area));
-                if (minArea <= 0 || rowSum <= 0) return Infinity;
-                return Math.max(
-                    (side * side * maxArea) / (rowSum * rowSum),
-                    (rowSum * rowSum) / (side * side * minArea)
-                );
-            };
-
-            const layoutRow = (row, box, out) => {
-                const rowArea = row.reduce((sum, item) => sum + item.area, 0);
-                if (box.w >= box.h) {
-                    const rowH = rowArea / box.w;
-                    let x = box.x;
-                    row.forEach(item => {
-                        const itemW = item.area / rowH;
-                        out.push({ ...item, x, y: box.y, w: itemW, h: rowH });
-                        x += itemW;
-                    });
-                    box.y += rowH;
-                    box.h -= rowH;
-                } else {
-                    const rowW = rowArea / box.h;
-                    let y = box.y;
-                    row.forEach(item => {
-                        const itemH = item.area / rowW;
-                        out.push({ ...item, x: box.x, y, w: rowW, h: itemH });
-                        y += itemH;
-                    });
-                    box.x += rowW;
-                    box.w -= rowW;
-                }
-            };
-
-            const scaled = validItems
-                .map(item => ({ ...item, area: (item.value / total) * width * height }))
-                .sort((a, b) => b.value - a.value);
-            const out = [];
-            const box = { x: 0, y: 0, w: width, h: height };
-            let row = [];
-            let remaining = [...scaled];
-
-            while (remaining.length) {
-                const item = remaining[0];
-                const side = Math.min(box.w, box.h);
-                if (!row.length || worstAspect([...row, item], side) <= worstAspect(row, side)) {
-                    row.push(item);
-                    remaining.shift();
-                } else {
-                    layoutRow(row, box, out);
-                    row = [];
-                }
+            const minRowHeight = Math.min(8, (height / validRows.length) * 0.7);
+            const heights = rowValues.map(value => (value / total) * height);
+            const locked = heights.map(rowHeight => rowHeight < minRowHeight);
+            const lockedHeight = heights.reduce((sum, rowHeight, index) => sum + (locked[index] ? minRowHeight : 0), 0);
+            const unlockedValue = rowValues.reduce((sum, value, index) => sum + (locked[index] ? 0 : value), 0);
+            if (lockedHeight < height && unlockedValue > 0) {
+                heights.forEach((_, index) => {
+                    if (locked[index]) {
+                        heights[index] = minRowHeight;
+                    } else {
+                        heights[index] = ((height - lockedHeight) * rowValues[index]) / unlockedValue;
+                    }
+                });
             }
-            if (row.length) layoutRow(row, box, out);
+
+            const out = [];
+            let y = 0;
+            validRows.forEach((row, rowIndex) => {
+                const rowHeight = rowIndex === validRows.length - 1 ? Math.max(0, height - y) : heights[rowIndex];
+                const rowValue = rowValues[rowIndex];
+                let x = 0;
+                row.forEach((item, itemIndex) => {
+                    const itemWidth = itemIndex === row.length - 1 ? Math.max(0, width - x) : (item.value / rowValue) * width;
+                    out.push({ ...item, x, y, w: itemWidth, h: rowHeight });
+                    x += itemWidth;
+                });
+                y += rowHeight;
+            });
             return out;
+        };
+        const layoutPortfolioMajorTiles = (tiles, width = 100, height = 100) => {
+            if (tiles.length <= 2) return layoutTreemapRows([tiles], width, height);
+            const rows = [tiles.slice(0, 2)];
+            for (let index = 2; index < tiles.length; index += 2) {
+                rows.push(tiles.slice(index, index + 2));
+            }
+            return layoutTreemapRows(rows, width, height);
         };
         const MIN_CATEGORIES = 1;
         const MAX_CATEGORIES = 10;
@@ -2271,10 +2253,10 @@ const firebaseConfig = {
                 const stockHeight = Math.max(0, 100 - stockTop);
                 const majorTiles = stockTiles.filter((tile, index) => tile.percentage >= 3 || index < 4);
                 const compactTiles = stockTiles.filter(tile => !majorTiles.includes(tile));
-                const majorHeight = compactTiles.length > 0 ? Math.max(18, stockHeight * 0.48) : stockHeight;
+                const majorHeight = compactTiles.length > 0 ? Math.max(22, stockHeight * 0.56) : stockHeight;
                 const compactHeight = Math.max(0, stockHeight - majorHeight);
 
-                squarifyTreemap(majorTiles, 100, 100).forEach(tile => {
+                layoutPortfolioMajorTiles(majorTiles, 100, 100).forEach(tile => {
                     out.push({
                         ...tile,
                         x: tile.x,
