@@ -2256,7 +2256,53 @@ const firebaseConfig = {
                         color: '#6b7280'
                     });
                 }
-                return squarifyTreemap(tiles, 100, 100);
+
+                const cashTile = tiles.find(tile => tile.ticker === 'Cash');
+                const stockTiles = tiles.filter(tile => tile.ticker !== 'Cash');
+                const out = [];
+                const cashHeight = cashTile ? Math.max(18, Math.min(62, cashTile.percentage)) : 0;
+                if (cashTile) {
+                    out.push({ ...cashTile, x: 0, y: 0, w: 100, h: cashHeight, layout: 'hero' });
+                }
+
+                if (!stockTiles.length) return out;
+
+                const stockTop = cashTile ? cashHeight : 0;
+                const stockHeight = Math.max(0, 100 - stockTop);
+                const majorTiles = stockTiles.filter((tile, index) => tile.percentage >= 3 || index < 4);
+                const compactTiles = stockTiles.filter(tile => !majorTiles.includes(tile));
+                const majorHeight = compactTiles.length > 0 ? Math.max(18, stockHeight * 0.48) : stockHeight;
+                const compactHeight = Math.max(0, stockHeight - majorHeight);
+
+                squarifyTreemap(majorTiles, 100, 100).forEach(tile => {
+                    out.push({
+                        ...tile,
+                        x: tile.x,
+                        y: stockTop + (tile.y / 100) * majorHeight,
+                        w: tile.w,
+                        h: (tile.h / 100) * majorHeight,
+                        layout: 'major'
+                    });
+                });
+
+                if (compactTiles.length > 0 && compactHeight > 0) {
+                    const cols = compactTiles.length <= 6 ? 3 : compactTiles.length <= 12 ? 4 : 5;
+                    const rows = Math.ceil(compactTiles.length / cols);
+                    const cellW = 100 / cols;
+                    const cellH = compactHeight / rows;
+                    compactTiles.forEach((tile, index) => {
+                        out.push({
+                            ...tile,
+                            x: (index % cols) * cellW,
+                            y: stockTop + majorHeight + Math.floor(index / cols) * cellH,
+                            w: cellW,
+                            h: cellH,
+                            layout: 'compact'
+                        });
+                    });
+                }
+
+                return out;
             }, [portfolioData, colorLabels]);
             const cspObligatedCashValue = Math.min(Math.max(totalPutObligation, 0), cashPortfolioValue);
             const freeCashValue = Math.max(cashPortfolioValue - cspObligatedCashValue, 0);
@@ -4694,34 +4740,38 @@ const firebaseConfig = {
                                             ) : (
                                                 <div className={`relative h-full overflow-hidden rounded-md border ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
                                                     {portfolioMapTiles.map((tile) => {
-                                                        const showDetail = tile.w >= 11 && tile.h >= 10;
-                                                        const showPercent = tile.w >= 8 && tile.h >= 8;
-                                                        const fontSize = Math.max(18, Math.min(54, Math.min(tile.w, tile.h) * 1.7));
+                                                        const isCompact = tile.layout === 'compact';
+                                                        const showDetail = !isCompact && tile.w >= 11 && tile.h >= 10;
+                                                        const showPercent = isCompact || (tile.w >= 8 && tile.h >= 8);
+                                                        const fontSize = isCompact
+                                                            ? Math.max(14, Math.min(24, tile.h * 2.1))
+                                                            : Math.max(18, Math.min(tile.layout === 'hero' ? 54 : 38, Math.min(tile.w, tile.h) * 1.65));
+                                                        const inset = isCompact ? '3px' : '2px';
                                                         return (
                                                             <div
                                                                 key={tile.ticker}
-                                                                className="absolute flex items-center justify-center overflow-hidden border border-black/20"
+                                                                className={`absolute flex items-center justify-center overflow-hidden border border-black/25 ${isCompact ? 'rounded-sm' : ''}`}
                                                                 style={{
-                                                                    left: `${tile.x}%`,
-                                                                    top: `${tile.y}%`,
-                                                                    width: `${tile.w}%`,
-                                                                    height: `${tile.h}%`,
+                                                                    left: `calc(${tile.x}% + ${inset})`,
+                                                                    top: `calc(${tile.y}% + ${inset})`,
+                                                                    width: `calc(${tile.w}% - ${isCompact ? '6px' : '4px'})`,
+                                                                    height: `calc(${tile.h}% - ${isCompact ? '6px' : '4px'})`,
                                                                     backgroundColor: tile.color
                                                                 }}
-                                                                title={`${tile.ticker}: ${tile.percentage.toFixed(1)}%`}
+                                                                title={`${tile.ticker}: ${tile.percentage.toFixed(1)}%${portfolioLegendDollarAmounts && !hidePortfolioValues ? ` | ${formatUsd(tile.value).replace(/\.00$/, '')}` : ''}`}
                                                             >
                                                                 {portfolioLegendVisible && (
-                                                                    <div className="w-full px-2 text-center leading-tight text-white/90" style={{textShadow: '0 1px 2px rgba(0,0,0,0.45)'}}>
-                                                                        <div className="truncate font-semibold" style={{fontSize: `${fontSize}px`}}>
+                                                                    <div className={`w-full text-center leading-tight text-white/95 ${isCompact ? 'px-1' : 'px-2'}`} style={{textShadow: '0 1px 2px rgba(0,0,0,0.55)'}}>
+                                                                        <div className="truncate font-extrabold tracking-normal" style={{fontSize: `${fontSize}px`}}>
                                                                             {tile.ticker}
                                                                         </div>
                                                                         {showPercent && (
-                                                                            <div className={`mt-1 font-semibold ${showDetail ? 'text-base' : 'text-xs'}`}>
+                                                                            <div className={`font-semibold ${isCompact ? 'mt-0.5 text-[11px]' : showDetail ? 'mt-1 text-base' : 'mt-0.5 text-xs'}`}>
                                                                                 {tile.percentage.toFixed(1)}%
                                                                             </div>
                                                                         )}
-                                                                        {showDetail && portfolioLegendDollarAmounts && !hidePortfolioValues && (
-                                                                            <div className="mt-0.5 text-xs font-semibold opacity-90">
+                                                                        {(showDetail || (isCompact && tile.h >= 8)) && portfolioLegendDollarAmounts && !hidePortfolioValues && (
+                                                                            <div className={`${isCompact ? 'mt-0 text-[10px]' : 'mt-0.5 text-xs'} font-semibold opacity-90 truncate`}>
                                                                                 {formatUsd(tile.value).replace(/\.00$/, '')}
                                                                             </div>
                                                                         )}
