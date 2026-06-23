@@ -596,7 +596,6 @@ const firebaseConfig = {
                 return {};
             });
             const [portfolioLoading, setPortfolioLoading] = useState(false);
-            const [portfolioLegendItems, setPortfolioLegendItems] = useState([]);
             const [mainTab, setMainTab] = useState('notes');
             const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
             const [notesGroupMode, setNotesGroupMode] = useState('category'); // 'category' | 'size'
@@ -2285,20 +2284,6 @@ const firebaseConfig = {
                     const chartLabels = largeSlices.map(h => h.ticker);
                     const chartValues = largeSlices.map(h => h.value);
                     const chartColors = largeSlices.map(getChartColor);
-                    const legendItems = groupedForChart.map((h, i) => {
-                        const sliceIndex = h.isCashPlaceholder
-                            ? largeSlices.findIndex(ls => ls.isCashGroup)
-                            : largeSlices.findIndex(ls => ls.ticker === h.ticker);
-                        return {
-                            ticker: h.ticker,
-                            percentage: h.percentage,
-                            value: h.value,
-                            valueText: hidePortfolioValues ? '•••••' : `$${h.value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`,
-                            color: sliceIndex >= 0 ? (h.isCashPlaceholder ? CASH_CHART_COLOR : getChartColor(h, sliceIndex)) : '#9CA3AF',
-                            isMuted: sliceIndex < 0
-                        };
-                    });
-                    setPortfolioLegendItems(legendItems);
                     // Hide the default solid divider between free-cash and CSP-cash arcs;
                     // a small plugin draws that one separator back as a dashed line.
                     const chartBorderColors = largeSlices.map(() => darkMode ? '#1f2937' : '#ffffff');
@@ -2330,9 +2315,94 @@ const firebaseConfig = {
                         chartColors.push('#9CA3AF'); // Gray for "Others"
                         chartBorderColors.push(darkMode ? '#1f2937' : '#ffffff');
                     }
+                    const chartSlices = chartLabels.map((label, i) => {
+                        const slice = i < largeSlices.length ? largeSlices[i] : null;
+                        return {
+                            label,
+                            value: chartValues[i],
+                            percentage: label === 'Others' ? othersPercentage : (slice?.percentage || 0),
+                            color: chartColors[i]
+                        };
+                    });
+                    const formatCompactPortfolioValue = (value) => {
+                        if (hidePortfolioValues) return '•••••';
+                        const abs = Math.abs(value);
+                        if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+                        if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+                        if (abs >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+                        return `$${value.toFixed(0)}`;
+                    };
+                    const portfolioCalloutPlugin = {
+                        id: 'portfolioCalloutLabels',
+                        afterDatasetsDraw: (chart) => {
+                            const meta = chart.getDatasetMeta(0);
+                            if (!meta?.data?.length) return;
+                            const { ctx, chartArea } = chart;
+                            const labelColor = darkMode ? '#D1D5DB' : '#6B7280';
+                            const valueColor = darkMode ? '#E5E7EB' : '#1F2937';
+                            const centerColor = darkMode ? '#F9FAFB' : '#111827';
+                            const lineItems = meta.data.map((arc, index) => {
+                                const angle = (arc.startAngle + arc.endAngle) / 2;
+                                const side = Math.cos(angle) >= 0 ? 'right' : 'left';
+                                const outerX = arc.x + Math.cos(angle) * arc.outerRadius;
+                                const outerY = arc.y + Math.sin(angle) * arc.outerRadius;
+                                const elbowX = arc.x + Math.cos(angle) * (arc.outerRadius + 22);
+                                const elbowY = arc.y + Math.sin(angle) * (arc.outerRadius + 22);
+                                const textX = side === 'right' ? chart.width - 10 : 10;
+                                return { index, side, outerX, outerY, elbowX, elbowY, textX, textY: elbowY };
+                            });
+                            ['left', 'right'].forEach((side) => {
+                                const sideItems = lineItems
+                                    .filter(item => item.side === side)
+                                    .sort((a, b) => a.textY - b.textY);
+                                const minY = chartArea.top + 18;
+                                const maxY = chartArea.bottom - 18;
+                                let nextY = minY;
+                                sideItems.forEach(item => {
+                                    item.textY = Math.max(item.textY, nextY);
+                                    nextY = item.textY + 36;
+                                });
+                                const overflow = sideItems.length ? sideItems[sideItems.length - 1].textY - maxY : 0;
+                                if (overflow > 0) {
+                                    sideItems.forEach(item => {
+                                        item.textY -= overflow;
+                                    });
+                                }
+                            });
+
+                            ctx.save();
+                            lineItems.forEach((item) => {
+                                const slice = chartSlices[item.index];
+                                const endX = item.side === 'right' ? item.textX - 4 : item.textX + 4;
+                                ctx.strokeStyle = slice.color;
+                                ctx.lineWidth = 1.2;
+                                ctx.beginPath();
+                                ctx.moveTo(item.outerX, item.outerY);
+                                ctx.lineTo(item.elbowX, item.elbowY);
+                                ctx.lineTo(endX, item.textY);
+                                ctx.stroke();
+
+                                ctx.textAlign = item.side === 'right' ? 'right' : 'left';
+                                ctx.textBaseline = 'alphabetic';
+                                ctx.fillStyle = valueColor;
+                                ctx.font = '700 14px Inter, system-ui, sans-serif';
+                                ctx.fillText(formatCompactPortfolioValue(slice.value), item.textX, item.textY - 3);
+                                ctx.fillStyle = labelColor;
+                                ctx.font = '500 12px Inter, system-ui, sans-serif';
+                                ctx.fillText(slice.label, item.textX, item.textY + 12);
+                            });
+
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillStyle = centerColor;
+                            ctx.font = '500 22px Inter, system-ui, sans-serif';
+                            ctx.fillText(`${nickname || currentUser?.split('@')[0] || 'User'}`, meta.data[0].x, meta.data[0].y);
+                            ctx.restore();
+                        }
+                    };
 
                     chartInstance.current = new Chart(chartRef.current, {
-                        type: 'pie',
+                        type: 'doughnut',
                         data: {
                             labels: chartLabels,
                             datasets: [{
@@ -2342,12 +2412,13 @@ const firebaseConfig = {
                                 borderColor: chartBorderColors
                             }]
                         },
-                        plugins: [ChartDataLabels, cashDividerPlugin],
+                        plugins: [ChartDataLabels, cashDividerPlugin, portfolioCalloutPlugin],
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            cutout: '44%',
                             layout: {
-                                padding: { top: 20, right: 6, bottom: 20, left: 20 }
+                                padding: { top: 44, right: 96, bottom: 44, left: 96 }
                             },
                             plugins: {
                                 legend: {
@@ -2396,15 +2467,13 @@ const firebaseConfig = {
                                         const label = chartLabels[ctx.dataIndex];
                                         const slice = largeSlices[ctx.dataIndex];
                                         if (slice?.isCspObligatedCash) {
-                                            return `${label}\n${Math.round(slice.percentOfCash)}% of cash`;
+                                            return `${Math.round(slice.percentOfCash)}%`;
                                         }
                                         if (slice?.isCashGroup) {
-                                            return `${label}\n${Math.round(slice.cashTotalPercentage)}%`;
+                                            return `${Math.round(slice.cashTotalPercentage)}%`;
                                         }
-                                        const percentage = label === 'Others'
-                                            ? Math.round(othersPercentage)
-                                            : Math.round(slice.percentage);
-                                        return `${label}\n${percentage}%`;
+                                        const percentage = label === 'Others' ? othersPercentage : slice.percentage;
+                                        return `${percentage.toFixed(1)}%`;
                                     },
                                     anchor: 'center',
                                     align: 'center',
@@ -2421,7 +2490,7 @@ const firebaseConfig = {
                     clearTimeout(timeoutId);
                     if (chartInstance.current) chartInstance.current.destroy();
                 };
-            }, [mainTab, portfolioChartDataKey, darkMode, hidePortfolioValues, colorLabels, totalPutObligation, totalPortfolioValue]);
+            }, [mainTab, portfolioChartDataKey, darkMode, hidePortfolioValues, colorLabels, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
 
             if (!currentUser) {
                 return (
@@ -4436,33 +4505,9 @@ const firebaseConfig = {
                                                 Snapshot
                                             </button>
                                         </div>
-                                        <div className="flex h-[520px] flex-col gap-4 lg:flex-row">
-                                            <div className="min-h-0 flex-1">
+                                        <div className="h-[520px]">
+                                            <div className="min-h-0 h-full">
                                                 <canvas ref={chartRef}></canvas>
-                                            </div>
-                                            <div className={`max-h-full w-full overflow-y-auto rounded-lg border p-3 lg:w-56 ${darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-gray-50'}`}>
-                                                <div className={`mb-2 text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Positions</div>
-                                                <div className="space-y-2">
-                                                    {portfolioLegendItems.map((item) => (
-                                                        <div key={`${item.ticker}-${item.value}-${item.percentage}`} className="flex items-start gap-2">
-                                                            <span
-                                                                className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                                                                style={{ backgroundColor: item.color }}
-                                                            ></span>
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="flex items-baseline justify-between gap-2">
-                                                                    <span className={`truncate text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{item.ticker}</span>
-                                                                    <span className={`text-base font-extrabold leading-none tabular-nums ${item.isMuted ? (darkMode ? 'text-gray-400' : 'text-gray-500') : (darkMode ? 'text-cyan-200' : 'text-blue-700')}`}>
-                                                                        {item.percentage.toFixed(1)}%
-                                                                    </span>
-                                                                </div>
-                                                                <div className={`mt-0.5 text-right text-xs font-medium tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
-                                                                    {item.valueText}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
                                             </div>
                                         </div>
                                         {cashPortfolioValue > 0 && totalPutObligation > 0 && (
