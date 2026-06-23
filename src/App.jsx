@@ -2267,11 +2267,20 @@ const firebaseConfig = {
                         : currentPortfolioData;
                     const chartPortfolioData = groupedForChart.flatMap(h => h.isCashPlaceholder ? h.slices : [h]);
 
-                    // Separate large slices from small ones, combine only tiny positions into "Others".
-                    // Lower threshold = more visible slices in the pie.
-                    const SLICE_THRESHOLD_PCT = 2;
-                    const largeSlices = chartPortfolioData.filter(h => h.isCashGroup || h.percentage >= SLICE_THRESHOLD_PCT);
-                    const smallSlices = chartPortfolioData.filter(h => !h.isCashGroup && h.percentage < SLICE_THRESHOLD_PCT);
+                    // Keep the largest stock names readable, then roll the smallest tail into Others.
+                    // Always show at least half of the non-cash positions by name.
+                    const cashChartSlices = chartPortfolioData.filter(h => h.isCashGroup);
+                    const stockChartSlices = chartPortfolioData.filter(h => !h.isCashGroup);
+                    const minNamedStockCount = Math.ceil(stockChartSlices.length * 0.5);
+                    const preferredNamedStockCount = Math.min(10, stockChartSlices.length);
+                    const namedStockCount = Math.min(
+                        stockChartSlices.length,
+                        Math.max(minNamedStockCount, preferredNamedStockCount)
+                    );
+                    const namedStockSlices = stockChartSlices.slice(0, namedStockCount);
+                    const smallSlices = stockChartSlices.slice(namedStockCount);
+                    const largeSlices = [...cashChartSlices, ...namedStockSlices]
+                        .sort((a, b) => b.value - a.value);
                     const othersValue = smallSlices.reduce((sum, h) => sum + h.value, 0);
                     const othersPercentage = smallSlices.reduce((sum, h) => sum + h.percentage, 0);
 
@@ -2310,7 +2319,7 @@ const firebaseConfig = {
                     };
 
                     if (smallSlices.length > 0) {
-                        chartLabels.push('Others');
+                        chartLabels.push('OTHERS');
                         chartValues.push(othersValue);
                         chartColors.push('#9CA3AF'); // Gray for "Others"
                         chartBorderColors.push(darkMode ? '#1f2937' : '#ffffff');
@@ -2320,7 +2329,7 @@ const firebaseConfig = {
                         return {
                             label,
                             value: chartValues[i],
-                            percentage: label === 'Others' ? othersPercentage : (slice?.percentage || 0),
+                            percentage: label === 'OTHERS' ? othersPercentage : (slice?.percentage || 0),
                             color: chartColors[i]
                         };
                     });
@@ -2363,8 +2372,13 @@ const firebaseConfig = {
                                 });
                                 const overflow = sideItems.length ? sideItems[sideItems.length - 1].textY - maxY : 0;
                                 if (overflow > 0) {
-                                    sideItems.forEach(item => {
-                                        item.textY -= overflow;
+                                    const fittedGap = sideItems.length > 1
+                                        ? Math.max(30, (maxY - minY) / (sideItems.length - 1))
+                                        : 0;
+                                    sideItems.forEach((item, i) => {
+                                        item.textY = sideItems.length > 1
+                                            ? minY + (i * fittedGap)
+                                            : (minY + maxY) / 2;
                                     });
                                 }
                             });
@@ -2426,12 +2440,12 @@ const firebaseConfig = {
                                     callbacks: {
                                         label: (ctx) => {
                                             const label = chartLabels[ctx.dataIndex];
-                                            if (label === 'Others') {
+                                            if (label === 'OTHERS') {
                                                 const tickers = smallSlices.map(h => h.ticker).join(', ');
                                                 if (hidePortfolioValues) {
-                                                    return `Others (${tickers}): ${othersPercentage.toFixed(1)}%`;
+                                                    return `OTHERS (${tickers}): ${othersPercentage.toFixed(1)}%`;
                                                 }
-                                                return `Others (${tickers}): $${othersValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${othersPercentage.toFixed(1)}%)`;
+                                                return `OTHERS (${tickers}): $${othersValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${othersPercentage.toFixed(1)}%)`;
                                             }
                                             const h = largeSlices[ctx.dataIndex];
                                             if (h.isCashGroup) {
@@ -2470,7 +2484,7 @@ const firebaseConfig = {
                                         if (slice?.isCashGroup) {
                                             return `${Math.round(slice.cashTotalPercentage)}%`;
                                         }
-                                        const percentage = label === 'Others' ? othersPercentage : slice.percentage;
+                                        const percentage = label === 'OTHERS' ? othersPercentage : slice.percentage;
                                         return `${percentage.toFixed(1)}%`;
                                     },
                                     anchor: 'center',
