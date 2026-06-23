@@ -2355,12 +2355,12 @@ const firebaseConfig = {
                                 const sideItems = lineItems
                                     .filter(item => item.side === side)
                                     .sort((a, b) => a.textY - b.textY);
-                                const minY = chartArea.top + 18;
-                                const maxY = chartArea.bottom - 18;
+                                const minY = chartArea.top + 24;
+                                const maxY = chartArea.bottom - 24;
                                 let nextY = minY;
                                 sideItems.forEach(item => {
                                     item.textY = Math.max(item.textY, nextY);
-                                    nextY = item.textY + 36;
+                                    nextY = item.textY + 44;
                                 });
                                 const overflow = sideItems.length ? sideItems[sideItems.length - 1].textY - maxY : 0;
                                 if (overflow > 0) {
@@ -2385,11 +2385,11 @@ const firebaseConfig = {
                                 ctx.textAlign = item.side === 'right' ? 'right' : 'left';
                                 ctx.textBaseline = 'alphabetic';
                                 ctx.fillStyle = valueColor;
-                                ctx.font = '700 14px Inter, system-ui, sans-serif';
-                                ctx.fillText(formatCompactPortfolioValue(slice.value), item.textX, item.textY - 3);
+                                ctx.font = '800 19px Inter, system-ui, sans-serif';
+                                ctx.fillText(slice.label, item.textX, item.textY - 2);
                                 ctx.fillStyle = labelColor;
-                                ctx.font = '500 12px Inter, system-ui, sans-serif';
-                                ctx.fillText(slice.label, item.textX, item.textY + 12);
+                                ctx.font = '600 12px Inter, system-ui, sans-serif';
+                                ctx.fillText(formatCompactPortfolioValue(slice.value), item.textX, item.textY + 15);
                             });
 
                             ctx.textAlign = 'center';
