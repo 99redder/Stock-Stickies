@@ -596,6 +596,7 @@ const firebaseConfig = {
                 return {};
             });
             const [portfolioLoading, setPortfolioLoading] = useState(false);
+            const [portfolioLegendItems, setPortfolioLegendItems] = useState([]);
             const [mainTab, setMainTab] = useState('notes');
             const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
             const [notesGroupMode, setNotesGroupMode] = useState('category'); // 'category' | 'size'
@@ -2284,6 +2285,20 @@ const firebaseConfig = {
                     const chartLabels = largeSlices.map(h => h.ticker);
                     const chartValues = largeSlices.map(h => h.value);
                     const chartColors = largeSlices.map(getChartColor);
+                    const legendItems = groupedForChart.map((h, i) => {
+                        const sliceIndex = h.isCashPlaceholder
+                            ? largeSlices.findIndex(ls => ls.isCashGroup)
+                            : largeSlices.findIndex(ls => ls.ticker === h.ticker);
+                        return {
+                            ticker: h.ticker,
+                            percentage: h.percentage,
+                            value: h.value,
+                            valueText: hidePortfolioValues ? '•••••' : `$${h.value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`,
+                            color: sliceIndex >= 0 ? (h.isCashPlaceholder ? CASH_CHART_COLOR : getChartColor(h, sliceIndex)) : '#9CA3AF',
+                            isMuted: sliceIndex < 0
+                        };
+                    });
+                    setPortfolioLegendItems(legendItems);
                     // Hide the default solid divider between free-cash and CSP-cash arcs;
                     // a small plugin draws that one separator back as a dashed line.
                     const chartBorderColors = largeSlices.map(() => darkMode ? '#1f2937' : '#ffffff');
@@ -2336,35 +2351,7 @@ const firebaseConfig = {
                             },
                             plugins: {
                                 legend: {
-                                    display: true,
-                                    position: 'right',
-                                    labels: {
-                                        color: darkMode ? '#ffffff' : '#374151',
-                                        font: { size: 14, weight: 'bold' },
-                                        padding: 10,
-                                        boxWidth: 10,
-                                        usePointStyle: true,
-                                        pointStyle: 'circle',
-                                        generateLabels: () => {
-                                            // Keep Cash as one legend row even though the pie splits it into
-                                            // free cash + CSP-obligated cash slices.
-                                            return groupedForChart.map((h, i) => {
-                                                const valueText = hidePortfolioValues ? '•••••' : `$${h.value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
-                                                const sliceIndex = h.isCashPlaceholder
-                                                    ? largeSlices.findIndex(ls => ls.isCashGroup)
-                                                    : largeSlices.findIndex(ls => ls.ticker === h.ticker);
-                                                return {
-                                                    text: `${h.ticker} - ${h.percentage.toFixed(1)}% - ${valueText}`,
-                                                    fillStyle: sliceIndex >= 0 ? (h.isCashPlaceholder ? CASH_CHART_COLOR : getChartColor(h, sliceIndex)) : '#9CA3AF',
-                                                    strokeStyle: darkMode ? '#1f2937' : '#ffffff',
-                                                    fontColor: darkMode ? '#ffffff' : '#374151',
-                                                    lineWidth: 1,
-                                                    hidden: false,
-                                                    index: sliceIndex >= 0 ? sliceIndex : i
-                                                };
-                                            });
-                                        }
-                                    }
+                                    display: false
                                 },
                                 tooltip: {
                                     callbacks: {
@@ -4449,8 +4436,34 @@ const firebaseConfig = {
                                                 Snapshot
                                             </button>
                                         </div>
-                                        <div style={{height: '520px'}}>
-                                            <canvas ref={chartRef}></canvas>
+                                        <div className="flex h-[520px] flex-col gap-4 lg:flex-row">
+                                            <div className="min-h-0 flex-1">
+                                                <canvas ref={chartRef}></canvas>
+                                            </div>
+                                            <div className={`max-h-full w-full overflow-y-auto rounded-lg border p-3 lg:w-56 ${darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-gray-50'}`}>
+                                                <div className={`mb-2 text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Positions</div>
+                                                <div className="space-y-2">
+                                                    {portfolioLegendItems.map((item) => (
+                                                        <div key={`${item.ticker}-${item.value}-${item.percentage}`} className="flex items-start gap-2">
+                                                            <span
+                                                                className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                                                                style={{ backgroundColor: item.color }}
+                                                            ></span>
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-baseline justify-between gap-2">
+                                                                    <span className={`truncate text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{item.ticker}</span>
+                                                                    <span className={`text-base font-extrabold leading-none tabular-nums ${item.isMuted ? (darkMode ? 'text-gray-400' : 'text-gray-500') : (darkMode ? 'text-cyan-200' : 'text-blue-700')}`}>
+                                                                        {item.percentage.toFixed(1)}%
+                                                                    </span>
+                                                                </div>
+                                                                <div className={`mt-0.5 text-right text-xs font-medium tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                                    {item.valueText}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
                                         {cashPortfolioValue > 0 && totalPutObligation > 0 && (
                                             <div className={`mt-2 text-xs leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
