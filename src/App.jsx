@@ -2267,9 +2267,9 @@ const firebaseConfig = {
                         : currentPortfolioData;
                     const chartPortfolioData = groupedForChart.flatMap(h => h.isCashPlaceholder ? h.slices : [h]);
 
-                    // Separate large slices (>=3%) from small ones, combine small into "Others"
+                    // Separate large slices from small ones, combine only tiny positions into "Others".
                     // Lower threshold = more visible slices in the pie.
-                    const SLICE_THRESHOLD_PCT = 3;
+                    const SLICE_THRESHOLD_PCT = 2;
                     const largeSlices = chartPortfolioData.filter(h => h.isCashGroup || h.percentage >= SLICE_THRESHOLD_PCT);
                     const smallSlices = chartPortfolioData.filter(h => !h.isCashGroup && h.percentage < SLICE_THRESHOLD_PCT);
                     const othersValue = smallSlices.reduce((sum, h) => sum + h.value, 0);
@@ -2416,9 +2416,9 @@ const firebaseConfig = {
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            cutout: '44%',
+                            cutout: '40%',
                             layout: {
-                                padding: { top: 44, right: 96, bottom: 44, left: 96 }
+                                padding: { top: 32, right: 76, bottom: 32, left: 76 }
                             },
                             plugins: {
                                 legend: {
