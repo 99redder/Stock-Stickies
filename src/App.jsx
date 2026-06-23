@@ -2324,14 +2324,7 @@ const firebaseConfig = {
                             color: chartColors[i]
                         };
                     });
-                    const formatCompactPortfolioValue = (value) => {
-                        if (hidePortfolioValues) return '•••••';
-                        const abs = Math.abs(value);
-                        if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
-                        if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-                        if (abs >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-                        return `$${value.toFixed(0)}`;
-                    };
+                    const formatPortfolioCalloutPercent = (percentage) => `${percentage.toFixed(1)}%`;
                     const portfolioCalloutPlugin = {
                         id: 'portfolioCalloutLabels',
                         afterDatasetsDraw: (chart) => {
@@ -2395,7 +2388,7 @@ const firebaseConfig = {
                                 ctx.fillText(slice.label, item.textX, item.textY - 2);
                                 ctx.fillStyle = labelColor;
                                 ctx.font = '600 12px Inter, system-ui, sans-serif';
-                                ctx.fillText(formatCompactPortfolioValue(slice.value), item.textX, item.textY + 15);
+                                ctx.fillText(formatPortfolioCalloutPercent(slice.percentage), item.textX, item.textY + 15);
                             });
 
                             ctx.textAlign = 'center';
