@@ -2342,11 +2342,12 @@ const firebaseConfig = {
                                 const radialX = arc.x + Math.cos(angle) * (arc.outerRadius + 14);
                                 const radialY = arc.y + Math.sin(angle) * (arc.outerRadius + 14);
                                 const labelOffset = chart.width < 900 ? 118 : 170;
+                                const labelGap = chart.width < 900 ? 10 : 14;
                                 const textX = side === 'right'
                                     ? Math.min(chart.width - 14, arc.x + arc.outerRadius + labelOffset)
                                     : Math.max(14, arc.x - arc.outerRadius - labelOffset);
-                                const railX = side === 'right' ? textX - 28 : textX + 28;
-                                return { index, side, outerX, outerY, radialX, radialY, railX, textX, textY: radialY };
+                                const lineEndX = side === 'right' ? textX - labelGap : textX + labelGap;
+                                return { index, side, outerX, outerY, radialX, radialY, lineEndX, textX, textY: radialY };
                             });
                             ['left', 'right'].forEach((side) => {
                                 const sideItems = lineItems
@@ -2371,17 +2372,15 @@ const firebaseConfig = {
                             ctx.save();
                             lineItems.forEach((item) => {
                                 const slice = chartSlices[item.index];
-                                const endX = item.side === 'right' ? item.textX - 6 : item.textX + 6;
                                 ctx.strokeStyle = slice.color;
                                 ctx.lineWidth = 1.45;
                                 ctx.beginPath();
                                 ctx.moveTo(item.outerX, item.outerY);
                                 ctx.lineTo(item.radialX, item.radialY);
-                                ctx.lineTo(item.railX, item.textY);
-                                ctx.lineTo(endX, item.textY);
+                                ctx.lineTo(item.lineEndX, item.textY);
                                 ctx.stroke();
 
-                                ctx.textAlign = item.side === 'right' ? 'right' : 'left';
+                                ctx.textAlign = item.side === 'right' ? 'left' : 'right';
                                 ctx.textBaseline = 'alphabetic';
                                 ctx.fillStyle = valueColor;
                                 ctx.font = '800 19px Inter, system-ui, sans-serif';
