@@ -2346,21 +2346,26 @@ const firebaseConfig = {
                                 const side = Math.cos(angle) >= 0 ? 'right' : 'left';
                                 const outerX = arc.x + Math.cos(angle) * arc.outerRadius;
                                 const outerY = arc.y + Math.sin(angle) * arc.outerRadius;
-                                const elbowX = arc.x + Math.cos(angle) * (arc.outerRadius + 22);
-                                const elbowY = arc.y + Math.sin(angle) * (arc.outerRadius + 22);
-                                const textX = side === 'right' ? chart.width - 10 : 10;
-                                return { index, side, outerX, outerY, elbowX, elbowY, textX, textY: elbowY };
+                                const radialX = arc.x + Math.cos(angle) * (arc.outerRadius + 14);
+                                const radialY = arc.y + Math.sin(angle) * (arc.outerRadius + 14);
+                                const labelOffset = chart.width < 900 ? 118 : 170;
+                                const textX = side === 'right'
+                                    ? Math.min(chart.width - 14, arc.x + arc.outerRadius + labelOffset)
+                                    : Math.max(14, arc.x - arc.outerRadius - labelOffset);
+                                const railX = side === 'right' ? textX - 28 : textX + 28;
+                                return { index, side, outerX, outerY, radialX, radialY, railX, textX, textY: radialY };
                             });
                             ['left', 'right'].forEach((side) => {
                                 const sideItems = lineItems
                                     .filter(item => item.side === side)
                                     .sort((a, b) => a.textY - b.textY);
-                                const minY = chartArea.top + 24;
-                                const maxY = chartArea.bottom - 24;
+                                const minY = chartArea.top + 30;
+                                const maxY = chartArea.bottom - 30;
+                                const minGap = chart.width < 900 ? 38 : 44;
                                 let nextY = minY;
                                 sideItems.forEach(item => {
                                     item.textY = Math.max(item.textY, nextY);
-                                    nextY = item.textY + 44;
+                                    nextY = item.textY + minGap;
                                 });
                                 const overflow = sideItems.length ? sideItems[sideItems.length - 1].textY - maxY : 0;
                                 if (overflow > 0) {
@@ -2373,12 +2378,13 @@ const firebaseConfig = {
                             ctx.save();
                             lineItems.forEach((item) => {
                                 const slice = chartSlices[item.index];
-                                const endX = item.side === 'right' ? item.textX - 4 : item.textX + 4;
+                                const endX = item.side === 'right' ? item.textX - 6 : item.textX + 6;
                                 ctx.strokeStyle = slice.color;
-                                ctx.lineWidth = 1.2;
+                                ctx.lineWidth = 1.45;
                                 ctx.beginPath();
                                 ctx.moveTo(item.outerX, item.outerY);
-                                ctx.lineTo(item.elbowX, item.elbowY);
+                                ctx.lineTo(item.radialX, item.radialY);
+                                ctx.lineTo(item.railX, item.textY);
                                 ctx.lineTo(endX, item.textY);
                                 ctx.stroke();
 
