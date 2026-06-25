@@ -183,7 +183,7 @@ const firebaseConfig = {
             '#0f766e', '#b91c1c', '#2563eb', '#be123c', '#4d7c0f',
             '#c2410c', '#4338ca', '#047857', '#991b1b', '#0369a1'
         ];
-        const layoutPortfolioMajorTiles = (tiles, width = 100, height = 100) => {
+        const layoutPortfolioTreemapTiles = (tiles, width = 100, height = 100) => {
             const validTiles = tiles
                 .filter(tile => tile.value > 0)
                 .sort((a, b) => b.value - a.value);
@@ -2252,38 +2252,18 @@ const firebaseConfig = {
 
                 const stockTop = cashTile ? cashHeight : 0;
                 const stockHeight = Math.max(0, 100 - stockTop);
-                const majorTiles = stockTiles.filter((tile, index) => tile.percentage >= 3 || index < 4);
-                const compactTiles = stockTiles.filter(tile => !majorTiles.includes(tile));
-                const majorHeight = compactTiles.length > 0 ? Math.max(22, stockHeight * 0.56) : stockHeight;
-                const compactHeight = Math.max(0, stockHeight - majorHeight);
 
-                layoutPortfolioMajorTiles(majorTiles, 100, 100).forEach(tile => {
+                layoutPortfolioTreemapTiles(stockTiles, 100, stockHeight).forEach(tile => {
+                    const isCompact = tile.percentage < 3 || tile.w < 12 || tile.h < 8;
                     out.push({
                         ...tile,
                         x: tile.x,
-                        y: stockTop + (tile.y / 100) * majorHeight,
+                        y: stockTop + tile.y,
                         w: tile.w,
-                        h: (tile.h / 100) * majorHeight,
-                        layout: 'major'
+                        h: tile.h,
+                        layout: isCompact ? 'compact' : 'major'
                     });
                 });
-
-                if (compactTiles.length > 0 && compactHeight > 0) {
-                    const cols = compactTiles.length <= 6 ? 3 : compactTiles.length <= 12 ? 4 : 5;
-                    const rows = Math.ceil(compactTiles.length / cols);
-                    const cellW = 100 / cols;
-                    const cellH = compactHeight / rows;
-                    compactTiles.forEach((tile, index) => {
-                        out.push({
-                            ...tile,
-                            x: (index % cols) * cellW,
-                            y: stockTop + majorHeight + Math.floor(index / cols) * cellH,
-                            w: cellW,
-                            h: cellH,
-                            layout: 'compact'
-                        });
-                    });
-                }
 
                 return out;
             }, [portfolioData, colorLabels]);
