@@ -169,15 +169,6 @@ const firebaseConfig = {
             'bg-amber-500', 'bg-amber-600',
             'bg-lime-500', 'bg-lime-600',
         ];
-        const shadeHex = (hex, factor = 0.88) => {
-            const clean = String(hex || '').replace('#', '');
-            if (clean.length !== 6) return hex;
-            const n = parseInt(clean, 16);
-            const r = Math.max(0, Math.min(255, Math.round(((n >> 16) & 255) * factor)));
-            const g = Math.max(0, Math.min(255, Math.round(((n >> 8) & 255) * factor)));
-            const b = Math.max(0, Math.min(255, Math.round((n & 255) * factor)));
-            return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
-        };
         const TREEMAP_COLORS = [
             '#16a34a', '#c92a24', '#3b82f6', '#a16207', '#7c3aed',
             '#0f766e', '#b91c1c', '#2563eb', '#be123c', '#4d7c0f',
@@ -2373,8 +2364,6 @@ const firebaseConfig = {
                     const cashPercentage = cashPositions.reduce((sum, h) => sum + h.percentage, 0);
                     const cashColor = cashPositions[0]?.color;
                     const CASH_CHART_COLOR = '#16a34a';
-                    const cspObligatedCashValue = Math.min(Math.max(totalPutObligation, 0), cashValue);
-                    const freeCashValue = Math.max(cashValue - cspObligatedCashValue, 0);
                     const makeCashSlice = (ticker, value, extra = {}) => ({
                         ticker,
                         shares: cashPositions.reduce((sum, h) => sum + (Number(h.shares) || 0), 0),
@@ -2388,11 +2377,10 @@ const firebaseConfig = {
                         positions: cashPositions,
                         ...extra
                     });
+                    // CSP obligations are no longer carved out of the pie as a separate slice;
+                    // cash is a single slice and the obligation total is annotated in the donut center.
                     const cashSlices = cashPositions.length > 0
-                        ? [
-                            ...(freeCashValue > 0 ? [makeCashSlice('Cash', freeCashValue, { chartColor: CASH_CHART_COLOR })] : []),
-                            ...(cspObligatedCashValue > 0 ? [makeCashSlice('CSP Obligations', cspObligatedCashValue, { isCspObligatedCash: true, chartColor: shadeHex(CASH_CHART_COLOR, 0.88) })] : [])
-                        ]
+                        ? [makeCashSlice('Cash', cashValue, { chartColor: CASH_CHART_COLOR })]
                         : [];
                     const groupedForChart = cashPositions.length > 0
                         ? [
@@ -2402,18 +2390,24 @@ const firebaseConfig = {
                         : currentPortfolioData;
                     const chartPortfolioData = groupedForChart.flatMap(h => h.isCashPlaceholder ? h.slices : [h]);
 
-                    // Keep the largest stock names readable, then roll the smallest tail into Others.
-                    // Always show at least half of the non-cash positions by name.
+                    // Keep the largest stock names readable, then roll small positions into "Others".
+                    // A stock earns its own slice only if it clears the percent threshold, capped at
+                    // a max count; we always keep a few of the largest so "Others" never swallows all.
+                    const STOCK_SLICE_MIN_PERCENT = 2.5;
+                    const STOCK_SLICE_MAX_NAMED = 8;
                     const cashChartSlices = chartPortfolioData.filter(h => h.isCashGroup);
-                    const stockChartSlices = chartPortfolioData.filter(h => !h.isCashGroup);
-                    const minNamedStockCount = Math.ceil(stockChartSlices.length * 0.5);
-                    const preferredNamedStockCount = Math.min(10, stockChartSlices.length);
-                    const namedStockCount = Math.min(
-                        stockChartSlices.length,
-                        Math.max(minNamedStockCount, preferredNamedStockCount)
-                    );
-                    const namedStockSlices = stockChartSlices.slice(0, namedStockCount);
-                    const smallSlices = stockChartSlices.slice(namedStockCount);
+                    const stockChartSlices = chartPortfolioData
+                        .filter(h => !h.isCashGroup)
+                        .sort((a, b) => b.value - a.value);
+                    const minNamedStockCount = Math.min(stockChartSlices.length, 5);
+                    let namedStockSlices = stockChartSlices
+                        .filter(h => h.percentage >= STOCK_SLICE_MIN_PERCENT)
+                        .slice(0, STOCK_SLICE_MAX_NAMED);
+                    if (namedStockSlices.length < minNamedStockCount) {
+                        namedStockSlices = stockChartSlices.slice(0, minNamedStockCount);
+                    }
+                    const namedStockSet = new Set(namedStockSlices);
+                    const smallSlices = stockChartSlices.filter(h => !namedStockSet.has(h));
                     const largeSlices = [...cashChartSlices, ...namedStockSlices]
                         .sort((a, b) => b.value - a.value);
                     const othersValue = smallSlices.reduce((sum, h) => sum + h.value, 0);
@@ -2431,27 +2425,6 @@ const firebaseConfig = {
                     // Hide the default solid divider between free-cash and CSP-cash arcs;
                     // a small plugin draws that one separator back as a dashed line.
                     const chartBorderColors = largeSlices.map(() => darkMode ? '#1f2937' : '#ffffff');
-                    const cspSliceIndex = largeSlices.findIndex(h => h.isCspObligatedCash);
-                    const cashDividerPlugin = {
-                        id: 'cashCspDashedDivider',
-                        afterDatasetsDraw: (chart) => {
-                            if (cspSliceIndex < 0) return;
-                            const arc = chart.getDatasetMeta(0)?.data?.[cspSliceIndex];
-                            if (!arc) return;
-                            const { x, y, startAngle, outerRadius } = arc;
-                            chart.ctx.save();
-                            chart.ctx.setLineDash([4, 4]);
-                            // Draw over the normal slice separator so the divider reads as dotted,
-                            // while keeping the cash slices at the same radius/border size as others.
-                            chart.ctx.lineWidth = 5;
-                            chart.ctx.strokeStyle = '#111827';
-                            chart.ctx.beginPath();
-                            chart.ctx.moveTo(x, y);
-                            chart.ctx.lineTo(x + Math.cos(startAngle) * outerRadius, y + Math.sin(startAngle) * outerRadius);
-                            chart.ctx.stroke();
-                            chart.ctx.restore();
-                        }
-                    };
 
                     if (smallSlices.length > 0) {
                         chartLabels.push('OTHERS');
@@ -2550,9 +2523,22 @@ const firebaseConfig = {
 
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
+                            const centerX = meta.data[0].x;
+                            const centerY = meta.data[0].y;
+                            const hasCspObligation = totalPutObligation > 0;
                             ctx.fillStyle = centerColor;
                             ctx.font = '500 22px Inter, system-ui, sans-serif';
-                            ctx.fillText(`${nickname || currentUser?.split('@')[0] || 'User'}`, meta.data[0].x, meta.data[0].y);
+                            ctx.fillText(`${nickname || currentUser?.split('@')[0] || 'User'}`, centerX, hasCspObligation ? centerY - 18 : centerY);
+                            if (hasCspObligation) {
+                                ctx.fillStyle = labelColor;
+                                ctx.font = '600 11px Inter, system-ui, sans-serif';
+                                ctx.fillText('CSP Obligations', centerX, centerY + 8);
+                                if (!hidePortfolioValues) {
+                                    ctx.fillStyle = valueColor;
+                                    ctx.font = '700 15px Inter, system-ui, sans-serif';
+                                    ctx.fillText(formatPortfolioCalloutValue(totalPutObligation), centerX, centerY + 26);
+                                }
+                            }
                             ctx.restore();
                         }
                     };
@@ -2568,7 +2554,7 @@ const firebaseConfig = {
                                 borderColor: chartBorderColors
                             }]
                         },
-                        plugins: [ChartDataLabels, cashDividerPlugin, portfolioCalloutPlugin],
+                        plugins: [ChartDataLabels, portfolioCalloutPlugin],
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
@@ -2596,12 +2582,6 @@ const firebaseConfig = {
                                             const h = largeSlices[ctx.dataIndex];
                                             if (h.isCashGroup) {
                                                 const tickers = h.positions.map(p => p.ticker).join(', ');
-                                                if (h.isCspObligatedCash) {
-                                                    if (hidePortfolioValues) {
-                                                        return `CSP Obligations (${tickers}): ${h.percentOfCash.toFixed(1)}% of cash`;
-                                                    }
-                                                    return `CSP Obligations (${tickers}): $${h.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${h.percentOfCash.toFixed(1)}% of cash)`;
-                                                }
                                                 if (hidePortfolioValues) {
                                                     return `Cash (${tickers}): ${h.cashTotalPercentage.toFixed(1)}%`;
                                                 }
@@ -2616,17 +2596,13 @@ const firebaseConfig = {
                                 },
                                 datalabels: {
                                     color: '#ffffff',
-                                    font: (ctx) => ({
+                                    font: {
                                         weight: 'bold',
-                                        size: 10,
-                                        style: largeSlices[ctx.dataIndex]?.isCspObligatedCash ? 'italic' : 'normal'
-                                    }),
+                                        size: 10
+                                    },
                                     formatter: (value, ctx) => {
                                         const label = chartLabels[ctx.dataIndex];
                                         const slice = largeSlices[ctx.dataIndex];
-                                        if (slice?.isCspObligatedCash) {
-                                            return `${Math.round(slice.percentOfCash)}%`;
-                                        }
                                         if (slice?.isCashGroup) {
                                             return `${Math.round(slice.cashTotalPercentage)}%`;
                                         }
@@ -4750,9 +4726,9 @@ const firebaseConfig = {
                                             <div className={`mt-2 text-xs leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                 <span className={`font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>* Cash Secured Put obligation:</span>{' '}
                                                 <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(totalPutObligation)}</span>
-                                                {' '}— shaded dark green shows{' '}
+                                                {' '}—{' '}
                                                 <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(cspObligatedCashValue)}</span>
-                                                {' '}of cash obligated to CSPs; free cash is{' '}
+                                                {' '}of cash is obligated to CSPs; free cash is{' '}
                                                 <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(freeCashValue)}</span>.
                                             </div>
                                         )}
