@@ -2258,8 +2258,6 @@ const firebaseConfig = {
 
                 return out;
             }, [portfolioData, colorLabels]);
-            const cspObligatedCashValue = Math.min(Math.max(totalPutObligation, 0), cashPortfolioValue);
-            const freeCashValue = Math.max(cashPortfolioValue - cspObligatedCashValue, 0);
 
             // Stable key for chart redraws. Firestore snapshots can replace `notes` with
             // equal data, which creates new portfolioData arrays; depending on the array
@@ -4722,14 +4720,13 @@ const firebaseConfig = {
                                                 </div>
                                             )}
                                         </div>
-                                        {cashPortfolioValue > 0 && totalPutObligation > 0 && (
+                                        {totalPutObligation > 0 && (
                                             <div className={`mt-2 text-xs leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                 <span className={`font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>* Cash Secured Put obligation:</span>{' '}
                                                 <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(totalPutObligation)}</span>
-                                                {' '}—{' '}
-                                                <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(cspObligatedCashValue)}</span>
-                                                {' '}of cash is obligated to CSPs; free cash is{' '}
-                                                <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(freeCashValue)}</span>.
+                                                {' '}— held as separate collateral by the broker, not part of the cash position shown{cashPortfolioValue > 0 ? (
+                                                    <>{' '}(<span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(cashPortfolioValue)}</span> free cash)</>
+                                                ) : ''}.
                                             </div>
                                         )}
                                     </div>
