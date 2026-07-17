@@ -2390,19 +2390,19 @@ const firebaseConfig = {
 
                     // Keep the largest stock names readable, then roll small positions into "Others".
                     // A stock earns its own slice only if it clears the percent threshold, capped at
-                    // a max count; we always keep a few of the largest so "Others" never swallows all.
+                    // a max count. If nothing clears the bar (a flat portfolio with no dominant
+                    // holding), fall back to the largest few so "Others" doesn't swallow everything.
                     const STOCK_SLICE_MIN_PERCENT = 2.5;
                     const STOCK_SLICE_MAX_NAMED = 8;
                     const cashChartSlices = chartPortfolioData.filter(h => h.isCashGroup);
                     const stockChartSlices = chartPortfolioData
                         .filter(h => !h.isCashGroup)
                         .sort((a, b) => b.value - a.value);
-                    const minNamedStockCount = Math.min(stockChartSlices.length, 5);
                     let namedStockSlices = stockChartSlices
                         .filter(h => h.percentage >= STOCK_SLICE_MIN_PERCENT)
                         .slice(0, STOCK_SLICE_MAX_NAMED);
-                    if (namedStockSlices.length < minNamedStockCount) {
-                        namedStockSlices = stockChartSlices.slice(0, minNamedStockCount);
+                    if (namedStockSlices.length === 0) {
+                        namedStockSlices = stockChartSlices.slice(0, Math.min(stockChartSlices.length, 5));
                     }
                     const namedStockSet = new Set(namedStockSlices);
                     const smallSlices = stockChartSlices.filter(h => !namedStockSet.has(h));
