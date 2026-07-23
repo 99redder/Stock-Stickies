@@ -229,7 +229,7 @@ const firebaseConfig = {
         const ACCOUNTS = [
             { id: 'individual', label: 'Individual', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.' },
             { id: 'traditional', label: 'Traditional IRA', strategy: 'Traditional IRA — long-term buy-and-hold core of quality names.' },
-            { id: 'roth', label: 'Roth IRA', strategy: 'Roth IRA — higher-risk speculative "moon shot" names, where tax-free growth has the most upside.' }
+            { id: 'roth', label: 'Roth IRA', strategy: 'Roth IRA — higher-risk speculative "moon shot" names plus cash secured puts, where tax-free growth has the most upside. All CSPs are written in this account.' }
         ];
         const ACCOUNT_IDS = ACCOUNTS.map(a => a.id);
         const DEFAULT_ACCOUNT_ID = 'individual';

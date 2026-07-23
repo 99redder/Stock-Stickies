@@ -185,7 +185,7 @@ its own investing intent:
 |---|---|---|
 | `individual` | Individual | Taxable brokerage — swing trades, shorter horizon |
 | `traditional` | Traditional IRA | Long-term buy-and-hold core of quality names |
-| `roth` | Roth IRA | Speculative "moon shot" names — tax-free growth upside |
+| `roth` | Roth IRA | Speculative "moon shot" names **and all cash secured puts** — tax-free growth upside |
 
 Notes created before accounts existed have no `account` field and fall into an
 **Unassigned** bucket rather than defaulting into a real account.
