@@ -218,6 +218,17 @@ rather than one per account; filtering to a single account narrows it to that ac
 cash. SGOV keeps its real Finnhub price, so only the grouping changes, never the value.
 The Ask K prompt describes the same arrangement.
 
+### Duplicate positions
+A ticker may be held in several accounts (SGOV sits in both IRAs) but only once **within**
+one account — two notes for the same holding would double-count it in that account's value
+and percentages. `duplicateNoteIds` flags every note currently colliding (both sides, so
+either can be fixed) and the card and expanded modal show a red "Duplicate" banner.
+`updateNoteAccount` **refuses** a move that would create a collision and returns `false`;
+callers must not apply their own optimistic update without checking it. Ticker collisions
+are warned about on **blur**, not per keystroke — every partial ticker on the way to the
+real one would otherwise trip the warning. Unclassified cards have no ticker input (the
+ticker is entered after categorizing), so the blur check covers note creation.
+
 ### Locked positions
 A note's `shares` and `account` are **locked by default** behind a lock icon, on both the
 note card and the expanded modal. Locked, they render as a read-only readout (large

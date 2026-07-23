@@ -22,6 +22,8 @@ export default function NoteCard({
     accountIds,
     isUnlocked,
     toggleNoteLock,
+    isDuplicate,
+    warnIfDuplicateTicker,
     sharesPrivacyMode,
     setExpandedNote,
     showBrandedNotice,
@@ -95,9 +97,16 @@ export default function NoteCard({
                 value={note.title || ''}
                 onChange={(e) => updateNoteTitle(note.id, e.target.value)}
                 placeholder="TICKER"
+                onBlur={() => warnIfDuplicateTicker(note.id)}
                 className="w-full bg-transparent border-none outline-none text-gray-800 placeholder-gray-500 font-bold text-xl mb-1 uppercase"
                 style={{ letterSpacing: '0.05em' }}
             />
+
+            {isDuplicate && (
+                <div className="mb-2 rounded border border-red-500 bg-red-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-red-800">
+                    Duplicate in {accountLabel || 'Unassigned'}
+                </div>
+            )}
 
             {/* Shares + account are locked by default — the lock toggle swaps the read-only
                 readout for the edit controls, so a stray click can't alter a position. */}

@@ -2518,6 +2518,8 @@ const firebaseConfig = {
                     accountIds={ACCOUNT_IDS}
                     isUnlocked={!!unlockedNotes[note.id]}
                     toggleNoteLock={toggleNoteLock}
+                    isDuplicate={duplicateNoteIds.has(note.id)}
+                    warnIfDuplicateTicker={warnIfDuplicateTicker}
                     sharesPrivacyMode={sharesPrivacyMode}
                     setExpandedNote={setExpandedNote}
                     showBrandedNotice={showBrandedNotice}
@@ -2531,10 +2533,67 @@ const firebaseConfig = {
                 />
             );
 
-            // Assign a note (position) to a brokerage account
+            // A ticker may legitimately be held in several accounts (SGOV sits in both IRAs),
+            // but only once within a single account — two notes for the same holding would
+            // double-count it in that account's market value and percentages.
+            const findDuplicateNote = (ticker, accountId, excludeNoteId) => {
+                const target = normalizeTicker(ticker);
+                if (!target) return null;
+                return notes.find(n =>
+                    n.id !== excludeNoteId &&
+                    normalizeTicker(n.title) === target &&
+                    getNoteAccount(n) === accountId
+                ) || null;
+            };
+
+            // Ids of every note currently colliding with another. Both sides of a collision
+            // are flagged so either one can be fixed.
+            const duplicateNoteIds = useMemo(() => {
+                const seen = new Map();
+                const dupes = new Set();
+                notes.forEach(n => {
+                    const ticker = normalizeTicker(n.title);
+                    if (!ticker) return;
+                    const key = `${getNoteAccount(n)}|${ticker}`;
+                    if (seen.has(key)) {
+                        dupes.add(seen.get(key));
+                        dupes.add(n.id);
+                    } else {
+                        seen.set(key, n.id);
+                    }
+                });
+                return dupes;
+            }, [notes]);
+
+            // Assign a note (position) to a brokerage account. Refuses a move that would put
+            // two notes for the same ticker in one account. Returns whether it applied.
             const updateNoteAccount = (noteId, account) => {
                 const nextAccount = ACCOUNT_IDS.includes(account) ? account : DEFAULT_ACCOUNT_ID;
+                const note = notes.find(n => n.id === noteId);
+                const clash = findDuplicateNote(note?.title, nextAccount, noteId);
+                if (clash) {
+                    showBrandedNotice(
+                        `${normalizeTicker(note.title)} is already in ${getAccountLabel(nextAccount)}. Combine the two notes instead of holding it twice in one account.`,
+                        'Duplicate position'
+                    );
+                    return false;
+                }
                 setNotes(notes.map(n => n.id === noteId ? {...n, account: nextAccount} : n));
+                return true;
+            };
+
+            // Checked on blur rather than per keystroke — every partial ticker on the way to
+            // the real one would otherwise trip the warning.
+            const warnIfDuplicateTicker = (noteId) => {
+                const note = notes.find(n => n.id === noteId);
+                if (!note) return;
+                const accountId = getNoteAccount(note);
+                const clash = findDuplicateNote(note.title, accountId, noteId);
+                if (!clash) return;
+                showBrandedNotice(
+                    `${normalizeTicker(note.title)} already has a note in ${getAccountLabel(accountId)}. Two notes for one holding will double-count it in that account.`,
+                    'Duplicate position'
+                );
             };
 
             // Chart rendering effect - runs when tab changes, data changes, or after a short delay to ensure canvas is mounted
@@ -3442,10 +3501,16 @@ const firebaseConfig = {
                                         value={expandedNote.title || ''}
                                         onChange={(e) => updateNoteTitle(expandedNote.id, e.target.value)}
                                         placeholder="TICKER"
+                                        onBlur={() => warnIfDuplicateTicker(expandedNote.id)}
                                         className={`w-full bg-transparent border-none outline-none font-bold text-3xl mb-2 uppercase ${darkMode ? 'text-gray-900 placeholder-gray-700' : 'text-gray-800 placeholder-gray-500'}`}
                                         style={{letterSpacing: '0.05em'}}
                                         maxLength={MAX_TITLE_LENGTH}
                                     />
+                                    {duplicateNoteIds.has(expandedNote.id) && (
+                                        <div className="mb-3 rounded border border-red-500 bg-red-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-800">
+                                            Duplicate — {getAccountLabel(getNoteAccount(expandedNote))} already has another {normalizeTicker(expandedNote.title)} note
+                                        </div>
+                                    )}
                                     {/* Shares + account share one lock, same as the note card. */}
                                     <div className="flex items-start gap-3 mb-4">
                                         <div className="flex-1">
@@ -3474,8 +3539,9 @@ const firebaseConfig = {
                                                             value={ACCOUNT_IDS.includes(expandedNote.account) ? expandedNote.account : ''}
                                                             onChange={(e) => {
                                                                 const nextAccount = e.target.value;
-                                                                updateNoteAccount(expandedNote.id, nextAccount);
-                                                                setExpandedNote({...expandedNote, account: nextAccount});
+                                                                if (updateNoteAccount(expandedNote.id, nextAccount)) {
+                                                                    setExpandedNote({...expandedNote, account: nextAccount});
+                                                                }
                                                             }}
                                                             className="w-48 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700"
                                                         >
