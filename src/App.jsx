@@ -259,17 +259,25 @@ const firebaseConfig = {
         const validateTicker = (ticker) => {
             if (!ticker || typeof ticker !== 'string') return false;
             const trimmed = ticker.trim().toUpperCase();
-            // Ticker must be 1-5 uppercase letters/numbers (some tickers have numbers)
-            const tickerRegex = /^[A-Z0-9]{1,5}$/;
+            // 1-5 letters/numbers, optionally followed by a class suffix after a dot.
+            // Class shares are quoted this way — Moog is MOG.A, Berkshire is BRK.B.
+            const tickerRegex = /^[A-Z0-9]{1,5}(\.[A-Z0-9]{1,3})?$/;
             return tickerRegex.test(trimmed) && trimmed.length <= MAX_TITLE_LENGTH;
         };
 
         const sanitizeTicker = (ticker) => {
             if (!ticker || typeof ticker !== 'string') return '';
-            // Remove any non-alphanumeric characters and convert to uppercase
-            const sanitized = ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-            // Limit to 5 characters
-            return sanitized.substring(0, 5);
+            // Keep letters, numbers and the dot that separates a share class. Everything
+            // else is dropped, and the dot is normalised so partial typing can't leave a
+            // leading or doubled dot behind ("..A", ".MOG").
+            let sanitized = ticker.replace(/[^A-Z0-9.]/gi, '').toUpperCase();
+            sanitized = sanitized.replace(/\.{2,}/g, '.').replace(/^\.+/, '');
+            const firstDot = sanitized.indexOf('.');
+            if (firstDot !== -1) {
+                // At most one dot — drop any further ones in the suffix.
+                sanitized = sanitized.slice(0, firstDot + 1) + sanitized.slice(firstDot + 1).replace(/\./g, '');
+            }
+            return sanitized.substring(0, MAX_TITLE_LENGTH);
         };
 
         const validateApiKey = (key, type) => {

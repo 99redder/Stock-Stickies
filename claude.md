@@ -166,7 +166,8 @@ GitHub Pages reads from the `main` branch. The `CNAME` file routes `www.stocksti
 ```javascript
 {
   id: number,            // Unique identifier (auto-increment)
-  title: string,         // Ticker symbol — 1–5 uppercase alphanumeric chars
+  title: string,         // Ticker symbol — 1–5 alphanumerics, plus an optional
+                         // .CLASS suffix for class shares (MOG.A, BRK.B)
   text: string,          // Note content — up to 10,000 chars
   color: string,         // Tailwind bg class (e.g., 'bg-blue-200')
   classified: boolean,   // true if note has been assigned to a category
