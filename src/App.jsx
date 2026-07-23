@@ -505,6 +505,9 @@ const firebaseConfig = {
             const isSavingRef = useRef(false);
             const isLoadingRef = useRef(false);
             const saveTimeoutRef = useRef(null);
+            // Serialized copy of the last snapshot payload applied to state. Guards the
+            // save→snapshot→save feedback loop described at applySnapshotData.
+            const lastAppliedSnapshotRef = useRef(null);
             const lastBackupSignatureRef = useRef('');
             const lastBackupAtRef = useRef(0);
             const [notes, setNotes] = useState([]);
@@ -767,6 +770,7 @@ const firebaseConfig = {
                 // echo fired between handleLogout's explicit reset and auth.signOut(). If left true
                 // it blocks every snapshot in the new session and the user's data never loads.
                 isSavingRef.current = false;
+                lastAppliedSnapshotRef.current = null;
 
                 const unsubscribe = db.collection('users').doc(userId)
                     .onSnapshot((doc) => {
@@ -779,27 +783,61 @@ const firebaseConfig = {
                         if (!isSavingRef.current) {
                             const data = doc.data();
 
+                            // Every auto-save writes a fresh serverTimestamp, so Firestore always
+                            // echoes a snapshot back even when nothing meaningful changed. Calling
+                            // the setters with freshly-deserialized objects hands React new
+                            // identities for notes/colorLabels/categories/etc., which are deps of
+                            // the auto-save effect — so the echo schedules another save, which
+                            // echoes again, forever. That idle loop re-ran the portfolio chart
+                            // effect every few seconds and made the chart visibly blink.
+                            // Applying state only when the payload actually differs breaks it.
+                            const incoming = {
+                                categories: data.categories || DEFAULT_COLORS,
+                                colorLabels: data.colorLabels || DEFAULT_COLOR_LABELS,
+                                notes: data.notes || [],
+                                nextId: data.nextId || 1,
+                                collapsedCategories: data.collapsedCategories || {},
+                                darkMode: data.darkMode || false,
+                                watchList: data.watchList || [],
+                                cashSecuredPuts: data.cashSecuredPuts || [],
+                                nickname: data.nickname || '',
+                                profilePhoto: data.profilePhoto || auth.currentUser?.photoURL || '',
+                                notesSortMode: data.notesSortMode || 'default',
+                                notesGroupMode: data.notesGroupMode || 'category',
+                                portfolioLegendVisible: data.portfolioLegendVisible !== false,
+                                portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
+                                hideLegendPanel: data.hideLegendPanel || false,
+                                hideToolbarPanel: data.hideToolbarPanel || false,
+                                sharesPrivacyMode: data.sharesPrivacyMode || 'show'
+                            };
+                            const incomingKey = JSON.stringify(incoming);
+                            if (incomingKey === lastAppliedSnapshotRef.current) {
+                                // Pure echo of our own write — nothing to apply.
+                                return;
+                            }
+                            lastAppliedSnapshotRef.current = incomingKey;
+
                             // Set loading flag to prevent orphan repair during data load
                             isLoadingRef.current = true;
 
                             // Load all data immediately - categories FIRST, then notes
-                            setCategories(data.categories || DEFAULT_COLORS);
-                            setColorLabels(data.colorLabels || DEFAULT_COLOR_LABELS);
-                            setNotes(data.notes || []);
-                            setNextId(data.nextId || 1);
-                            setCollapsedCategories(data.collapsedCategories || {});
-                            setDarkMode(data.darkMode || false);
-                            setWatchList(data.watchList || []);
-                            setCashSecuredPuts(data.cashSecuredPuts || []);
-                            setNickname(data.nickname || '');
-                            setProfilePhoto(data.profilePhoto || auth.currentUser?.photoURL || '');
-                            setNotesSortMode(data.notesSortMode || 'default');
-                            setNotesGroupMode(data.notesGroupMode || 'category');
-                            setPortfolioLegendVisible(data.portfolioLegendVisible !== false);
-                            setPortfolioLegendDollarAmounts(!!data.portfolioLegendDollarAmounts);
-                            setHideLegendPanel(data.hideLegendPanel || false);
-                            setHideToolbarPanel(data.hideToolbarPanel || false);
-                            setSharesPrivacyMode(data.sharesPrivacyMode || 'show');
+                            setCategories(incoming.categories);
+                            setColorLabels(incoming.colorLabels);
+                            setNotes(incoming.notes);
+                            setNextId(incoming.nextId);
+                            setCollapsedCategories(incoming.collapsedCategories);
+                            setDarkMode(incoming.darkMode);
+                            setWatchList(incoming.watchList);
+                            setCashSecuredPuts(incoming.cashSecuredPuts);
+                            setNickname(incoming.nickname);
+                            setProfilePhoto(incoming.profilePhoto);
+                            setNotesSortMode(incoming.notesSortMode);
+                            setNotesGroupMode(incoming.notesGroupMode);
+                            setPortfolioLegendVisible(incoming.portfolioLegendVisible);
+                            setPortfolioLegendDollarAmounts(incoming.portfolioLegendDollarAmounts);
+                            setHideLegendPanel(incoming.hideLegendPanel);
+                            setHideToolbarPanel(incoming.hideToolbarPanel);
+                            setSharesPrivacyMode(incoming.sharesPrivacyMode);
 
                             // Reset loading flag after state updates settle
                             setTimeout(() => { isLoadingRef.current = false; }, 200);
@@ -1423,6 +1461,9 @@ const firebaseConfig = {
                 if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                 isSavingRef.current = false;
                 isLoadingRef.current = false;
+                // Logout resets state to defaults, so the next session must re-apply its
+                // first snapshot even if the payload is byte-identical to this one.
+                lastAppliedSnapshotRef.current = null;
                 if (auth) await auth.signOut();
                 setCurrentUser(null);
                 setNotes([]);
@@ -2321,6 +2362,11 @@ const firebaseConfig = {
                 return out;
             }, [portfolioData, colorLabels]);
 
+            // Content key for colorLabels. The chart effect reads colorLabels but must not
+            // depend on its object identity — a snapshot that reassigns an equal object
+            // would otherwise tear down and rebuild the chart for no reason.
+            const colorLabelsKey = useMemo(() => JSON.stringify(colorLabels), [colorLabels]);
+
             // Stable key for chart redraws. Firestore snapshots can replace `notes` with
             // equal data, which creates new portfolioData arrays; depending on the array
             // identity made Chart.js destroy/recreate the pie chart and visibly flash.
@@ -2721,7 +2767,9 @@ const firebaseConfig = {
                     clearTimeout(timeoutId);
                     if (chartInstance.current) chartInstance.current.destroy();
                 };
-            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, colorLabels, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
+                // colorLabelsKey (not colorLabels) — depend on content, not object identity.
+                // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, colorLabelsKey, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
 
             if (!currentUser) {
                 return (
