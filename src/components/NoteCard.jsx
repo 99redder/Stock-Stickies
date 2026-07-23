@@ -140,16 +140,16 @@ export default function NoteCard({
                                     <span className="text-2xl font-bold text-gray-800 tabular-nums tracking-tight">
                                         {sharesValue.toLocaleString()}
                                     </span>
-                                    <span className="text-xs font-medium uppercase tracking-wider text-gray-600">
+                                    <span className="text-xs font-medium uppercase tracking-wider text-gray-700">
                                         {sharesValue === 1 ? 'share' : 'shares'}
                                     </span>
                                 </div>
                             ) : (
-                                <div className="text-sm italic text-gray-600 leading-none py-1">No position</div>
+                                <div className="text-sm italic text-gray-700 leading-none py-1">No position</div>
                             )}
                             {accountLabel && (
                                 <div className="mt-1.5">
-                                    <span className="inline-block bg-white bg-opacity-60 border border-gray-400 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-700">
+                                    <span className="inline-block bg-white bg-opacity-60 border border-gray-400 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-800">
                                         {accountLabel}
                                     </span>
                                 </div>
@@ -159,7 +159,7 @@ export default function NoteCard({
                 </div>
                 <button
                     onClick={() => toggleNoteLock(note.id)}
-                    className={`shrink-0 p-1 rounded ${isUnlocked ? 'text-gray-800 bg-white bg-opacity-60' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`shrink-0 p-1 rounded ${isUnlocked ? 'text-gray-800 bg-white bg-opacity-60' : 'text-gray-700 hover:text-gray-900'}`}
                     title={isUnlocked ? 'Lock shares and account' : 'Unlock to edit shares and account'}
                     aria-label={isUnlocked ? 'Lock shares and account' : 'Unlock to edit shares and account'}
                     aria-pressed={!!isUnlocked}
@@ -179,7 +179,7 @@ export default function NoteCard({
                     setNotes(notes.map(n => n.id === note.id ? { ...n, text: newText } : n));
                 }}
                 placeholder="Notes..."
-                className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-500"
+                className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-700"
                 style={{ minHeight: '100px' }}
                 maxLength={MAX_CONTENT_LENGTH}
             />

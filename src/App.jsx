@@ -3464,16 +3464,16 @@ const firebaseConfig = {
                                                             <span className="text-4xl font-bold text-gray-800 tabular-nums tracking-tight">
                                                                 {(Number(expandedNote.shares) || 0).toLocaleString()}
                                                             </span>
-                                                            <span className="text-sm font-medium uppercase tracking-wider text-gray-600">
+                                                            <span className="text-sm font-medium uppercase tracking-wider text-gray-700">
                                                                 {(Number(expandedNote.shares) || 0) === 1 ? 'share' : 'shares'}
                                                             </span>
                                                         </div>
                                                     ) : (
-                                                        <div className="text-lg italic text-gray-600 leading-none py-1">No position</div>
+                                                        <div className="text-lg italic text-gray-700 leading-none py-1">No position</div>
                                                     )}
                                                     {ACCOUNT_IDS.includes(expandedNote.account) && (
                                                         <div className="mt-2">
-                                                            <span className="inline-block bg-white bg-opacity-60 border border-gray-400 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider text-gray-700">
+                                                            <span className="inline-block bg-white bg-opacity-60 border border-gray-400 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider text-gray-800">
                                                                 {getAccountLabel(expandedNote.account)}
                                                             </span>
                                                         </div>
@@ -3483,7 +3483,7 @@ const firebaseConfig = {
                                         </div>
                                         <button
                                             onClick={() => toggleNoteLock(expandedNote.id)}
-                                            className={`shrink-0 p-2 rounded ${unlockedNotes[expandedNote.id] ? 'text-gray-800 bg-white bg-opacity-60' : 'text-gray-500 hover:text-gray-700'}`}
+                                            className={`shrink-0 p-2 rounded ${unlockedNotes[expandedNote.id] ? 'text-gray-800 bg-white bg-opacity-60' : 'text-gray-700 hover:text-gray-900'}`}
                                             title={unlockedNotes[expandedNote.id] ? 'Lock shares and account' : 'Unlock to edit shares and account'}
                                             aria-label={unlockedNotes[expandedNote.id] ? 'Lock shares and account' : 'Unlock to edit shares and account'}
                                             aria-pressed={!!unlockedNotes[expandedNote.id]}
@@ -3503,7 +3503,7 @@ const firebaseConfig = {
                                             setExpandedNote({...expandedNote, text: newText});
                                         }}
                                         placeholder="Notes..."
-                                        className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-500 text-lg"
+                                        className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-700 text-lg"
                                         maxLength={MAX_CONTENT_LENGTH}
                                     />
                                 </div>
