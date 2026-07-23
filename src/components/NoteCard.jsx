@@ -17,6 +17,9 @@ export default function NoteCard({
     deleteNote,
     updateNoteTitle,
     updateNoteShares,
+    updateNoteAccount,
+    accounts,
+    accountIds,
     sharesPrivacyMode,
     setExpandedNote,
     showBrandedNotice,
@@ -106,6 +109,20 @@ export default function NoteCard({
                     ? <span className="text-xs text-gray-600">shares hidden</span>
                     : (note.shares > 0 && <span className="text-xs text-gray-600">shares owned</span>)}
             </div>
+
+            {note.shares > 0 && (
+                <div className="flex items-center gap-2 mb-2">
+                    <select
+                        value={accountIds.includes(note.account) ? note.account : ''}
+                        onChange={(e) => updateNoteAccount(note.id, e.target.value)}
+                        className="bg-white bg-opacity-50 border border-gray-400 rounded px-2 py-1 text-xs text-gray-700"
+                        title="Brokerage account for this position"
+                    >
+                        <option value="" disabled>Select account</option>
+                        {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                    </select>
+                </div>
+            )}
 
             <textarea
                 value={note.text}

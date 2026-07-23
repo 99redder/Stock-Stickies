@@ -59,7 +59,7 @@
 // export default StickyNotesApp  Line 3839
 // =============================================================================
 
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
@@ -223,6 +223,23 @@ const firebaseConfig = {
         };
         const MIN_CATEGORIES = 1;
         const MAX_CATEGORIES = 10;
+
+        // Brokerage accounts a position can be assigned to. `strategy` is descriptive
+        // context only — it is shipped to Ask K so answers can be framed per account.
+        const ACCOUNTS = [
+            { id: 'individual', label: 'Individual', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.' },
+            { id: 'traditional', label: 'Traditional IRA', strategy: 'Traditional IRA — long-term buy-and-hold core of quality names.' },
+            { id: 'roth', label: 'Roth IRA', strategy: 'Roth IRA — higher-risk speculative "moon shot" names, where tax-free growth has the most upside.' }
+        ];
+        const ACCOUNT_IDS = ACCOUNTS.map(a => a.id);
+        const DEFAULT_ACCOUNT_ID = 'individual';
+        const UNASSIGNED_ACCOUNT_ID = 'unassigned';
+        // Notes created before accounts existed have no `account` field. They stay in an
+        // explicit "Unassigned" bucket rather than silently landing in a real account.
+        const getNoteAccount = (note) =>
+            ACCOUNT_IDS.includes(note?.account) ? note.account : UNASSIGNED_ACCOUNT_ID;
+        const getAccountLabel = (accountId) =>
+            ACCOUNTS.find(a => a.id === accountId)?.label || 'Unassigned';
 
         // Input validation constants
         const MAX_TITLE_LENGTH = 10; // For ticker symbols
@@ -641,6 +658,7 @@ const firebaseConfig = {
             const [portfolioLoading, setPortfolioLoading] = useState(false);
             const [mainTab, setMainTab] = useState('notes');
             const [portfolioViewMode, setPortfolioViewMode] = useState('donut'); // 'donut' | 'map'
+            const [portfolioAccountFilter, setPortfolioAccountFilter] = useState('all'); // 'all' | account id | 'unassigned'
             const [portfolioLegendVisible, setPortfolioLegendVisible] = useState(true);
             const [portfolioLegendDollarAmounts, setPortfolioLegendDollarAmounts] = useState(false);
             const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
@@ -1274,7 +1292,8 @@ const firebaseConfig = {
                 }
 
                 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const suggestedName = `portfolio-${timestamp}.png`;
+                const accountSlug = portfolioAccountFilter === 'all' ? '' : `-${portfolioAccountFilter}`;
+                const suggestedName = `portfolio${accountSlug}-${timestamp}.png`;
 
                 try {
                     if (typeof html2canvas === 'function') {
@@ -2164,25 +2183,68 @@ const firebaseConfig = {
                 return () => { isMounted = false; };
             }, [portfolioTickerKey, finnhubApiKey]);
 
-            // Portfolio computed data - derived from notes
-            const portfolioData = useMemo(() => {
-                const holdings = portfolioNotes.map(n => {
+            // Portfolio computed data - derived from notes.
+            // Percentages are always relative to the set being shown, so the same builder
+            // powers both the composite view and each single-account view.
+            const buildHoldings = useCallback((noteList) => {
+                const holdings = noteList.map(n => {
                     const ticker = normalizeTicker(n.title);
                     const price = isUsdTicker(ticker) ? 1 : portfolioPrices[ticker] || 0;
                     const value = price * n.shares;
-                    return { ticker: ticker || n.title, shares: n.shares, price, value, noteId: n.id, color: n.color };
+                    return { ticker: ticker || n.title, shares: n.shares, price, value, noteId: n.id, color: n.color, account: getNoteAccount(n) };
                 });
                 const totalValue = holdings.reduce((sum, h) => sum + h.value, 0);
                 return holdings.map(h => ({
                     ...h,
                     percentage: totalValue > 0 ? (h.value / totalValue) * 100 : 0
                 })).sort((a, b) => b.value - a.value);
-            }, [portfolioNotes, portfolioPrices]);
+            }, [portfolioPrices]);
+
+            // Every position, ignoring the account filter — used for account totals and Ask K.
+            const allPortfolioData = useMemo(() => buildHoldings(portfolioNotes), [portfolioNotes, buildHoldings]);
+
+            // Accounts that actually hold something, in canonical order (plus Unassigned last).
+            const presentAccountIds = useMemo(() => {
+                const present = new Set(allPortfolioData.map(h => h.account));
+                return [
+                    ...ACCOUNT_IDS.filter(id => present.has(id)),
+                    ...(present.has(UNASSIGNED_ACCOUNT_ID) ? [UNASSIGNED_ACCOUNT_ID] : [])
+                ];
+            }, [allPortfolioData]);
+
+            const accountTotals = useMemo(() => {
+                const totals = {};
+                allPortfolioData.forEach(h => {
+                    if (!totals[h.account]) totals[h.account] = { value: 0, positionCount: 0 };
+                    totals[h.account].value += h.value;
+                    totals[h.account].positionCount += 1;
+                });
+                return totals;
+            }, [allPortfolioData]);
+
+            const grandPortfolioValue = useMemo(() =>
+                allPortfolioData.reduce((sum, h) => sum + h.value, 0),
+            [allPortfolioData]);
+
+            const filteredPortfolioNotes = useMemo(() =>
+                portfolioAccountFilter === 'all'
+                    ? portfolioNotes
+                    : portfolioNotes.filter(n => getNoteAccount(n) === portfolioAccountFilter),
+            [portfolioNotes, portfolioAccountFilter]);
+
+            const portfolioData = useMemo(() => buildHoldings(filteredPortfolioNotes), [filteredPortfolioNotes, buildHoldings]);
 
             const totalPortfolioValue = useMemo(() =>
                 portfolioData.reduce((sum, h) => sum + h.value, 0),
             [portfolioData]);
             portfolioDataRef.current = portfolioData;
+
+            // Don't strand the user on an account tab whose last position was just removed.
+            useEffect(() => {
+                if (portfolioAccountFilter === 'all') return;
+                if (allPortfolioData.length === 0) return;
+                if (!presentAccountIds.includes(portfolioAccountFilter)) setPortfolioAccountFilter('all');
+            }, [portfolioAccountFilter, presentAccountIds, allPortfolioData.length]);
 
             const missingPortfolioPriceCount = useMemo(
                 () => portfolioData.filter(h => !Number.isFinite(h.price) || h.price <= 0).length,
@@ -2278,21 +2340,47 @@ const firebaseConfig = {
             // Snapshot of portfolio state shipped to the Ask K assistant on each turn.
             const askKPortfolio = useMemo(() => {
                 const noteById = new Map(notes.map(n => [n.id, n]));
-                const portfolioNoteIds = new Set(portfolioData.map(h => h.noteId));
+                const portfolioNoteIds = new Set(allPortfolioData.map(h => h.noteId));
                 const trimNote = (t) => String(t || '').trim().slice(0, 1500);
+                // Ask K always sees every account, regardless of which one is on screen.
+                const missingPrices = allPortfolioData.filter(h => !Number.isFinite(h.price) || h.price <= 0).length;
 
                 return {
                     asOf: new Date().toISOString(),
                     nickname: nickname || null,
                     totals: {
-                        longMarketValue: Number(totalPortfolioValue.toFixed(2)),
+                        longMarketValue: Number(grandPortfolioValue.toFixed(2)),
                         cspObligation: Number(totalPutObligation.toFixed(2)),
-                        longPlusCspExposure: Number((totalPortfolioValue + totalPutObligation).toFixed(2)),
-                        positionCount: portfolioData.length,
+                        longPlusCspExposure: Number((grandPortfolioValue + totalPutObligation).toFixed(2)),
+                        positionCount: allPortfolioData.length,
                         cspCount: cashSecuredPuts.length,
-                        missingPrices: missingPortfolioPriceCount
+                        missingPrices
                     },
-                    positions: portfolioData.map(h => {
+                    // Account definitions + per-account totals. Positions carry an `account`
+                    // id so Ask K can answer composite or per-account questions.
+                    accounts: [
+                        ...ACCOUNTS.map(a => ({
+                            id: a.id,
+                            label: a.label,
+                            strategy: a.strategy,
+                            marketValue: Number((accountTotals[a.id]?.value || 0).toFixed(2)),
+                            positionCount: accountTotals[a.id]?.positionCount || 0,
+                            percentOfTotal: grandPortfolioValue > 0
+                                ? Number((((accountTotals[a.id]?.value || 0) / grandPortfolioValue) * 100).toFixed(2))
+                                : 0
+                        })),
+                        ...(accountTotals[UNASSIGNED_ACCOUNT_ID] ? [{
+                            id: UNASSIGNED_ACCOUNT_ID,
+                            label: 'Unassigned',
+                            strategy: 'Positions the user has not yet assigned to an account.',
+                            marketValue: Number(accountTotals[UNASSIGNED_ACCOUNT_ID].value.toFixed(2)),
+                            positionCount: accountTotals[UNASSIGNED_ACCOUNT_ID].positionCount,
+                            percentOfTotal: grandPortfolioValue > 0
+                                ? Number(((accountTotals[UNASSIGNED_ACCOUNT_ID].value / grandPortfolioValue) * 100).toFixed(2))
+                                : 0
+                        }] : [])
+                    ],
+                    positions: allPortfolioData.map(h => {
                         const n = noteById.get(h.noteId);
                         return {
                             ticker: h.ticker,
@@ -2300,6 +2388,11 @@ const firebaseConfig = {
                             price: Number((h.price || 0).toFixed(4)),
                             value: Number((h.value || 0).toFixed(2)),
                             percentOfPortfolio: Number((h.percentage || 0).toFixed(2)),
+                            account: h.account,
+                            accountLabel: getAccountLabel(h.account),
+                            percentOfAccount: (accountTotals[h.account]?.value || 0) > 0
+                                ? Number(((h.value / accountTotals[h.account].value) * 100).toFixed(2))
+                                : 0,
                             category: colorLabels[h.color] || 'Unclassified',
                             note: trimNote(n?.text)
                         };
@@ -2323,12 +2416,18 @@ const firebaseConfig = {
                     watchList: Array.isArray(watchList) ? watchList.slice(0, 100) : [],
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, totalPortfolioValue, totalPutObligation, portfolioData, cashSecuredPuts, watchList, categories, colorLabels, missingPortfolioPriceCount]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, allPortfolioData, accountTotals, cashSecuredPuts, watchList, categories, colorLabels]);
 
             // Update shares for a note
             const updateNoteShares = (noteId, shares) => {
                 const parsedShares = parseFloat(shares);
                 setNotes(notes.map(n => n.id === noteId ? {...n, shares: isNaN(parsedShares) ? 0 : parsedShares} : n));
+            };
+
+            // Assign a note (position) to a brokerage account
+            const updateNoteAccount = (noteId, account) => {
+                const nextAccount = ACCOUNT_IDS.includes(account) ? account : DEFAULT_ACCOUNT_ID;
+                setNotes(notes.map(n => n.id === noteId ? {...n, account: nextAccount} : n));
             };
 
             // Chart rendering effect - runs when tab changes, data changes, or after a short delay to ensure canvas is mounted
@@ -3256,6 +3355,21 @@ const firebaseConfig = {
                                         <span className="text-gray-600">
                                             {sharesPrivacyMode === 'hide' ? 'shares hidden' : 'shares owned (for portfolio)'}
                                         </span>
+                                    </div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <select
+                                            value={ACCOUNT_IDS.includes(expandedNote.account) ? expandedNote.account : ''}
+                                            onChange={(e) => {
+                                                const nextAccount = e.target.value;
+                                                updateNoteAccount(expandedNote.id, nextAccount);
+                                                setExpandedNote({...expandedNote, account: nextAccount});
+                                            }}
+                                            className="w-48 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700"
+                                        >
+                                            <option value="" disabled>Select account</option>
+                                            {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                        </select>
+                                        <span className="text-gray-600">account</span>
                                     </div>
                                     <textarea
                                         value={expandedNote.text}
@@ -4499,6 +4613,9 @@ const firebaseConfig = {
                                                     deleteNote={deleteNote}
                                                     updateNoteTitle={updateNoteTitle}
                                                     updateNoteShares={updateNoteShares}
+                                                    updateNoteAccount={updateNoteAccount}
+                                                    accounts={ACCOUNTS}
+                                                    accountIds={ACCOUNT_IDS}
                                                     sharesPrivacyMode={sharesPrivacyMode}
                                                     setExpandedNote={setExpandedNote}
                                                     showBrandedNotice={showBrandedNotice}
@@ -4536,6 +4653,9 @@ const firebaseConfig = {
                                             deleteNote={deleteNote}
                                             updateNoteTitle={updateNoteTitle}
                                             updateNoteShares={updateNoteShares}
+                                            updateNoteAccount={updateNoteAccount}
+                                            accounts={ACCOUNTS}
+                                            accountIds={ACCOUNT_IDS}
                                             sharesPrivacyMode={sharesPrivacyMode}
                                             setExpandedNote={setExpandedNote}
                                             showBrandedNotice={showBrandedNotice}
@@ -4559,10 +4679,17 @@ const firebaseConfig = {
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div>
-                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Portfolio Value</p>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                {portfolioAccountFilter === 'all' ? 'Total Portfolio Value' : `${getAccountLabel(portfolioAccountFilter)} Value`}
+                                            </p>
                                             <p className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} ${hidePortfolioValues ? 'blur-md select-none' : ''}`}>
                                                 ${totalPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                                             </p>
+                                            {portfolioAccountFilter !== 'all' && grandPortfolioValue > 0 && (
+                                                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                    {((totalPortfolioValue / grandPortfolioValue) * 100).toFixed(1)}% of ${grandPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} across all accounts
+                                                </p>
+                                            )}
                                         </div>
                                         <button
                                             onClick={() => setHidePortfolioValues(!hidePortfolioValues)}
@@ -4594,6 +4721,34 @@ const firebaseConfig = {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Account filter — composite by default, or one account at a time */}
+                                {allPortfolioData.length > 0 && (
+                                    <div className={`mt-5 pt-4 border-t flex flex-wrap gap-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                        {['all', ...presentAccountIds].map(accountId => {
+                                            const isActive = portfolioAccountFilter === accountId;
+                                            const value = accountId === 'all' ? grandPortfolioValue : (accountTotals[accountId]?.value || 0);
+                                            const count = accountId === 'all' ? allPortfolioData.length : (accountTotals[accountId]?.positionCount || 0);
+                                            return (
+                                                <button
+                                                    key={accountId}
+                                                    onClick={() => setPortfolioAccountFilter(accountId)}
+                                                    className={`px-3 py-2 rounded-lg text-left border transition ${isActive
+                                                        ? (darkMode ? 'bg-cyan-500 border-cyan-400 text-gray-950' : 'bg-blue-500 border-blue-500 text-white')
+                                                        : (darkMode ? 'bg-gray-900/60 border-gray-700 text-gray-300 hover:bg-gray-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')}`}
+                                                    title={accountId === 'all' ? 'All accounts combined' : (ACCOUNTS.find(a => a.id === accountId)?.strategy || 'Positions not assigned to an account')}
+                                                >
+                                                    <div className="text-sm font-semibold">
+                                                        {accountId === 'all' ? 'All Accounts' : getAccountLabel(accountId)}
+                                                    </div>
+                                                    <div className={`text-xs ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                        ${value.toLocaleString(undefined, {maximumFractionDigits: 0})} · {count} position{count !== 1 ? 's' : ''}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
 
                             {portfolioData.length === 0 ? (
@@ -4625,6 +4780,7 @@ const firebaseConfig = {
                                                 </div>
                                                 <h3 className={`text-xl font-bold tracking-tight portfolio-title ${darkMode ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400' : 'text-gray-800'}`} style={darkMode ? {textShadow: '0 0 20px rgba(6, 182, 212, 0.4)'} : {}}>
                                                     {nickname || currentUser?.split('@')[0] || 'User'}'s Portfolio
+                                                    {portfolioAccountFilter !== 'all' && ` — ${getAccountLabel(portfolioAccountFilter)}`}
                                                     <span className="snapshot-only snapshot-timestamp text-sm font-semibold ml-2"></span>
                                                 </h3>
                                             </div>

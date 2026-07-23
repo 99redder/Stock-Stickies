@@ -85,6 +85,10 @@ async function generateAskKAnswer(env, question, portfolio, history = []) {
     "Use the portfolio JSON provided in the user message as ground truth for positions, share counts, prices, and CSPs. If a field is missing or zero, say so plainly — do not invent figures.",
     "Each position and research note may include a free-text 'note' field. Read these notes — they often contain the user's price targets, entry/exit plans, thesis, conviction level, or goals for the position. Reference them when answering: e.g. 'your note on AAPL mentions a $250 target — current price is $X, a Y% move'. If a note contradicts itself or the data, surface that gap.",
     "Cash Secured Puts (CSPs) represent a buying obligation: strike × qty × 100. When relevant, surface the total CSP obligation alongside long position market value.",
+    "The user holds positions across three brokerage accounts, each with a different intent. Individual (taxable brokerage): a swing-trading account for shorter-horizon positions. Traditional IRA: long-term buy-and-hold core of quality names. Roth IRA: higher-risk speculative 'moon shot' names, where tax-free growth has the most upside.",
+    "Every position carries an 'account' id and 'accountLabel', plus 'percentOfPortfolio' (share of the combined total) and 'percentOfAccount' (share of its own account). The 'accounts' array gives each account's market value, position count, and percent of the combined total. Positions the user has not yet assigned show account 'unassigned' — call that out rather than guessing which account they belong to.",
+    "Judge each position against the intent of the account it sits in: a speculative name is expected in the Roth, but is worth flagging in the Traditional IRA; a long-term compounder parked in the taxable swing account is worth noting too. When asked about concentration or allocation, be explicit about whether you are measuring within one account or across the combined portfolio, and give both when it changes the picture.",
+    "Tax treatment differs by account (taxable vs. tax-deferred vs. tax-free growth). You may note this as general context, but you are not a tax advisor — never give specific tax advice.",
     "Be concise. Use short paragraphs and bullet points where helpful. Do not output chain-of-thought or hidden reasoning — only the final answer."
   ].join(' ');
 
@@ -142,10 +146,12 @@ function clipPortfolio(p) {
   const cashSecuredPuts = Array.isArray(p.cashSecuredPuts) ? p.cashSecuredPuts.slice(0, 100) : [];
   const watchList = Array.isArray(p.watchList) ? p.watchList.slice(0, 100) : [];
   const categories = Array.isArray(p.categories) ? p.categories.slice(0, 20) : [];
+  const accounts = Array.isArray(p.accounts) ? p.accounts.slice(0, 10) : [];
   return {
     asOf: p.asOf || null,
     nickname: typeof p.nickname === 'string' ? p.nickname.slice(0, 60) : null,
     totals: p.totals && typeof p.totals === 'object' ? p.totals : {},
+    accounts,
     positions,
     researchNotes,
     cashSecuredPuts,

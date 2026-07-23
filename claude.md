@@ -170,9 +170,36 @@ GitHub Pages reads from the `main` branch. The `CNAME` file routes `www.stocksti
   text: string,          // Note content — up to 10,000 chars
   color: string,         // Tailwind bg class (e.g., 'bg-blue-200')
   classified: boolean,   // true if note has been assigned to a category
-  shares?: number        // Optional share count for portfolio tracking
-}
+  shares?: number,       // Optional share count for portfolio tracking
+  account?: string       // Brokerage account id: 'individual' | 'traditional' | 'roth'
+}                        // Missing/invalid → treated as 'unassigned'
 ```
+
+---
+
+## Brokerage Accounts
+Positions are assigned to one of three accounts (`ACCOUNTS` in `src/App.jsx`), each with
+its own investing intent:
+
+| id | Label | Intent |
+|---|---|---|
+| `individual` | Individual | Taxable brokerage — swing trades, shorter horizon |
+| `traditional` | Traditional IRA | Long-term buy-and-hold core of quality names |
+| `roth` | Roth IRA | Speculative "moon shot" names — tax-free growth upside |
+
+Notes created before accounts existed have no `account` field and fall into an
+**Unassigned** bucket rather than defaulting into a real account.
+
+The Portfolio tab shows a composite view by default; account filter chips (with per-account
+market value and position count) switch the donut/map/legend to a single account, and all
+percentages recompute relative to the set being shown. The `Unassigned` chip only appears
+while unassigned positions exist. Account selection lives on the note card and in the
+expanded-note modal, next to the shares input.
+
+Ask K always receives **all** accounts regardless of the on-screen filter: each position
+carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
+payload includes an `accounts` array with per-account totals and strategy text. The account
+intents are also described in the Ask K worker system prompt (`worker/src/index.js`).
 
 ---
 
