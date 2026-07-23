@@ -199,13 +199,21 @@ expanded-note modal, next to the shares input.
 The Notes tab groups by account **by default** (`notesGroupMode: 'account'`, alongside
 `'category'` and `'size'`). Each account renders as a collapsible section — collapse state
 lives in `collapsedAccounts` and is persisted to Firestore, mirroring `collapsedCategories`.
-Grouping and sorting compose: with Group By = Portfolio and Sort = Largest position, the
-account sections stack biggest-first (`accountSectionOrder`) **and** positions sort by
-market value within each account (`sortedClassifiedNotes`). Unassigned is pinned last
-regardless of its value. Real accounts always render a header even when empty, so a note
-can be moved into one;
-the Unassigned section only appears while something is in it. Unclassified notes render in
-their own banner section above the groups, independent of group mode.
+Ordering is always by market value — there is no sort toggle. Account sections stack
+biggest-first (`accountSectionOrder`) and positions sort by value within each section
+(`sortedClassifiedNotes`). Positions rank above non-positions, and priced positions above
+unpriced ones, so a missing quote sinks a note instead of pinning it at value 0. Unassigned
+is pinned last regardless of its value. Real accounts always render a header even when
+empty, so a note can be moved into one; the Unassigned section only appears while something
+is in it. Unclassified notes render in their own banner section above the groups,
+independent of group mode.
+
+### Locked positions
+A note's `shares` and `account` are **locked by default** behind a lock icon, on both the
+note card and the expanded modal. Locked, they render as a read-only readout (large
+tabular-nums share count plus an account pill) with no input elements; unlocking swaps in
+the number input and account select. Unlock state (`unlockedNotes`) is intentionally **not
+persisted** — every note re-locks on reload so the guard can't be left off by accident.
 
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the

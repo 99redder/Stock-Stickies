@@ -137,6 +137,8 @@ const firebaseConfig = {
         const Maximize = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>;
         const Eye = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
         const EyeOff = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+        const Lock = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+        const Unlock = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>;
         const Download = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
 
         // Default stock-focused categories (users can customize/delete/add later)
@@ -517,6 +519,13 @@ const firebaseConfig = {
             const [tempLabel, setTempLabel] = useState('');
             const [collapsedCategories, setCollapsedCategories] = useState({});
             const [collapsedAccounts, setCollapsedAccounts] = useState({});
+            // Notes whose shares/account fields are unlocked for editing. Deliberately not
+            // persisted — every note starts locked again on reload, so the guard can't be
+            // left permanently off by accident.
+            const [unlockedNotes, setUnlockedNotes] = useState({});
+            const toggleNoteLock = (noteId) => {
+                setUnlockedNotes(prev => ({ ...prev, [noteId]: !prev[noteId] }));
+            };
             const [categories, setCategories] = useState(DEFAULT_COLORS);
             // Category management modal states
             const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
@@ -665,7 +674,6 @@ const firebaseConfig = {
             const [portfolioAccountFilter, setPortfolioAccountFilter] = useState('all'); // 'all' | account id | 'unassigned'
             const [portfolioLegendVisible, setPortfolioLegendVisible] = useState(true);
             const [portfolioLegendDollarAmounts, setPortfolioLegendDollarAmounts] = useState(false);
-            const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
             const [notesGroupMode, setNotesGroupMode] = useState('account'); // 'account' | 'category' | 'size'
             const [hideLegendPanel, setHideLegendPanel] = useState(false);
             const [hideToolbarPanel, setHideToolbarPanel] = useState(false);
@@ -804,7 +812,6 @@ const firebaseConfig = {
                                 cashSecuredPuts: data.cashSecuredPuts || [],
                                 nickname: data.nickname || '',
                                 profilePhoto: data.profilePhoto || auth.currentUser?.photoURL || '',
-                                notesSortMode: data.notesSortMode || 'default',
                                 notesGroupMode: data.notesGroupMode || 'account',
                                 portfolioLegendVisible: data.portfolioLegendVisible !== false,
                                 portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
@@ -834,7 +841,6 @@ const firebaseConfig = {
                             setCashSecuredPuts(incoming.cashSecuredPuts);
                             setNickname(incoming.nickname);
                             setProfilePhoto(incoming.profilePhoto);
-                            setNotesSortMode(incoming.notesSortMode);
                             setNotesGroupMode(incoming.notesGroupMode);
                             setPortfolioLegendVisible(incoming.portfolioLegendVisible);
                             setPortfolioLegendDollarAmounts(incoming.portfolioLegendDollarAmounts);
@@ -911,7 +917,6 @@ const firebaseConfig = {
                             cashSecuredPutsSortMode,
                             nickname,
                             profilePhoto,
-                            notesSortMode,
                             notesGroupMode,
                             portfolioLegendVisible,
                             portfolioLegendDollarAmounts,
@@ -962,7 +967,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -986,7 +991,6 @@ const firebaseConfig = {
                             cashSecuredPutsSortMode,
                             nickname,
                             profilePhoto,
-                            notesSortMode,
                             notesGroupMode,
                             portfolioLegendVisible,
                             portfolioLegendDollarAmounts,
@@ -1005,7 +1009,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1213,7 +1217,6 @@ const firebaseConfig = {
                         watchList,
                         nickname,
                         profilePhoto,
-                        notesSortMode,
                         notesGroupMode,
                         portfolioLegendVisible,
                         portfolioLegendDollarAmounts,
@@ -1554,7 +1557,6 @@ const firebaseConfig = {
                         watchList: data.watchList || [],
                         nickname: data.nickname || '',
                         profilePhoto: data.profilePhoto || '',
-                        notesSortMode: data.notesSortMode || 'default',
                         notesGroupMode: data.notesGroupMode || 'account',
                         portfolioLegendVisible: data.portfolioLegendVisible !== false,
                         portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
@@ -1689,10 +1691,10 @@ const firebaseConfig = {
             const unclassifiedNotes = useMemo(() => notes.filter(n => !n.classified), [notes]);
             const classifiedNotes = useMemo(() => notes.filter(n => n.classified), [notes]);
 
-            // Notes display ordering (optional): sort by position market value (shares * latest price)
+            // Notes display ordering: always by position market value (shares * latest price).
+            // Positions rank above non-positions, and priced positions above unpriced ones,
+            // so a missing quote sinks a note rather than pinning it to the top at value 0.
             const sortedClassifiedNotes = useMemo(() => {
-                if (notesSortMode !== 'positionValue') return classifiedNotes;
-
                 const getTicker = (n) => (n.title || '').trim().toUpperCase();
                 const getShares = (n) => (typeof n.shares === 'number' ? n.shares : parseFloat(n.shares)) || 0;
                 const getPrice = (ticker) => {
@@ -1722,41 +1724,6 @@ const firebaseConfig = {
                     if (bValue !== aValue) return bValue - aValue;
 
                     // Stable tie-breakers
-                    if (aTicker !== bTicker) return aTicker.localeCompare(bTicker);
-                    return (a.id || 0) - (b.id || 0);
-                });
-                return copy;
-            }, [classifiedNotes, notesSortMode, portfolioPrices]);
-
-            // Notes ordering for "Size" view: always sort by position market value (shares * latest price)
-            const sizeSortedClassifiedNotes = useMemo(() => {
-                const getTicker = (n) => (n.title || '').trim().toUpperCase();
-                const getShares = (n) => (typeof n.shares === 'number' ? n.shares : parseFloat(n.shares)) || 0;
-                const getPrice = (ticker) => {
-                    const p = portfolioPrices[ticker];
-                    return typeof p === 'number' ? p : 0;
-                };
-
-                const copy = [...classifiedNotes];
-                copy.sort((a, b) => {
-                    const aShares = getShares(a);
-                    const bShares = getShares(b);
-                    const aIsPos = aShares > 0;
-                    const bIsPos = bShares > 0;
-                    if (aIsPos !== bIsPos) return aIsPos ? -1 : 1;
-
-                    const aTicker = getTicker(a);
-                    const bTicker = getTicker(b);
-                    const aPrice = getPrice(aTicker);
-                    const bPrice = getPrice(bTicker);
-                    const aHasPrice = aPrice > 0;
-                    const bHasPrice = bPrice > 0;
-                    if (aIsPos && bIsPos && aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
-
-                    const aValue = aShares * aPrice;
-                    const bValue = bShares * bPrice;
-                    if (bValue !== aValue) return bValue - aValue;
-
                     if (aTicker !== bTicker) return aTicker.localeCompare(bTicker);
                     return (a.id || 0) - (b.id || 0);
                 });
@@ -2286,17 +2253,14 @@ const firebaseConfig = {
                 allPortfolioData.reduce((sum, h) => sum + h.value, 0),
             [allPortfolioData]);
 
-            // Order of the account sections in the notes grid. Under "Largest position"
-            // the accounts themselves stack biggest-first, which composes with the
-            // within-account size ordering already applied by sortedClassifiedNotes.
+            // Order of the account sections in the notes grid: biggest account first, which
+            // composes with the within-account size ordering from sortedClassifiedNotes.
             // Unassigned stays pinned last — it's a catch-all, not a real portfolio.
             const accountSectionOrder = useMemo(() => {
                 const ids = [...ACCOUNT_IDS];
-                if (notesSortMode === 'positionValue') {
-                    ids.sort((a, b) => (accountTotals[b]?.value || 0) - (accountTotals[a]?.value || 0));
-                }
+                ids.sort((a, b) => (accountTotals[b]?.value || 0) - (accountTotals[a]?.value || 0));
                 return [...ids, UNASSIGNED_ACCOUNT_ID];
-            }, [notesSortMode, accountTotals]);
+            }, [accountTotals]);
 
             const filteredPortfolioNotes = useMemo(() =>
                 portfolioAccountFilter === 'all'
@@ -2521,6 +2485,8 @@ const firebaseConfig = {
                     updateNoteAccount={updateNoteAccount}
                     accounts={ACCOUNTS}
                     accountIds={ACCOUNT_IDS}
+                    isUnlocked={!!unlockedNotes[note.id]}
+                    toggleNoteLock={toggleNoteLock}
                     sharesPrivacyMode={sharesPrivacyMode}
                     setExpandedNote={setExpandedNote}
                     showBrandedNotice={showBrandedNotice}
@@ -2529,6 +2495,8 @@ const firebaseConfig = {
                     MAX_CONTENT_LENGTH={MAX_CONTENT_LENGTH}
                     X={X}
                     Maximize={Maximize}
+                    Lock={Lock}
+                    Unlock={Unlock}
                 />
             );
 
@@ -3448,38 +3416,80 @@ const firebaseConfig = {
                                         style={{letterSpacing: '0.05em'}}
                                         maxLength={MAX_TITLE_LENGTH}
                                     />
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <input
-                                            type={sharesPrivacyMode === 'hide' ? 'text' : 'number'}
-                                            value={sharesPrivacyMode === 'hide' ? '••••' : (expandedNote.shares || '')}
-                                            onChange={(e) => {
-                                                if (sharesPrivacyMode === 'hide') return;
-                                                const newShares = parseFloat(e.target.value) || 0;
-                                                setNotes(notes.map(n => n.id === expandedNote.id ? {...n, shares: newShares} : n));
-                                                setExpandedNote({...expandedNote, shares: newShares});
-                                            }}
-                                            readOnly={sharesPrivacyMode === 'hide'}
-                                            placeholder="# shares"
-                                            className={`w-32 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700 placeholder-gray-400 ${sharesPrivacyMode === 'hide' ? 'tracking-[0.25em] text-center cursor-not-allowed' : ''}`}
-                                        />
-                                        <span className="text-gray-600">
-                                            {sharesPrivacyMode === 'hide' ? 'shares hidden' : 'shares owned (for portfolio)'}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <select
-                                            value={ACCOUNT_IDS.includes(expandedNote.account) ? expandedNote.account : ''}
-                                            onChange={(e) => {
-                                                const nextAccount = e.target.value;
-                                                updateNoteAccount(expandedNote.id, nextAccount);
-                                                setExpandedNote({...expandedNote, account: nextAccount});
-                                            }}
-                                            className="w-48 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700"
+                                    {/* Shares + account share one lock, same as the note card. */}
+                                    <div className="flex items-start gap-3 mb-4">
+                                        <div className="flex-1">
+                                            {unlockedNotes[expandedNote.id] ? (
+                                                <>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <input
+                                                            type={sharesPrivacyMode === 'hide' ? 'text' : 'number'}
+                                                            value={sharesPrivacyMode === 'hide' ? '••••' : (expandedNote.shares || '')}
+                                                            onChange={(e) => {
+                                                                if (sharesPrivacyMode === 'hide') return;
+                                                                const newShares = parseFloat(e.target.value) || 0;
+                                                                setNotes(notes.map(n => n.id === expandedNote.id ? {...n, shares: newShares} : n));
+                                                                setExpandedNote({...expandedNote, shares: newShares});
+                                                            }}
+                                                            readOnly={sharesPrivacyMode === 'hide'}
+                                                            placeholder="# shares"
+                                                            className={`w-32 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700 placeholder-gray-400 ${sharesPrivacyMode === 'hide' ? 'tracking-[0.25em] text-center cursor-not-allowed' : ''}`}
+                                                        />
+                                                        <span className="text-gray-600">
+                                                            {sharesPrivacyMode === 'hide' ? 'shares hidden' : 'shares owned (for portfolio)'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <select
+                                                            value={ACCOUNT_IDS.includes(expandedNote.account) ? expandedNote.account : ''}
+                                                            onChange={(e) => {
+                                                                const nextAccount = e.target.value;
+                                                                updateNoteAccount(expandedNote.id, nextAccount);
+                                                                setExpandedNote({...expandedNote, account: nextAccount});
+                                                            }}
+                                                            className="w-48 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700"
+                                                        >
+                                                            <option value="" disabled>Select account</option>
+                                                            {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                                        </select>
+                                                        <span className="text-gray-600">account</span>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {sharesPrivacyMode === 'hide' ? (
+                                                        <div className="text-4xl font-bold text-gray-700 tracking-[0.25em] leading-none">••••</div>
+                                                    ) : (Number(expandedNote.shares) || 0) > 0 ? (
+                                                        <div className="flex items-baseline gap-2 leading-none">
+                                                            <span className="text-4xl font-bold text-gray-800 tabular-nums tracking-tight">
+                                                                {(Number(expandedNote.shares) || 0).toLocaleString()}
+                                                            </span>
+                                                            <span className="text-sm font-medium uppercase tracking-wider text-gray-600">
+                                                                {(Number(expandedNote.shares) || 0) === 1 ? 'share' : 'shares'}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-lg italic text-gray-600 leading-none py-1">No position</div>
+                                                    )}
+                                                    {ACCOUNT_IDS.includes(expandedNote.account) && (
+                                                        <div className="mt-2">
+                                                            <span className="inline-block bg-white bg-opacity-60 border border-gray-400 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider text-gray-700">
+                                                                {getAccountLabel(expandedNote.account)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => toggleNoteLock(expandedNote.id)}
+                                            className={`shrink-0 p-2 rounded ${unlockedNotes[expandedNote.id] ? 'text-gray-800 bg-white bg-opacity-60' : 'text-gray-500 hover:text-gray-700'}`}
+                                            title={unlockedNotes[expandedNote.id] ? 'Lock shares and account' : 'Unlock to edit shares and account'}
+                                            aria-label={unlockedNotes[expandedNote.id] ? 'Lock shares and account' : 'Unlock to edit shares and account'}
+                                            aria-pressed={!!unlockedNotes[expandedNote.id]}
                                         >
-                                            <option value="" disabled>Select account</option>
-                                            {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-                                        </select>
-                                        <span className="text-gray-600">account</span>
+                                            {unlockedNotes[expandedNote.id] ? <Unlock size={20}/> : <Lock size={20}/>}
+                                        </button>
                                     </div>
                                     <textarea
                                         value={expandedNote.text}
@@ -4635,34 +4645,6 @@ const firebaseConfig = {
                                             </button>
                                         </div>
                                     </div>
-
-                                    {notesGroupMode !== 'size' && (
-                                        <div className="flex items-center gap-3">
-                                            <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sort</span>
-                                            <div className={`inline-flex rounded-lg p-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setNotesSortMode('default')}
-                                                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesSortMode === 'default' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
-                                                >
-                                                    Default
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => finnhubApiKey && setNotesSortMode('positionValue')}
-                                                    disabled={!finnhubApiKey}
-                                                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesSortMode === 'positionValue' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')} ${!finnhubApiKey ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                    title={!finnhubApiKey
-                                                        ? 'Add a Finnhub API key to sort by market value'
-                                                        : (notesGroupMode === 'account'
-                                                            ? 'Stack accounts largest-first, and largest positions first within each account'
-                                                            : 'Sort by largest position (market value)')}
-                                                >
-                                                    Largest position
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                             {!finnhubApiKey && (
@@ -4765,11 +4747,11 @@ const firebaseConfig = {
                             <div className="mb-6">
                                 <div className={`flex items-center gap-2 w-full p-3 rounded-lg mb-3 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
                                     <span className="font-semibold text-lg">All Notes</span>
-                                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({sizeSortedClassifiedNotes.length})</span>
+                                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({sortedClassifiedNotes.length})</span>
                                     <span className={`text-xs font-semibold uppercase tracking-wider ml-auto ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sorted by size</span>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                    {sizeSortedClassifiedNotes.map(renderNoteCard)}
+                                    {sortedClassifiedNotes.map(renderNoteCard)}
                                 </div>
                             </div>
                         )}

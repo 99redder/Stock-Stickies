@@ -20,6 +20,8 @@ export default function NoteCard({
     updateNoteAccount,
     accounts,
     accountIds,
+    isUnlocked,
+    toggleNoteLock,
     sharesPrivacyMode,
     setExpandedNote,
     showBrandedNotice,
@@ -32,7 +34,11 @@ export default function NoteCard({
     // icons (passed from App.jsx)
     X,
     Maximize,
+    Lock,
+    Unlock,
 }) {
+    const accountLabel = accounts.find(a => a.id === note.account)?.label;
+    const sharesValue = Number(note.shares) || 0;
     return (
         <div className={`${note.color} p-6 rounded-lg shadow-lg relative hover:scale-105 transition-transform`} style={{ minHeight: '200px' }}>
             {positionRankById?.[note.id] && (
@@ -93,36 +99,74 @@ export default function NoteCard({
                 style={{ letterSpacing: '0.05em' }}
             />
 
-            <div className="flex items-center gap-2 mb-2">
-                <input
-                    type={sharesPrivacyMode === 'hide' ? 'text' : 'number'}
-                    value={sharesPrivacyMode === 'hide' ? '••••' : (note.shares || '')}
-                    onChange={(e) => {
-                        if (sharesPrivacyMode === 'hide') return;
-                        updateNoteShares(note.id, e.target.value);
-                    }}
-                    readOnly={sharesPrivacyMode === 'hide'}
-                    placeholder="# shares"
-                    className={`w-24 bg-white bg-opacity-50 border border-gray-400 rounded px-2 py-1 text-sm text-gray-700 placeholder-gray-400 ${sharesPrivacyMode === 'hide' ? 'tracking-[0.2em] text-center cursor-not-allowed' : ''}`}
-                />
-                {sharesPrivacyMode === 'hide'
-                    ? <span className="text-xs text-gray-600">shares hidden</span>
-                    : (note.shares > 0 && <span className="text-xs text-gray-600">shares owned</span>)}
-            </div>
-
-            {note.shares > 0 && (
-                <div className="flex items-center gap-2 mb-2">
-                    <select
-                        value={accountIds.includes(note.account) ? note.account : ''}
-                        onChange={(e) => updateNoteAccount(note.id, e.target.value)}
-                        className="bg-white bg-opacity-50 border border-gray-400 rounded px-2 py-1 text-xs text-gray-700"
-                        title="Brokerage account for this position"
-                    >
-                        <option value="" disabled>Select account</option>
-                        {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-                    </select>
+            {/* Shares + account are locked by default — the lock toggle swaps the read-only
+                readout for the edit controls, so a stray click can't alter a position. */}
+            <div className="flex items-start gap-2 mb-2">
+                <div className="flex-1 min-w-0">
+                    {isUnlocked ? (
+                        <>
+                            <div className="flex items-center gap-2 mb-2">
+                                <input
+                                    type={sharesPrivacyMode === 'hide' ? 'text' : 'number'}
+                                    value={sharesPrivacyMode === 'hide' ? '••••' : (note.shares || '')}
+                                    onChange={(e) => {
+                                        if (sharesPrivacyMode === 'hide') return;
+                                        updateNoteShares(note.id, e.target.value);
+                                    }}
+                                    readOnly={sharesPrivacyMode === 'hide'}
+                                    placeholder="# shares"
+                                    className={`w-24 bg-white bg-opacity-50 border border-gray-400 rounded px-2 py-1 text-sm text-gray-700 placeholder-gray-400 ${sharesPrivacyMode === 'hide' ? 'tracking-[0.2em] text-center cursor-not-allowed' : ''}`}
+                                />
+                                {sharesPrivacyMode === 'hide'
+                                    ? <span className="text-xs text-gray-600">shares hidden</span>
+                                    : <span className="text-xs text-gray-600">shares owned</span>}
+                            </div>
+                            <select
+                                value={accountIds.includes(note.account) ? note.account : ''}
+                                onChange={(e) => updateNoteAccount(note.id, e.target.value)}
+                                className="bg-white bg-opacity-50 border border-gray-400 rounded px-2 py-1 text-xs text-gray-700"
+                                title="Brokerage account for this position"
+                            >
+                                <option value="" disabled>Select account</option>
+                                {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                            </select>
+                        </>
+                    ) : (
+                        <>
+                            {sharesPrivacyMode === 'hide' ? (
+                                <div className="text-2xl font-bold text-gray-700 tracking-[0.2em] leading-none">••••</div>
+                            ) : sharesValue > 0 ? (
+                                <div className="flex items-baseline gap-1.5 leading-none">
+                                    <span className="text-2xl font-bold text-gray-800 tabular-nums tracking-tight">
+                                        {sharesValue.toLocaleString()}
+                                    </span>
+                                    <span className="text-xs font-medium uppercase tracking-wider text-gray-600">
+                                        {sharesValue === 1 ? 'share' : 'shares'}
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="text-sm italic text-gray-600 leading-none py-1">No position</div>
+                            )}
+                            {accountLabel && (
+                                <div className="mt-1.5">
+                                    <span className="inline-block bg-white bg-opacity-60 border border-gray-400 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-700">
+                                        {accountLabel}
+                                    </span>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
-            )}
+                <button
+                    onClick={() => toggleNoteLock(note.id)}
+                    className={`shrink-0 p-1 rounded ${isUnlocked ? 'text-gray-800 bg-white bg-opacity-60' : 'text-gray-500 hover:text-gray-700'}`}
+                    title={isUnlocked ? 'Lock shares and account' : 'Unlock to edit shares and account'}
+                    aria-label={isUnlocked ? 'Lock shares and account' : 'Unlock to edit shares and account'}
+                    aria-pressed={!!isUnlocked}
+                >
+                    {isUnlocked ? <Unlock size={16}/> : <Lock size={16}/>}
+                </button>
+            </div>
 
             <textarea
                 value={note.text}
