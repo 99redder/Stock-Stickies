@@ -587,6 +587,7 @@ const firebaseConfig = {
             const [newPutStrike, setNewPutStrike] = useState('');
             const [newPutQty, setNewPutQty] = useState('');
             const [newPutExpiry, setNewPutExpiry] = useState('');
+            const [newPutAccount, setNewPutAccount] = useState('roth');
             const [editingPutId, setEditingPutId] = useState(null);
             const [cashSecuredPutsSortMode, setCashSecuredPutsSortMode] = useState('alpha');
 
@@ -602,7 +603,15 @@ const firebaseConfig = {
             }).format(Number(value || 0));
 
             const getPutObligation = (put) => parseMoneyNumber(put?.strike) * parseMoneyNumber(put?.qty) * 100;
+            // CSPs predate account attribution. Every put written before this field existed
+            // was in the Roth, so legacy records fall back there rather than to Unassigned.
+            const getPutAccount = (put) => ACCOUNT_IDS.includes(put?.account) ? put.account : 'roth';
             const totalPutObligation = cashSecuredPuts.reduce((sum, put) => sum + getPutObligation(put), 0);
+            const putObligationByAccount = cashSecuredPuts.reduce((acc, put) => {
+                const id = getPutAccount(put);
+                acc[id] = (acc[id] || 0) + getPutObligation(put);
+                return acc;
+            }, {});
             const sortedCashSecuredPuts = [...cashSecuredPuts].sort((a, b) => {
                 if (cashSecuredPutsSortMode === 'obligation_desc') return getPutObligation(b) - getPutObligation(a);
                 if (cashSecuredPutsSortMode === 'obligation_asc') return getPutObligation(a) - getPutObligation(b);
@@ -614,16 +623,18 @@ const firebaseConfig = {
                 const strike = String(newPutStrike || '').trim();
                 const qty = String(newPutQty || '').trim();
                 const expiry = String(newPutExpiry || '').trim();
+                const account = ACCOUNT_IDS.includes(newPutAccount) ? newPutAccount : 'roth';
                 if (!ticker || !strike || !qty || !expiry) return;
                 if (editingPutId) {
-                    setCashSecuredPuts((prev) => prev.map((item) => item.id === editingPutId ? { ...item, ticker, strike, qty, expiry } : item));
+                    setCashSecuredPuts((prev) => prev.map((item) => item.id === editingPutId ? { ...item, ticker, strike, qty, expiry, account } : item));
                 } else {
-                    setCashSecuredPuts((prev) => ([...prev, { id: Date.now(), ticker, strike, qty, expiry }]));
+                    setCashSecuredPuts((prev) => ([...prev, { id: Date.now(), ticker, strike, qty, expiry, account }]));
                 }
                 setNewPutTicker('');
                 setNewPutStrike('');
                 setNewPutQty('');
                 setNewPutExpiry('');
+                setNewPutAccount('roth');
                 setEditingPutId(null);
                 setShowCashSecuredPutModal(false);
             };
@@ -634,6 +645,7 @@ const firebaseConfig = {
                 setNewPutStrike(put.strike || '');
                 setNewPutQty(put.qty || '');
                 setNewPutExpiry(put.expiry || '');
+                setNewPutAccount(getPutAccount(put));
                 setShowCashSecuredPutModal(true);
             };
 
@@ -2408,7 +2420,8 @@ const firebaseConfig = {
                             positionCount: accountTotals[a.id]?.positionCount || 0,
                             percentOfTotal: grandPortfolioValue > 0
                                 ? Number((((accountTotals[a.id]?.value || 0) / grandPortfolioValue) * 100).toFixed(2))
-                                : 0
+                                : 0,
+                            cspObligation: Number((putObligationByAccount[a.id] || 0).toFixed(2))
                         })),
                         ...(accountTotals[UNASSIGNED_ACCOUNT_ID] ? [{
                             id: UNASSIGNED_ACCOUNT_ID,
@@ -2452,12 +2465,14 @@ const firebaseConfig = {
                         strike: Number(p.strike) || 0,
                         qty: Number(p.qty) || 0,
                         expiry: p.expiry || null,
-                        obligation: (Number(p.strike) || 0) * (Number(p.qty) || 0) * 100
+                        obligation: (Number(p.strike) || 0) * (Number(p.qty) || 0) * 100,
+                        account: getPutAccount(p),
+                        accountLabel: getAccountLabel(getPutAccount(p))
                     })),
                     watchList: Array.isArray(watchList) ? watchList.slice(0, 100) : [],
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, allPortfolioData, accountTotals, cashSecuredPuts, watchList, categories, colorLabels]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, categories, colorLabels]);
 
             // Update shares for a note
             const updateNoteShares = (noteId, shares) => {
@@ -3714,16 +3729,19 @@ const firebaseConfig = {
                         <div className={`w-full max-w-md rounded-xl shadow-2xl ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} p-6`}>
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-xl font-bold">{editingPutId ? 'Edit Cash Secured Put' : 'Add Cash Secured Put'}</h3>
-                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); }} className={`p-2 rounded ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}><X size={18} /></button>
+                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); setNewPutAccount('roth'); }} className={`p-2 rounded ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}><X size={18} /></button>
                             </div>
                             <div className="space-y-3">
                                 <input type="text" value={newPutTicker} onChange={(e) => setNewPutTicker(sanitizeTicker(e.target.value))} placeholder="Ticker" className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none uppercase`} maxLength={12} />
                                 <input type="text" value={newPutStrike} onChange={(e) => setNewPutStrike(e.target.value)} placeholder="Strike price" className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} />
                                 <input type="text" value={newPutQty} onChange={(e) => setNewPutQty(e.target.value)} placeholder="Qty" className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} />
                                 <input type="date" value={newPutExpiry} onChange={(e) => setNewPutExpiry(e.target.value)} className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} />
+                                <select value={newPutAccount} onChange={(e) => setNewPutAccount(e.target.value)} className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} title="Account this put is written in">
+                                    {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                </select>
                             </div>
                             <div className="flex justify-end gap-2 mt-5">
-                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); }} className={`px-4 py-2 rounded ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>Cancel</button>
+                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); setNewPutAccount('roth'); }} className={`px-4 py-2 rounded ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>Cancel</button>
                                 <button onClick={addCashSecuredPut} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded shadow">{editingPutId ? 'Save' : 'Add'}</button>
                             </div>
                         </div>
@@ -5027,6 +5045,7 @@ const firebaseConfig = {
                                                         <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{put.ticker}</div>
                                                         <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>${put.strike} · Qty {put.qty || '—'} · {put.expiry}</div>
                                                         <div className={`text-sm font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Buying obligation: {formatUsd(getPutObligation(put))}</div>
+                                                        <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-300'}`}>{getAccountLabel(getPutAccount(put))}</span>
                                                     </div>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setPutToDelete(put.id); }}
@@ -5124,6 +5143,7 @@ const firebaseConfig = {
                                                         <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{put.ticker}</div>
                                                         <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>${put.strike} · Qty {put.qty || '—'} · {put.expiry}</div>
                                                         <div className={`text-sm font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Buying obligation: {formatUsd(getPutObligation(put))}</div>
+                                                        <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-300'}`}>{getAccountLabel(getPutAccount(put))}</span>
                                                     </div>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setPutToDelete(put.id); }}

@@ -185,7 +185,7 @@ its own investing intent:
 |---|---|---|
 | `individual` | Individual | Taxable brokerage — swing trades, shorter horizon |
 | `traditional` | Traditional IRA | Long-term buy-and-hold core of quality names |
-| `roth` | Roth IRA | Speculative "moon shot" names **and all cash secured puts** — tax-free growth upside |
+| `roth` | Roth IRA | Speculative "moon shot" names and most cash secured puts — tax-free growth upside |
 
 Notes created before accounts existed have no `account` field and fall into an
 **Unassigned** bucket rather than defaulting into a real account.
@@ -214,6 +214,11 @@ note card and the expanded modal. Locked, they render as a read-only readout (la
 tabular-nums share count plus an account pill) with no input elements; unlocking swaps in
 the number input and account select. Unlock state (`unlockedNotes`) is intentionally **not
 persisted** — every note re-locks on reload so the guard can't be left off by accident.
+
+Cash secured puts carry their own `account` field (`getPutAccount`), chosen in the add/edit
+modal and shown as a pill on each row. Legacy puts written before the field existed fall
+back to `roth` rather than Unassigned, since every one of them was in the Roth. Per-account
+obligation totals live in `putObligationByAccount`.
 
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
