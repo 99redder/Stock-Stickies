@@ -199,7 +199,11 @@ expanded-note modal, next to the shares input.
 The Notes tab groups by account **by default** (`notesGroupMode: 'account'`, alongside
 `'category'` and `'size'`). Each account renders as a collapsible section — collapse state
 lives in `collapsedAccounts` and is persisted to Firestore, mirroring `collapsedCategories`.
-Real accounts always render a header even when empty, so a note can be moved into one;
+Grouping and sorting compose: with Group By = Portfolio and Sort = Largest position, the
+account sections stack biggest-first (`accountSectionOrder`) **and** positions sort by
+market value within each account (`sortedClassifiedNotes`). Unassigned is pinned last
+regardless of its value. Real accounts always render a header even when empty, so a note
+can be moved into one;
 the Unassigned section only appears while something is in it. Unclassified notes render in
 their own banner section above the groups, independent of group mode.
 

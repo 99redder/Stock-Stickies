@@ -2286,6 +2286,18 @@ const firebaseConfig = {
                 allPortfolioData.reduce((sum, h) => sum + h.value, 0),
             [allPortfolioData]);
 
+            // Order of the account sections in the notes grid. Under "Largest position"
+            // the accounts themselves stack biggest-first, which composes with the
+            // within-account size ordering already applied by sortedClassifiedNotes.
+            // Unassigned stays pinned last — it's a catch-all, not a real portfolio.
+            const accountSectionOrder = useMemo(() => {
+                const ids = [...ACCOUNT_IDS];
+                if (notesSortMode === 'positionValue') {
+                    ids.sort((a, b) => (accountTotals[b]?.value || 0) - (accountTotals[a]?.value || 0));
+                }
+                return [...ids, UNASSIGNED_ACCOUNT_ID];
+            }, [notesSortMode, accountTotals]);
+
             const filteredPortfolioNotes = useMemo(() =>
                 portfolioAccountFilter === 'all'
                     ? portfolioNotes
@@ -4640,7 +4652,11 @@ const firebaseConfig = {
                                                     onClick={() => finnhubApiKey && setNotesSortMode('positionValue')}
                                                     disabled={!finnhubApiKey}
                                                     className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesSortMode === 'positionValue' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')} ${!finnhubApiKey ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                    title={!finnhubApiKey ? 'Add a Finnhub API key to sort by market value' : 'Sort by largest position (market value)'}
+                                                    title={!finnhubApiKey
+                                                        ? 'Add a Finnhub API key to sort by market value'
+                                                        : (notesGroupMode === 'account'
+                                                            ? 'Stack accounts largest-first, and largest positions first within each account'
+                                                            : 'Sort by largest position (market value)')}
                                                 >
                                                     Largest position
                                                 </button>
@@ -4691,7 +4707,7 @@ const firebaseConfig = {
                                 </div>
                             </div>
                         )}
-                        {notesGroupMode === 'account' ? ([...ACCOUNT_IDS, UNASSIGNED_ACCOUNT_ID].map(accountId => {
+                        {notesGroupMode === 'account' ? (accountSectionOrder.map(accountId => {
                             const accountNotes = groupedNotesByAccount[accountId];
                             // Real accounts always show a header (so an empty one can still be
                             // targeted); Unassigned only appears while something is in it.
