@@ -214,6 +214,9 @@ note card and the expanded modal. Locked, they render as a read-only readout (la
 tabular-nums share count plus an account pill) with no input elements; unlocking swaps in
 the number input and account select. Unlock state (`unlockedNotes`) is intentionally **not
 persisted** — every note re-locks on reload so the guard can't be left off by accident.
+A **Lock All** button appears in the notes toolbar while any note is unlocked (it shows the
+count and clears `unlockedNotes`); it stays hidden otherwise rather than sitting there as a
+no-op.
 
 Cash secured puts carry their own `account` field (`getPutAccount`), chosen in the add/edit
 modal and shown as a pill on each row. Legacy puts written before the field existed fall

@@ -526,6 +526,8 @@ const firebaseConfig = {
             const toggleNoteLock = (noteId) => {
                 setUnlockedNotes(prev => ({ ...prev, [noteId]: !prev[noteId] }));
             };
+            const unlockedNoteCount = Object.values(unlockedNotes).filter(Boolean).length;
+            const lockAllNotes = () => setUnlockedNotes({});
             const [categories, setCategories] = useState(DEFAULT_COLORS);
             // Category management modal states
             const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
@@ -4663,6 +4665,19 @@ const firebaseConfig = {
                                             </button>
                                         </div>
                                     </div>
+
+                                    {/* Only shown while something is actually unlocked — a
+                                        no-op button would just be clutter the rest of the time. */}
+                                    {unlockedNoteCount > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={lockAllNotes}
+                                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition ${darkMode ? 'bg-gray-700 text-gray-100 border-gray-600 hover:bg-gray-600' : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'}`}
+                                            title={`Re-lock shares and account on ${unlockedNoteCount} unlocked note${unlockedNoteCount !== 1 ? 's' : ''}`}
+                                        >
+                                            <Lock size={14}/> Lock All ({unlockedNoteCount})
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                             {!finnhubApiKey && (
