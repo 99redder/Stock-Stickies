@@ -218,6 +218,16 @@ rather than one per account; filtering to a single account narrows it to that ac
 cash. SGOV keeps its real Finnhub price, so only the grouping changes, never the value.
 The Ask K prompt describes the same arrangement.
 
+### Portfolio export
+`buildPortfolioExport()` renders the **current** Portfolio view as Markdown and
+`handleCopyPortfolio()` puts it on the clipboard (async Clipboard API, with a hidden
+textarea + `execCommand` fallback). It follows the account filter exactly like the donut
+does, and emits: totals (market value, cash, CSP obligation, share of the combined
+portfolio when scoped), a per-account table with each account's intent (composite view
+only), a positions table, a CSP table, and each position's note text. Intended for pasting
+into an outside LLM. It exports real dollar figures even while `hidePortfolioValues` is
+blurring the screen — the copy is a deliberate action, and the numbers are the point.
+
 ### Duplicate positions
 A ticker may be held in several accounts (SGOV sits in both IRAs) but only once **within**
 one account — two notes for the same holding would double-count it in that account's value

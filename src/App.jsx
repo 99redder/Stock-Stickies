@@ -137,6 +137,7 @@ const firebaseConfig = {
         const Maximize = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>;
         const Eye = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
         const EyeOff = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+        const Clipboard = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 4H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>;
         const Lock = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
         const Unlock = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>;
         const Download = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
@@ -2495,6 +2496,141 @@ const firebaseConfig = {
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
             }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, categories, colorLabels]);
+
+            // Markdown snapshot of whatever the Portfolio tab is currently showing, for
+            // pasting into an external LLM. Follows the account filter, exactly like the
+            // donut and legend do, so what you copy is what you see.
+            const buildPortfolioExport = () => {
+                const scopeLabel = portfolioAccountFilter === 'all' ? 'All Accounts' : getAccountLabel(portfolioAccountFilter);
+                const owner = nickname || currentUser?.split('@')[0] || 'User';
+                const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                const noteById = new Map(notes.map(n => [n.id, n]));
+                const shownPuts = portfolioAccountFilter === 'all'
+                    ? cashSecuredPuts
+                    : cashSecuredPuts.filter(p => getPutAccount(p) === portfolioAccountFilter);
+
+                const lines = [];
+                lines.push(`# ${owner}'s Portfolio — ${scopeLabel}`);
+                lines.push(`As of ${new Date().toLocaleString()}`);
+                lines.push('');
+
+                lines.push('## Totals');
+                lines.push(`- Market value: ${money(totalPortfolioValue)}`);
+                lines.push(`- Positions: ${portfolioData.length}`);
+                if (cashPortfolioValue > 0) {
+                    const cashPct = totalPortfolioValue > 0 ? (cashPortfolioValue / totalPortfolioValue) * 100 : 0;
+                    lines.push(`- Cash & equivalents (${CASH_EQUIVALENT_TICKERS.join(', ')} or Cash category): ${money(cashPortfolioValue)} (${cashPct.toFixed(1)}%)`);
+                }
+                if (shownPutObligation > 0) {
+                    lines.push(`- Cash secured put obligation: ${money(shownPutObligation)} (collateral held separately by the broker, not included in market value)`);
+                    lines.push(`- Market value + CSP obligation: ${money(totalPortfolioValue + shownPutObligation)}`);
+                }
+                if (portfolioAccountFilter !== 'all' && grandPortfolioValue > 0) {
+                    lines.push(`- Share of combined portfolio: ${((totalPortfolioValue / grandPortfolioValue) * 100).toFixed(1)}% of ${money(grandPortfolioValue)}`);
+                }
+                if (missingPortfolioPriceCount > 0) {
+                    lines.push(`- NOTE: ${missingPortfolioPriceCount} position(s) have no live price and are valued at $0 below.`);
+                }
+                lines.push('');
+
+                if (portfolioAccountFilter === 'all' && presentAccountIds.length > 1) {
+                    lines.push('## Accounts');
+                    lines.push('Each account is run with a different intent, so judge a position against the account holding it.');
+                    lines.push('');
+                    lines.push('| Account | Intent | Market value | % of total | Positions | CSP obligation |');
+                    lines.push('|---|---|---|---|---|---|');
+                    presentAccountIds.forEach(id => {
+                        const value = accountTotals[id]?.value || 0;
+                        const pct = grandPortfolioValue > 0 ? (value / grandPortfolioValue) * 100 : 0;
+                        const intent = ACCOUNTS.find(a => a.id === id)?.strategy || 'Not yet assigned to an account.';
+                        lines.push(`| ${getAccountLabel(id)} | ${intent} | ${money(value)} | ${pct.toFixed(1)}% | ${accountTotals[id]?.positionCount || 0} | ${money(putObligationByAccount[id] || 0)} |`);
+                    });
+                    lines.push('');
+                }
+
+                lines.push('## Positions');
+                if (portfolioData.length === 0) {
+                    lines.push('_No positions._');
+                } else {
+                    lines.push('| # | Ticker | Account | Category | Shares | Price | Market value | % of shown |');
+                    lines.push('|---|---|---|---|---|---|---|---|');
+                    portfolioData.forEach((h, i) => {
+                        const priced = Number.isFinite(h.price) && h.price > 0;
+                        const cells = [
+                            i + 1,
+                            h.ticker,
+                            getAccountLabel(h.account),
+                            colorLabels[h.color] || 'Unclassified',
+                            h.shares.toLocaleString(),
+                            priced ? money(h.price) : 'no price',
+                            priced ? money(h.value) : '—',
+                            `${h.percentage.toFixed(2)}%`
+                        ];
+                        lines.push(`| ${cells.join(' | ')} |`);
+                    });
+                }
+                lines.push('');
+
+                if (shownPuts.length > 0) {
+                    lines.push('## Cash Secured Puts');
+                    lines.push('Obligation = strike x qty x 100. Assignment would add the underlying to that account.');
+                    lines.push('');
+                    lines.push('| Ticker | Account | Strike | Qty | Expiry | Obligation |');
+                    lines.push('|---|---|---|---|---|---|');
+                    shownPuts.forEach(p => {
+                        lines.push(`| ${p.ticker} | ${getAccountLabel(getPutAccount(p))} | $${p.strike} | ${p.qty || '—'} | ${p.expiry || '—'} | ${money(getPutObligation(p))} |`);
+                    });
+                    lines.push('');
+                }
+
+                // Thesis / target notes are the most useful part for an outside analyst.
+                const withNotes = portfolioData
+                    .map(h => ({ h, text: String(noteById.get(h.noteId)?.text || '').trim() }))
+                    .filter(entry => entry.text);
+                if (withNotes.length > 0) {
+                    lines.push('## Position notes');
+                    withNotes.forEach(({ h, text }) => {
+                        lines.push(`### ${h.ticker} — ${getAccountLabel(h.account)}`);
+                        lines.push(text.slice(0, 2000));
+                        lines.push('');
+                    });
+                }
+
+                return lines.join('\n').trim();
+            };
+
+            const handleCopyPortfolio = async () => {
+                if (portfolioData.length === 0) {
+                    showBrandedNotice('Nothing to copy — this view has no positions.');
+                    return;
+                }
+                const text = buildPortfolioExport();
+                try {
+                    if (navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(text);
+                    } else {
+                        // Fallback for browsers without the async clipboard API.
+                        const area = document.createElement('textarea');
+                        area.value = text;
+                        area.setAttribute('readonly', '');
+                        area.style.position = 'fixed';
+                        area.style.opacity = '0';
+                        document.body.appendChild(area);
+                        area.select();
+                        const ok = document.execCommand('copy');
+                        document.body.removeChild(area);
+                        if (!ok) throw new Error('Copy command was blocked');
+                    }
+                    const scopeLabel = portfolioAccountFilter === 'all' ? 'all accounts' : getAccountLabel(portfolioAccountFilter);
+                    showBrandedNotice(
+                        `Copied ${portfolioData.length} position${portfolioData.length !== 1 ? 's' : ''} (${scopeLabel}) to your clipboard as Markdown. Paste it into any LLM to have it analyzed.`,
+                        'Portfolio copied'
+                    );
+                } catch (err) {
+                    console.error('Clipboard copy failed:', err);
+                    showBrandedNotice('Could not access the clipboard. Your browser may have blocked it — try again, or use the Snapshot button instead.', 'Copy failed');
+                }
+            };
 
             // Update shares for a note
             const updateNoteShares = (noteId, shares) => {
@@ -5019,6 +5155,14 @@ const firebaseConfig = {
                                                         {portfolioLegendDollarAmounts ? 'Hide $' : 'Add $'}
                                                     </button>
                                                 </div>
+                                                <button
+                                                    onClick={handleCopyPortfolio}
+                                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border snapshot-hide ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
+                                                    title="Copy this view as Markdown — paste into an LLM for analysis"
+                                                >
+                                                    <Clipboard size={16}/>
+                                                    Copy
+                                                </button>
                                                 <button
                                                     onClick={handleDownloadPortfolioSnapshot}
                                                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border snapshot-hide ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
