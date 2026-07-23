@@ -2287,6 +2287,12 @@ const firebaseConfig = {
                 return [...ids, UNASSIGNED_ACCOUNT_ID];
             }, [accountTotals]);
 
+            // CSP obligation for whatever the pie is currently showing. Puts carry an account,
+            // so a single-account view must not report the whole book's obligation.
+            const shownPutObligation = portfolioAccountFilter === 'all'
+                ? totalPutObligation
+                : (putObligationByAccount[portfolioAccountFilter] || 0);
+
             const filteredPortfolioNotes = useMemo(() =>
                 portfolioAccountFilter === 'all'
                     ? portfolioNotes
@@ -2787,7 +2793,7 @@ const firebaseConfig = {
                             ctx.textBaseline = 'middle';
                             const centerX = meta.data[0].x;
                             const centerY = meta.data[0].y;
-                            const hasCspObligation = totalPutObligation > 0;
+                            const hasCspObligation = shownPutObligation > 0;
                             ctx.fillStyle = centerColor;
                             ctx.font = '500 22px Inter, system-ui, sans-serif';
                             ctx.fillText(`${nickname || currentUser?.split('@')[0] || 'User'}`, centerX, hasCspObligation ? centerY - 18 : centerY);
@@ -2798,7 +2804,7 @@ const firebaseConfig = {
                                 if (!hidePortfolioValues) {
                                     ctx.fillStyle = valueColor;
                                     ctx.font = '700 15px Inter, system-ui, sans-serif';
-                                    ctx.fillText(formatPortfolioCalloutValue(totalPutObligation), centerX, centerY + 26);
+                                    ctx.fillText(formatPortfolioCalloutValue(shownPutObligation), centerX, centerY + 26);
                                 }
                             }
                             ctx.restore();
@@ -2888,7 +2894,7 @@ const firebaseConfig = {
                 };
                 // colorLabelsKey (not colorLabels) — depend on content, not object identity.
                 // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, colorLabelsKey, totalPutObligation, totalPortfolioValue, nickname, currentUser]);
+            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, colorLabelsKey, shownPutObligation, totalPortfolioValue, nickname, currentUser]);
 
             if (!currentUser) {
                 return (
@@ -5074,10 +5080,10 @@ const firebaseConfig = {
                                                 </div>
                                             )}
                                         </div>
-                                        {totalPutObligation > 0 && (
+                                        {shownPutObligation > 0 && (
                                             <div className={`mt-2 text-xs leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                <span className={`font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>* Cash Secured Put obligation:</span>{' '}
-                                                <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(totalPutObligation)}</span>
+                                                <span className={`font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>* Cash Secured Put obligation{portfolioAccountFilter !== 'all' ? ` (${getAccountLabel(portfolioAccountFilter)})` : ''}:</span>{' '}
+                                                <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(shownPutObligation)}</span>
                                                 {' '}— held as separate collateral by the broker, not part of the cash position shown{cashPortfolioValue > 0 ? (
                                                     <>{' '}(<span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(cashPortfolioValue)}</span> free cash)</>
                                                 ) : ''}.

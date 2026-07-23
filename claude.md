@@ -242,7 +242,10 @@ no-op.
 Cash secured puts carry their own `account` field (`getPutAccount`), chosen in the add/edit
 modal and shown as a pill on each row. Legacy puts written before the field existed fall
 back to `roth` rather than Unassigned, since every one of them was in the Roth. Per-account
-obligation totals live in `putObligationByAccount`.
+obligation totals live in `putObligationByAccount`. The donut's centre callout and the
+footnote under the chart use `shownPutObligation`, which follows the account filter — a
+single-account view must not report the whole book's obligation. The CSP sidebar panel
+still totals every put, since it lists them all.
 
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
