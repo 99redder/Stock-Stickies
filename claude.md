@@ -196,6 +196,13 @@ percentages recompute relative to the set being shown. The `Unassigned` chip onl
 while unassigned positions exist. Account selection lives on the note card and in the
 expanded-note modal, next to the shares input.
 
+The Notes tab groups by account **by default** (`notesGroupMode: 'account'`, alongside
+`'category'` and `'size'`). Each account renders as a collapsible section — collapse state
+lives in `collapsedAccounts` and is persisted to Firestore, mirroring `collapsedCategories`.
+Real accounts always render a header even when empty, so a note can be moved into one;
+the Unassigned section only appears while something is in it. Unclassified notes render in
+their own banner section above the groups, independent of group mode.
+
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
 payload includes an `accounts` array with per-account totals and strategy text. The account

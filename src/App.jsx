@@ -516,6 +516,7 @@ const firebaseConfig = {
             const [editingLabel, setEditingLabel] = useState(null);
             const [tempLabel, setTempLabel] = useState('');
             const [collapsedCategories, setCollapsedCategories] = useState({});
+            const [collapsedAccounts, setCollapsedAccounts] = useState({});
             const [categories, setCategories] = useState(DEFAULT_COLORS);
             // Category management modal states
             const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
@@ -665,7 +666,7 @@ const firebaseConfig = {
             const [portfolioLegendVisible, setPortfolioLegendVisible] = useState(true);
             const [portfolioLegendDollarAmounts, setPortfolioLegendDollarAmounts] = useState(false);
             const [notesSortMode, setNotesSortMode] = useState('default'); // 'default' | 'positionValue'
-            const [notesGroupMode, setNotesGroupMode] = useState('category'); // 'category' | 'size'
+            const [notesGroupMode, setNotesGroupMode] = useState('account'); // 'account' | 'category' | 'size'
             const [hideLegendPanel, setHideLegendPanel] = useState(false);
             const [hideToolbarPanel, setHideToolbarPanel] = useState(false);
             const [sharesPrivacyMode, setSharesPrivacyMode] = useState('show'); // 'show' | 'hide'
@@ -797,13 +798,14 @@ const firebaseConfig = {
                                 notes: data.notes || [],
                                 nextId: data.nextId || 1,
                                 collapsedCategories: data.collapsedCategories || {},
+                                collapsedAccounts: data.collapsedAccounts || {},
                                 darkMode: data.darkMode || false,
                                 watchList: data.watchList || [],
                                 cashSecuredPuts: data.cashSecuredPuts || [],
                                 nickname: data.nickname || '',
                                 profilePhoto: data.profilePhoto || auth.currentUser?.photoURL || '',
                                 notesSortMode: data.notesSortMode || 'default',
-                                notesGroupMode: data.notesGroupMode || 'category',
+                                notesGroupMode: data.notesGroupMode || 'account',
                                 portfolioLegendVisible: data.portfolioLegendVisible !== false,
                                 portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
                                 hideLegendPanel: data.hideLegendPanel || false,
@@ -826,6 +828,7 @@ const firebaseConfig = {
                             setNotes(incoming.notes);
                             setNextId(incoming.nextId);
                             setCollapsedCategories(incoming.collapsedCategories);
+                            setCollapsedAccounts(incoming.collapsedAccounts);
                             setDarkMode(incoming.darkMode);
                             setWatchList(incoming.watchList);
                             setCashSecuredPuts(incoming.cashSecuredPuts);
@@ -901,6 +904,7 @@ const firebaseConfig = {
                             categories,
                             nextId,
                             collapsedCategories,
+                            collapsedAccounts,
                             darkMode,
                             watchList,
                             cashSecuredPuts,
@@ -958,7 +962,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -975,6 +979,7 @@ const firebaseConfig = {
                             categories,
                             nextId,
                             collapsedCategories,
+                            collapsedAccounts,
                             darkMode,
                             watchList,
                             cashSecuredPuts,
@@ -1000,7 +1005,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesSortMode, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1203,6 +1208,7 @@ const firebaseConfig = {
                         categories,
                         nextId,
                         collapsedCategories,
+                        collapsedAccounts,
                         darkMode,
                         watchList,
                         nickname,
@@ -1543,12 +1549,13 @@ const firebaseConfig = {
                         categories: data.categories || DEFAULT_COLORS,
                         nextId: data.nextId || 1,
                         collapsedCategories: data.collapsedCategories || {},
+                        collapsedAccounts: data.collapsedAccounts || {},
                         darkMode: !!data.darkMode,
                         watchList: data.watchList || [],
                         nickname: data.nickname || '',
                         profilePhoto: data.profilePhoto || '',
                         notesSortMode: data.notesSortMode || 'default',
-                        notesGroupMode: data.notesGroupMode || 'category',
+                        notesGroupMode: data.notesGroupMode || 'account',
                         portfolioLegendVisible: data.portfolioLegendVisible !== false,
                         portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
                         hideLegendPanel: !!data.hideLegendPanel,
@@ -1807,6 +1814,18 @@ const firebaseConfig = {
                 acc[color] = sortedClassifiedNotes.filter(n => n.color === color);
                 return acc;
             }, {}), [sortedClassifiedNotes, categories]);
+
+            // Notes grouped by brokerage account. Every account gets a bucket so an empty
+            // account still renders its (collapsible) header; notes with no account — and
+            // any note without shares — land in the Unassigned bucket.
+            const groupedNotesByAccount = useMemo(() => {
+                const buckets = {};
+                [...ACCOUNT_IDS, UNASSIGNED_ACCOUNT_ID].forEach(id => { buckets[id] = []; });
+                sortedClassifiedNotes.forEach(n => {
+                    buckets[getNoteAccount(n)].push(n);
+                });
+                return buckets;
+            }, [sortedClassifiedNotes]);
 
 
 
@@ -2469,6 +2488,37 @@ const firebaseConfig = {
                 const parsedShares = parseFloat(shares);
                 setNotes(notes.map(n => n.id === noteId ? {...n, shares: isNaN(parsedShares) ? 0 : parsedShares} : n));
             };
+
+            // Single definition of a note card's props — the notes grid renders the same
+            // card under three different groupings (account, category, size).
+            const renderNoteCard = (note) => (
+                <NoteCard
+                    key={note.id}
+                    note={note}
+                    darkMode={darkMode}
+                    positionRankById={positionRankById}
+                    totalPositions={totalPositions}
+                    positionDetailsById={positionDetailsById}
+                    categories={categories}
+                    colorLabels={colorLabels}
+                    notes={notes}
+                    setNotes={setNotes}
+                    deleteNote={deleteNote}
+                    updateNoteTitle={updateNoteTitle}
+                    updateNoteShares={updateNoteShares}
+                    updateNoteAccount={updateNoteAccount}
+                    accounts={ACCOUNTS}
+                    accountIds={ACCOUNT_IDS}
+                    sharesPrivacyMode={sharesPrivacyMode}
+                    setExpandedNote={setExpandedNote}
+                    showBrandedNotice={showBrandedNotice}
+                    sanitizeContent={sanitizeContent}
+                    validateContent={validateContent}
+                    MAX_CONTENT_LENGTH={MAX_CONTENT_LENGTH}
+                    X={X}
+                    Maximize={Maximize}
+                />
+            );
 
             // Assign a note (position) to a brokerage account
             const updateNoteAccount = (noteId, account) => {
@@ -4549,6 +4599,14 @@ const firebaseConfig = {
                                         <div className={`inline-flex rounded-lg p-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                                             <button
                                                 type="button"
+                                                onClick={() => setNotesGroupMode('account')}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesGroupMode === 'account' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
+                                                title="Group notes by brokerage account"
+                                            >
+                                                Portfolio
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={() => setNotesGroupMode('category')}
                                                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesGroupMode === 'category' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
                                             >
@@ -4566,7 +4624,7 @@ const firebaseConfig = {
                                         </div>
                                     </div>
 
-                                    {notesGroupMode === 'category' && (
+                                    {notesGroupMode !== 'size' && (
                                         <div className="flex items-center gap-3">
                                             <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sort</span>
                                             <div className={`inline-flex rounded-lg p-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
@@ -4633,7 +4691,43 @@ const firebaseConfig = {
                                 </div>
                             </div>
                         )}
-                        {notesGroupMode === 'category' ? (categories.map(color => {
+                        {notesGroupMode === 'account' ? ([...ACCOUNT_IDS, UNASSIGNED_ACCOUNT_ID].map(accountId => {
+                            const accountNotes = groupedNotesByAccount[accountId];
+                            // Real accounts always show a header (so an empty one can still be
+                            // targeted); Unassigned only appears while something is in it.
+                            if (!accountNotes.length && accountId === UNASSIGNED_ACCOUNT_ID) return null;
+                            const accountValue = accountTotals[accountId]?.value || 0;
+                            const isCollapsed = !!collapsedAccounts[accountId];
+                            return (
+                                <div key={accountId} className="mb-6">
+                                    <button
+                                        onClick={() => setCollapsedAccounts({...collapsedAccounts, [accountId]: !isCollapsed})}
+                                        className={`flex items-center gap-2 w-full p-3 rounded-lg mb-3 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}
+                                        title={ACCOUNTS.find(a => a.id === accountId)?.strategy || 'Notes not assigned to an account'}
+                                    >
+                                        {isCollapsed ? <ChevronRight size={20}/> : <ChevronDown size={20}/>}
+                                        <span className="font-semibold text-lg">{getAccountLabel(accountId)}</span>
+                                        <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({accountNotes.length})</span>
+                                        {accountValue > 0 && (
+                                            <span className={`text-sm ml-auto ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                ${accountValue.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {!isCollapsed && (
+                                        accountNotes.length > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                                {accountNotes.map(renderNoteCard)}
+                                            </div>
+                                        ) : (
+                                            <div className={`rounded-lg p-6 text-center text-sm ${darkMode ? 'bg-gray-800/50 text-gray-400' : 'bg-white text-gray-500'}`}>
+                                                No notes in this account yet. Set a note's account from its card or the expanded view.
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            );
+                        })) : notesGroupMode === 'category' ? (categories.map(color => {
                             const categoryNotes = groupedNotes[color];
                             if (!categoryNotes.length) return null;
                             return (
@@ -4646,34 +4740,7 @@ const firebaseConfig = {
                                     </button>
                                     {!collapsedCategories[color] && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                            {categoryNotes.map(note => (
-                                                <NoteCard
-                                                    key={note.id}
-                                                    note={note}
-                                                    darkMode={darkMode}
-                                                    positionRankById={positionRankById}
-                                                    totalPositions={totalPositions}
-                                                    positionDetailsById={positionDetailsById}
-                                                    categories={categories}
-                                                    colorLabels={colorLabels}
-                                                    notes={notes}
-                                                    setNotes={setNotes}
-                                                    deleteNote={deleteNote}
-                                                    updateNoteTitle={updateNoteTitle}
-                                                    updateNoteShares={updateNoteShares}
-                                                    updateNoteAccount={updateNoteAccount}
-                                                    accounts={ACCOUNTS}
-                                                    accountIds={ACCOUNT_IDS}
-                                                    sharesPrivacyMode={sharesPrivacyMode}
-                                                    setExpandedNote={setExpandedNote}
-                                                    showBrandedNotice={showBrandedNotice}
-                                                    sanitizeContent={sanitizeContent}
-                                                    validateContent={validateContent}
-                                                    MAX_CONTENT_LENGTH={MAX_CONTENT_LENGTH}
-                                                    X={X}
-                                                    Maximize={Maximize}
-                                                />
-                                            ))}
+                                            {categoryNotes.map(renderNoteCard)}
                                         </div>
                                     )}
                                 </div>
@@ -4686,34 +4753,7 @@ const firebaseConfig = {
                                     <span className={`text-xs font-semibold uppercase tracking-wider ml-auto ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sorted by size</span>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                    {sizeSortedClassifiedNotes.map(note => (
-                                        <NoteCard
-                                            key={note.id}
-                                            note={note}
-                                            darkMode={darkMode}
-                                            positionRankById={positionRankById}
-                                            totalPositions={totalPositions}
-                                            positionDetailsById={positionDetailsById}
-                                            categories={categories}
-                                            colorLabels={colorLabels}
-                                            notes={notes}
-                                            setNotes={setNotes}
-                                            deleteNote={deleteNote}
-                                            updateNoteTitle={updateNoteTitle}
-                                            updateNoteShares={updateNoteShares}
-                                            updateNoteAccount={updateNoteAccount}
-                                            accounts={ACCOUNTS}
-                                            accountIds={ACCOUNT_IDS}
-                                            sharesPrivacyMode={sharesPrivacyMode}
-                                            setExpandedNote={setExpandedNote}
-                                            showBrandedNotice={showBrandedNotice}
-                                            sanitizeContent={sanitizeContent}
-                                            validateContent={validateContent}
-                                            MAX_CONTENT_LENGTH={MAX_CONTENT_LENGTH}
-                                            X={X}
-                                            Maximize={Maximize}
-                                        />
-                                    ))}
+                                    {sizeSortedClassifiedNotes.map(renderNoteCard)}
                                 </div>
                             </div>
                         )}
