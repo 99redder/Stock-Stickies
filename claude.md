@@ -208,6 +208,16 @@ empty, so a note can be moved into one; the Unassigned section only appears whil
 is in it. Unclassified notes render in their own banner section above the groups,
 independent of group mode.
 
+### Cash handling
+Cash lives in a different form per account: actual dollars (ticker `USD`) in the taxable
+individual account, `SGOV` in both IRAs. `CASH_EQUIVALENT_TICKERS` lists these, and
+`isCashHolding` — the single predicate used by the donut, the treemap, and
+`cashPortfolioValue` — counts a holding as cash if it sits in a category labelled "Cash"
+**or** carries a cash-equivalent ticker. The combined pie therefore shows one Cash slice
+rather than one per account; filtering to a single account narrows it to that account's
+cash. SGOV keeps its real Finnhub price, so only the grouping changes, never the value.
+The Ask K prompt describes the same arrangement.
+
 ### Locked positions
 A note's `shares` and `account` are **locked by default** behind a lock icon, on both the
 note card and the expanded modal. Locked, they render as a read-only readout (large

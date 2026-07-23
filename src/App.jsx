@@ -658,6 +658,17 @@ const firebaseConfig = {
 
             const normalizeTicker = (value) => String(value || '').trim().toUpperCase();
             const isUsdTicker = (value) => normalizeTicker(value) === 'USD';
+            // Each account parks its cash differently — the taxable account holds actual
+            // dollars, the IRAs hold SGOV — but it is all one cash allocation. Treating
+            // these tickers as cash-equivalent collapses them into a single pie slice
+            // instead of one per account. SGOV keeps its real market price; only the
+            // grouping changes.
+            const CASH_EQUIVALENT_TICKERS = ['USD', 'SGOV'];
+            const isCashEquivalentTicker = (value) => CASH_EQUIVALENT_TICKERS.includes(normalizeTicker(value));
+            // Single definition of "this holding is cash" — a position counts either by
+            // sitting in a category labelled Cash or by being a cash-equivalent ticker.
+            const isCashHolding = (h) =>
+                (colorLabels[h?.color] || '').trim().toLowerCase() === 'cash' || isCashEquivalentTicker(h?.ticker);
             const normalizePriceMap = (prices) => {
                 const normalized = {};
                 if (!prices || typeof prices !== 'object') return normalized;
@@ -2303,13 +2314,14 @@ const firebaseConfig = {
 
             const cashPortfolioValue = useMemo(() =>
                 portfolioData
-                    .filter(h => (colorLabels[h.color] || '').trim().toLowerCase() === 'cash')
+                    .filter(isCashHolding)
                     .reduce((sum, h) => sum + h.value, 0),
+            // isCashHolding closes over colorLabels, which is already declared here.
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             [portfolioData, colorLabels]);
             const portfolioMapTiles = useMemo(() => {
-                const isCashPosition = (h) => (colorLabels[h.color] || '').trim().toLowerCase() === 'cash';
-                const cashPositions = portfolioData.filter(isCashPosition);
-                const stockPositions = portfolioData.filter(h => !isCashPosition(h));
+                const cashPositions = portfolioData.filter(isCashHolding);
+                const stockPositions = portfolioData.filter(h => !isCashHolding(h));
                 const cashValue = cashPositions.reduce((sum, h) => sum + h.value, 0);
                 const cashPercentage = cashPositions.reduce((sum, h) => sum + h.percentage, 0);
                 const minNamedStockCount = Math.ceil(stockPositions.length * 0.5);
@@ -2369,6 +2381,8 @@ const firebaseConfig = {
                 });
 
                 return out;
+            // isCashHolding closes over colorLabels, which is already declared here.
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             }, [portfolioData, colorLabels]);
 
             // Content key for colorLabels. The chart effect reads colorLabels but must not
@@ -2547,9 +2561,8 @@ const firebaseConfig = {
                     // Group every position whose category label is "Cash" into one dedicated
                     // chart slice. Keep that Cash slice visible even if it is under the normal
                     // small-slice threshold, then combine only small non-cash positions into Others.
-                    const isCashPosition = (h) => (colorLabels[h.color] || '').trim().toLowerCase() === 'cash';
-                    const cashPositions = currentPortfolioData.filter(isCashPosition);
-                    const nonCashPositions = currentPortfolioData.filter(h => !isCashPosition(h));
+                    const cashPositions = currentPortfolioData.filter(isCashHolding);
+                    const nonCashPositions = currentPortfolioData.filter(h => !isCashHolding(h));
                     const cashValue = cashPositions.reduce((sum, h) => sum + h.value, 0);
                     const cashPercentage = cashPositions.reduce((sum, h) => sum + h.percentage, 0);
                     const cashColor = cashPositions[0]?.color;
@@ -2771,7 +2784,7 @@ const firebaseConfig = {
                                             }
                                             const h = largeSlices[ctx.dataIndex];
                                             if (h.isCashGroup) {
-                                                const tickers = h.positions.map(p => p.ticker).join(', ');
+                                                const tickers = [...new Set(h.positions.map(p => p.ticker))].join(', ');
                                                 if (hidePortfolioValues) {
                                                     return `Cash (${tickers}): ${h.cashTotalPercentage.toFixed(1)}%`;
                                                 }
