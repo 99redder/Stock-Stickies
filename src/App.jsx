@@ -4709,11 +4709,13 @@ const firebaseConfig = {
                                         </div>
                                     </div>
                                 )}
-                                <TodayAgenda
-                                    key={auth?.currentUser?.uid || 'signed-out'}
-                                    authUser={auth?.currentUser || null}
-                                    darkMode={darkMode}
-                                />
+                                {isOwnerPortfolioUser && (
+                                    <TodayAgenda
+                                        key={auth?.currentUser?.uid || 'signed-out'}
+                                        authUser={auth?.currentUser || null}
+                                        darkMode={darkMode}
+                                    />
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => setDarkMode(!darkMode)}
