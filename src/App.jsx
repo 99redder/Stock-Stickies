@@ -4817,6 +4817,16 @@ const firebaseConfig = {
                                     />
                                 )}
                                 <div className="fixed top-5 right-5 z-40 flex items-center gap-3">
+                                    {isOwnerPortfolioUser && (
+                                        <RobinhoodSync
+                                            authUser={auth?.currentUser || null}
+                                            notes={notes}
+                                            ready={userDataReady}
+                                            darkMode={darkMode}
+                                            onCreateBackup={createCurrentAccountBackup}
+                                            onApply={applyRobinhoodReconciliation}
+                                        />
+                                    )}
                                     <button
                                         type="button"
                                         onClick={() => setDarkMode(!darkMode)}
@@ -4982,16 +4992,6 @@ const firebaseConfig = {
                                     >
                                         <Plus size={18}/> New Note
                                     </button>
-                                    {isOwnerPortfolioUser && (
-                                        <RobinhoodSync
-                                            authUser={auth?.currentUser || null}
-                                            notes={notes}
-                                            ready={userDataReady}
-                                            darkMode={darkMode}
-                                            onCreateBackup={createCurrentAccountBackup}
-                                            onApply={applyRobinhoodReconciliation}
-                                        />
-                                    )}
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-4">
