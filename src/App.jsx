@@ -71,6 +71,8 @@ import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
 
+const OWNER_FIREBASE_UID = '1HRdhcxXoQaVuj8obVnPDPdJeac2'
+
 // Firebase web config (public client config; restrict key in Google Cloud Console)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -723,7 +725,7 @@ const firebaseConfig = {
             const activeTicker = expandedNote?.title || watchListModalTicker;
 
             // Owner-only brokerage integrations
-            const isOwnerPortfolioUser = (currentUser || '').toLowerCase() === 'chris.gorham451@gmail.com';
+            const isOwnerPortfolioUser = auth?.currentUser?.uid === OWNER_FIREBASE_UID;
 
             // Close API key help popovers on outside click / Escape
             useEffect(() => {
@@ -4716,16 +4718,18 @@ const firebaseConfig = {
                                         darkMode={darkMode}
                                     />
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={() => setDarkMode(!darkMode)}
-                                    className="flex items-center justify-center bg-gray-700 hover:bg-gray-800 text-white p-3 rounded-lg shadow-lg"
-                                    title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                                    aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                                >
-                                    {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
-                                </button>
-                                <button onClick={handleLogout} className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg shadow-lg"><LogOut size={20}/>Logout</button>
+                                <div className="fixed top-5 right-5 z-40 flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDarkMode(!darkMode)}
+                                        className="flex items-center justify-center bg-gray-700 hover:bg-gray-800 text-white p-3 rounded-lg shadow-lg"
+                                        title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                                        aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                                    >
+                                        {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
+                                    </button>
+                                    <button onClick={handleLogout} className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg shadow-lg"><LogOut size={20}/>Logout</button>
+                                </div>
                             </div>
                         </div>
 
