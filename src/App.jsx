@@ -508,6 +508,7 @@ const firebaseConfig = {
 
         function StickyNotesApp() {
             const [currentUser, setCurrentUser] = useState(null);
+            const [userDataReady, setUserDataReady] = useState(false);
             const [loginUsername, setLoginUsername] = useState('');
             const [loginPassword, setLoginPassword] = useState('');
             const [isSignup, setIsSignup] = useState(false);
@@ -791,6 +792,7 @@ const firebaseConfig = {
                 if (!auth) return;
                 const unsubscribe = auth.onAuthStateChanged((user) => {
                     if (user) {
+                        setUserDataReady(false);
                         setCurrentUser(user.email);
                         maybeAdoptCanonicalUserDoc(user).then((migrated) => {
                             if (migrated) showBrandedNotice('We found your existing StickyNotes data and reattached it to this login method.', 'Account recovered');
@@ -801,6 +803,7 @@ const firebaseConfig = {
                         // the snapshot, and the auto-save then overwrites Firestore with empty/default state.
                         // The snapshot handler already sets profilePhoto correctly (with Google URL fallback).
                     } else {
+                        setUserDataReady(false);
                         setCurrentUser(null);
                         setProfilePhoto('');
                         setProfilePhotoMenuOpen(false);
@@ -825,6 +828,7 @@ const firebaseConfig = {
                         // they see their photo immediately; the auto-save will persist it shortly.
                         if (!doc.exists) {
                             if (auth.currentUser?.photoURL) setProfilePhoto(auth.currentUser.photoURL);
+                            setUserDataReady(true);
                             return;
                         }
                         if (!isSavingRef.current) {
@@ -924,6 +928,7 @@ const firebaseConfig = {
                             // Decrypt API keys asynchronously (non-blocking)
                             handleApiKey(data.finnhubApiKey, setFinnhubApiKey);
                             handleApiKey(data.marketauxApiKey, setMarketauxApiKey);
+                            setUserDataReady(true);
                         }
                     }, (error) => {
                         console.error('Firestore snapshot error:', error);
@@ -1516,6 +1521,7 @@ const firebaseConfig = {
                 // first snapshot even if the payload is byte-identical to this one.
                 lastAppliedSnapshotRef.current = null;
                 if (auth) await auth.signOut();
+                setUserDataReady(false);
                 setCurrentUser(null);
                 setNotes([]);
                 setNickname('');
@@ -4980,6 +4986,7 @@ const firebaseConfig = {
                                         <RobinhoodSync
                                             authUser={auth?.currentUser || null}
                                             notes={notes}
+                                            ready={userDataReady}
                                             darkMode={darkMode}
                                             onCreateBackup={createCurrentAccountBackup}
                                             onApply={applyRobinhoodReconciliation}

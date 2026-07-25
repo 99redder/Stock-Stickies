@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const API_BASE_URL = 'https://rentals-api.99redder.workers.dev'
 const PLAID_SCRIPT_ID = 'stock-stickies-plaid-link'
@@ -15,7 +15,10 @@ function positionKey(account, ticker) {
   return `${account}:${normalizeTicker(ticker)}`
 }
 
-function buildRobinhoodReconciliation(notes, positions) {
+function buildRobinhoodReconciliation(notes, positions, ignoredCryptoTickers = []) {
+  const ignoredCrypto = new Set(
+    (Array.isArray(ignoredCryptoTickers) ? ignoredCryptoTickers : []).map(normalizeTicker)
+  )
   const usable = []
   const unsupported = []
   for (const position of Array.isArray(positions) ? positions : []) {
@@ -77,6 +80,7 @@ function buildRobinhoodReconciliation(notes, positions) {
   const possibleClosed = notes.filter(note =>
     Number(note.shares) > 0 &&
     ['individual', 'traditional', 'roth'].includes(note.account) &&
+    !ignoredCrypto.has(normalizeTicker(note.title)) &&
     !liveKeys.has(positionKey(note.account, note.title))
   )
 
@@ -106,6 +110,7 @@ function loadPlaidScript() {
 export default function RobinhoodSync({
   authUser,
   notes,
+  ready,
   darkMode,
   onCreateBackup,
   onApply,
@@ -118,13 +123,23 @@ export default function RobinhoodSync({
   const [holdings, setHoldings] = useState(null)
   const [backup, setBackup] = useState(null)
   const [result, setResult] = useState(null)
+  const [autoSyncState, setAutoSyncState] = useState('idle')
+  const autoSyncStartedRef = useRef(false)
+  const notesRef = useRef(notes)
+  const onApplyRef = useRef(onApply)
+  notesRef.current = notes
+  onApplyRef.current = onApply
 
   const reconciliation = useMemo(
-    () => buildRobinhoodReconciliation(notes, holdings?.positions || []),
+    () => buildRobinhoodReconciliation(
+      notes,
+      holdings?.positions || [],
+      holdings?.ignoredCryptoTickers || []
+    ),
     [notes, holdings]
   )
 
-  const apiFetch = async (path, options = {}) => {
+  const apiFetch = useCallback(async (path, options = {}) => {
     if (!authUser) throw new Error('Sign in again before syncing Robinhood.')
     let response
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -148,7 +163,51 @@ export default function RobinhoodSync({
       throw requestError
     }
     return data
-  }
+  }, [authUser])
+
+  useEffect(() => {
+    if (!ready || !authUser || autoSyncStartedRef.current) return undefined
+
+    // React StrictMode mounts effects twice in development. Deferring one tick lets
+    // the throwaway mount clean up before this page-load-only sync can start.
+    const timer = window.setTimeout(() => {
+      if (autoSyncStartedRef.current) return
+      autoSyncStartedRef.current = true
+      setAutoSyncState('syncing')
+
+      void (async () => {
+        try {
+          const connection = await apiFetch('/api/stock-stickies/plaid/status')
+          setStatus(connection)
+          if (!connection.investmentsEnabled) {
+            setAutoSyncState('needs-consent')
+            return
+          }
+
+          const data = await apiFetch('/api/stock-stickies/plaid/holdings')
+          setHoldings(data)
+          const automaticReconciliation = buildRobinhoodReconciliation(
+            notesRef.current,
+            data.positions || [],
+            data.ignoredCryptoTickers || []
+          )
+          if (automaticReconciliation.updates.length || automaticReconciliation.additions.length) {
+            const applied = await onApplyRef.current(automaticReconciliation)
+            setResult(applied)
+            setBackup(applied.backup)
+            setAutoSyncState('applied')
+          } else {
+            setAutoSyncState('current')
+          }
+        } catch (syncError) {
+          console.error('Automatic Robinhood sync failed:', syncError)
+          setAutoSyncState(syncError?.needsConsent ? 'needs-consent' : 'failed')
+        }
+      })()
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [apiFetch, authUser, ready])
 
   const openSync = async () => {
     setOpen(true)
@@ -252,9 +311,21 @@ export default function RobinhoodSync({
         type="button"
         onClick={openSync}
         className="inline-flex items-center gap-2 rounded-lg border border-emerald-400 bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-emerald-500"
-        title="Preview share quantities from Robinhood"
+        title={
+          autoSyncState === 'syncing'
+            ? 'Automatically syncing Robinhood positions'
+            : autoSyncState === 'applied'
+              ? 'Robinhood positions were updated automatically'
+              : autoSyncState === 'current'
+                ? 'Robinhood positions are current'
+                : autoSyncState === 'needs-consent'
+                  ? 'Open to grant one-time Robinhood Investments permission'
+                  : autoSyncState === 'failed'
+                    ? 'Automatic sync failed; open to retry'
+                    : 'Preview share quantities from Robinhood'
+        }
       >
-        ↻ Sync Robinhood
+        {autoSyncState === 'syncing' ? '↻ Syncing Robinhood…' : '↻ Sync Robinhood'}
       </button>
 
       {open && (
