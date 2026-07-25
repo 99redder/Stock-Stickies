@@ -1,0 +1,18 @@
+{
+  "name": "Stock Stickies Mobile",
+  "short_name": "Stickies",
+  "description": "A read-only mobile portfolio companion for Stock Stickies.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080b10",
+  "theme_color": "#080b10",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/stock-stickies-google-cloud-logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
