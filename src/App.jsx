@@ -726,6 +726,7 @@ const firebaseConfig = {
             const [portfolioAccountFilter, setPortfolioAccountFilter] = useState('all'); // 'all' | account id | 'unassigned'
             const [portfolioLegendVisible, setPortfolioLegendVisible] = useState(true);
             const [portfolioLegendDollarAmounts, setPortfolioLegendDollarAmounts] = useState(false);
+            const [portfolioDonutIncludesCash, setPortfolioDonutIncludesCash] = useState(true);
             const [notesGroupMode, setNotesGroupMode] = useState('account'); // 'account' | 'category' | 'size'
             const [hideLegendPanel, setHideLegendPanel] = useState(false);
             const [hideToolbarPanel, setHideToolbarPanel] = useState(false);
@@ -870,6 +871,7 @@ const firebaseConfig = {
                                 notesGroupMode: data.notesGroupMode || 'account',
                                 portfolioLegendVisible: data.portfolioLegendVisible !== false,
                                 portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
+                                portfolioDonutIncludesCash: data.portfolioDonutIncludesCash !== false,
                                 hideLegendPanel: data.hideLegendPanel || false,
                                 hideToolbarPanel: data.hideToolbarPanel || false,
                                 sharesPrivacyMode: data.sharesPrivacyMode || 'show'
@@ -899,6 +901,7 @@ const firebaseConfig = {
                             setNotesGroupMode(incoming.notesGroupMode);
                             setPortfolioLegendVisible(incoming.portfolioLegendVisible);
                             setPortfolioLegendDollarAmounts(incoming.portfolioLegendDollarAmounts);
+                            setPortfolioDonutIncludesCash(incoming.portfolioDonutIncludesCash);
                             setHideLegendPanel(incoming.hideLegendPanel);
                             setHideToolbarPanel(incoming.hideToolbarPanel);
                             setSharesPrivacyMode(incoming.sharesPrivacyMode);
@@ -976,6 +979,7 @@ const firebaseConfig = {
                             notesGroupMode,
                             portfolioLegendVisible,
                             portfolioLegendDollarAmounts,
+                            portfolioDonutIncludesCash,
                             hideLegendPanel,
                             hideToolbarPanel,
                             sharesPrivacyMode,
@@ -1023,7 +1027,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1050,6 +1054,7 @@ const firebaseConfig = {
                             notesGroupMode,
                             portfolioLegendVisible,
                             portfolioLegendDollarAmounts,
+                            portfolioDonutIncludesCash,
                             hideLegendPanel,
                             hideToolbarPanel,
                             sharesPrivacyMode,
@@ -1065,7 +1070,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1277,6 +1282,7 @@ const firebaseConfig = {
                         notesGroupMode,
                         portfolioLegendVisible,
                         portfolioLegendDollarAmounts,
+                        portfolioDonutIncludesCash,
                         hideLegendPanel,
                         hideToolbarPanel,
                         sharesPrivacyMode,
@@ -1726,6 +1732,7 @@ const firebaseConfig = {
                         notesGroupMode: data.notesGroupMode || 'account',
                         portfolioLegendVisible: data.portfolioLegendVisible !== false,
                         portfolioLegendDollarAmounts: !!data.portfolioLegendDollarAmounts,
+                        portfolioDonutIncludesCash: data.portfolioDonutIncludesCash !== false,
                         hideLegendPanel: !!data.hideLegendPanel,
                         hideToolbarPanel: !!data.hideToolbarPanel,
                         sharesPrivacyMode: data.sharesPrivacyMode || 'show',
@@ -2519,6 +2526,10 @@ const firebaseConfig = {
             // isCashHolding closes over colorLabels, which is already declared here.
             // eslint-disable-next-line react-hooks/exhaustive-deps
             [portfolioData, colorLabels]);
+            const cashPortfolioPercentage = totalPortfolioValue > 0
+                ? (cashPortfolioValue / totalPortfolioValue) * 100
+                : 0;
+            const nonCashPortfolioValue = Math.max(0, totalPortfolioValue - cashPortfolioValue);
             const portfolioMapTiles = useMemo(() => {
                 const cashPositions = portfolioData.filter(isCashHolding);
                 const stockPositions = portfolioData.filter(h => !isCashHolding(h));
@@ -2959,6 +2970,12 @@ const firebaseConfig = {
                     const nonCashPositions = currentPortfolioData.filter(h => !isCashHolding(h));
                     const cashValue = cashPositions.reduce((sum, h) => sum + h.value, 0);
                     const cashPercentage = cashPositions.reduce((sum, h) => sum + h.percentage, 0);
+                    const nonCashValue = nonCashPositions.reduce((sum, h) => sum + h.value, 0);
+                    const chartTotalValue = portfolioDonutIncludesCash ? totalPortfolioValue : nonCashValue;
+                    const withChartPercentage = (holding) => ({
+                        ...holding,
+                        percentage: chartTotalValue > 0 ? (holding.value / chartTotalValue) * 100 : 0
+                    });
                     const cashColor = cashPositions[0]?.color;
                     const CASH_CHART_COLOR = '#16a34a';
                     const makeCashSlice = (ticker, value, extra = {}) => ({
@@ -2966,7 +2983,7 @@ const firebaseConfig = {
                         shares: cashPositions.reduce((sum, h) => sum + (Number(h.shares) || 0), 0),
                         price: 1,
                         value,
-                        percentage: totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0,
+                        percentage: chartTotalValue > 0 ? (value / chartTotalValue) * 100 : 0,
                         cashTotalPercentage: cashPercentage,
                         percentOfCash: cashValue > 0 ? (value / cashValue) * 100 : 0,
                         color: cashColor,
@@ -2976,16 +2993,17 @@ const firebaseConfig = {
                     });
                     // CSP obligations are no longer carved out of the pie as a separate slice;
                     // cash is a single slice and the obligation total is annotated in the donut center.
-                    const cashSlices = cashPositions.length > 0
+                    const cashSlices = portfolioDonutIncludesCash && cashPositions.length > 0
                         ? [makeCashSlice('Cash', cashValue, { chartColor: CASH_CHART_COLOR })]
                         : [];
-                    const groupedForChart = cashPositions.length > 0
+                    const groupedForChart = portfolioDonutIncludesCash && cashPositions.length > 0
                         ? [
                             { ticker: 'Cash', value: cashValue, percentage: cashPercentage, color: cashColor, isCashPlaceholder: true, slices: cashSlices },
-                            ...nonCashPositions
+                            ...nonCashPositions.map(withChartPercentage)
                         ].sort((a, b) => b.value - a.value)
-                        : currentPortfolioData;
+                        : nonCashPositions.map(withChartPercentage);
                     const chartPortfolioData = groupedForChart.flatMap(h => h.isCashPlaceholder ? h.slices : [h]);
+                    if (chartPortfolioData.length === 0) return;
 
                     // Keep the largest stock names readable, then roll small positions into "Others".
                     // A stock earns its own slice only if it clears the percent threshold, capped at
@@ -3223,7 +3241,7 @@ const firebaseConfig = {
                 };
                 // colorLabelsKey (not colorLabels) — depend on content, not object identity.
                 // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, colorLabelsKey, shownPutObligation, totalPortfolioValue, nickname, currentUser]);
+            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, colorLabelsKey, shownPutObligation, totalPortfolioValue, nickname, currentUser]);
 
             if (!currentUser) {
                 return (
@@ -5375,6 +5393,15 @@ const firebaseConfig = {
                                                     >
                                                         {portfolioLegendDollarAmounts ? 'Hide $' : 'Add $'}
                                                     </button>
+                                                    {portfolioViewMode === 'donut' && cashPortfolioValue > 0 && (
+                                                        <button
+                                                            onClick={() => setPortfolioDonutIncludesCash(!portfolioDonutIncludesCash)}
+                                                            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${!portfolioDonutIncludesCash ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                            title={portfolioDonutIncludesCash ? 'Remove cash from the donut and show it as text' : 'Put cash back in the donut'}
+                                                        >
+                                                            {portfolioDonutIncludesCash ? 'Hide Cash' : 'Show Cash'}
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <button
                                                     onClick={handleCopyPortfolio}
@@ -5396,8 +5423,23 @@ const firebaseConfig = {
                                         </div>
                                         <div className="h-[520px]">
                                             {portfolioViewMode === 'donut' ? (
-                                                <div className="min-h-0 h-full">
-                                                    <canvas ref={chartRef}></canvas>
+                                                <div className="flex min-h-0 h-full flex-col">
+                                                    <div className="min-h-0 flex-1">
+                                                        {!portfolioDonutIncludesCash && nonCashPortfolioValue <= 0 ? (
+                                                            <div className={`flex h-full items-center justify-center text-sm font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                No non-cash positions to display
+                                                            </div>
+                                                        ) : (
+                                                            <canvas ref={chartRef}></canvas>
+                                                        )}
+                                                    </div>
+                                                    {!portfolioDonutIncludesCash && cashPortfolioValue > 0 && (
+                                                        <div className={`mt-2 flex flex-wrap items-center justify-center gap-x-2 text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
+                                                            <span>Cash excluded from donut:</span>
+                                                            <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(cashPortfolioValue)}</span>
+                                                            <span>· {cashPortfolioPercentage.toFixed(1)}% of total portfolio</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className={`relative h-full overflow-hidden rounded-md border ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
