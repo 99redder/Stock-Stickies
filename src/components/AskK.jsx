@@ -20,7 +20,7 @@ function formatMessage(text) {
         .replace(/\n/g, '<br>')
 }
 
-export default function AskK({ portfolio, darkMode }) {
+export default function AskK({ portfolio, darkMode, embedded = false }) {
     const [open, setOpen] = useState(false)
     const [messages, setMessages] = useState([])
     const [input, setInput] = useState('')
@@ -102,7 +102,7 @@ export default function AskK({ portfolio, darkMode }) {
                 type="button"
                 onClick={() => setOpen(true)}
                 aria-label="Ask K"
-                className={`fixed top-5 right-5 z-40 ${fabBg} text-white rounded-full shadow-lg flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-transform hover:scale-105`}
+                className={`${embedded ? 'relative shrink-0' : 'fixed top-5 right-5 z-40'} ${fabBg} text-white rounded-full shadow-lg flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-transform hover:scale-105`}
             >
                 <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white text-green-700 font-bold text-sm">K</span>
                 <span className="hidden sm:inline">Ask K</span>
