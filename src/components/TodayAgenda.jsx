@@ -121,10 +121,7 @@ export default function TodayAgenda({ authUser }) {
                     </svg>
                 </button>
             </div>
-            <div className="mb-2 flex items-center justify-between gap-2 border-t border-[#214526] pt-2">
-                <span className="rounded-full border border-[#39ff14] bg-[#0f2a12] px-2 py-0.5 font-mono text-[10px] font-black uppercase tracking-[0.14em] text-[#39ff14]">
-                    Look Ahead
-                </span>
+            <div className="mb-2 flex items-center justify-end border-t border-[#214526] pt-2">
                 <span className="text-right font-mono text-[11px] text-[#7dff63]">{dateLabel}</span>
             </div>
 
