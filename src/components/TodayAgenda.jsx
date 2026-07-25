@@ -102,7 +102,7 @@ export default function TodayAgenda({ authUser }) {
 
     return (
         <section
-            className="w-72 shrink-0 rounded-xl border border-[#39ff14] bg-[#090f0b] px-3 py-2.5 text-[#b6ffac] shadow-[0_0_0_1px_rgba(57,255,20,0.12),0_0_22px_rgba(57,255,20,0.16)]"
+            className="min-w-0 flex-1 rounded-xl border border-[#39ff14] bg-[#090f0b] px-3 py-2.5 text-[#b6ffac] shadow-[0_0_0_1px_rgba(57,255,20,0.12),0_0_22px_rgba(57,255,20,0.16)]"
             aria-label={`Look Ahead calendar for ${dateLabel}`}
         >
             <div className="mb-2 flex items-center gap-2">

@@ -2911,59 +2911,6 @@ const firebaseConfig = {
                 return dupes;
             }, [notes]);
 
-            const attentionItems = useMemo(() => {
-                const missingPriceCount = allPortfolioData.filter(
-                    holding => !Number.isFinite(holding.price) || holding.price <= 0
-                ).length;
-                const unassignedPositionCount = portfolioNotes.filter(
-                    note => getNoteAccount(note) === UNASSIGNED_ACCOUNT_ID
-                ).length;
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                const thirtyDaysFromNow = new Date(today);
-                thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-                const nearTermPutCount = cashSecuredPuts.filter(put => {
-                    if (!put.expiry) return false;
-                    const expiry = new Date(`${put.expiry}T12:00:00`);
-                    return Number.isFinite(expiry.getTime()) && expiry <= thirtyDaysFromNow;
-                }).length;
-
-                return [
-                    missingPriceCount > 0 && {
-                        id: 'prices',
-                        count: missingPriceCount,
-                        label: `missing price${missingPriceCount === 1 ? '' : 's'}`,
-                        title: 'Open the portfolio and refresh missing quotes',
-                        tab: 'portfolio',
-                        tone: darkMode ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-800'
-                    },
-                    duplicateNoteIds.size > 0 && {
-                        id: 'duplicates',
-                        count: duplicateNoteIds.size,
-                        label: `duplicate position${duplicateNoteIds.size === 1 ? '' : 's'}`,
-                        title: 'Open notes to resolve duplicate positions',
-                        tab: 'notes',
-                        tone: darkMode ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-red-300 bg-red-50 text-red-800'
-                    },
-                    unassignedPositionCount > 0 && {
-                        id: 'unassigned',
-                        count: unassignedPositionCount,
-                        label: 'unassigned',
-                        title: 'Open notes to assign these positions to an account',
-                        tab: 'notes',
-                        tone: darkMode ? 'border-violet-500/40 bg-violet-500/10 text-violet-200' : 'border-violet-300 bg-violet-50 text-violet-800'
-                    },
-                    nearTermPutCount > 0 && {
-                        id: 'puts',
-                        count: nearTermPutCount,
-                        label: `CSP deadline${nearTermPutCount === 1 ? '' : 's'}`,
-                        title: 'Cash-secured puts expired or expiring within 30 days',
-                        tab: 'portfolio',
-                        tone: darkMode ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-200' : 'border-cyan-300 bg-cyan-50 text-cyan-800'
-                    }
-                ].filter(Boolean);
-            }, [allPortfolioData, portfolioNotes, cashSecuredPuts, duplicateNoteIds, darkMode]);
-
             // Assign a note (position) to a brokerage account. Refuses a move that would put
             // two notes for the same ticker in one account. Returns whether it applied.
             const updateNoteAccount = (noteId, account) => {
@@ -4845,57 +4792,7 @@ const firebaseConfig = {
                                     )}
                                 </p>
                             </div>
-                            <section
-                                className={`hidden xl:block min-w-0 w-full max-w-lg rounded-xl border px-4 py-3 ${
-                                    darkMode
-                                        ? 'border-gray-700 bg-gray-900/55 shadow-lg shadow-black/10'
-                                        : 'border-gray-300 bg-white/70 shadow-sm'
-                                }`}
-                                aria-label="Attention Center"
-                            >
-                                <div className="flex items-center justify-between gap-3 mb-2">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
-                                            attentionItems.length
-                                                ? (darkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-700')
-                                                : (darkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700')
-                                        }`}>
-                                            {attentionItems.length ? '!' : '✓'}
-                                        </span>
-                                        <h2 className={`truncate text-sm font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                                            Attention Center
-                                        </h2>
-                                    </div>
-                                    <span className={`shrink-0 text-[10px] font-bold uppercase tracking-widest ${
-                                        attentionItems.length
-                                            ? (darkMode ? 'text-amber-300' : 'text-amber-700')
-                                            : (darkMode ? 'text-emerald-300' : 'text-emerald-700')
-                                    }`}>
-                                        {attentionItems.length ? `${attentionItems.length} ${attentionItems.length === 1 ? 'item' : 'items'}` : 'All clear'}
-                                    </span>
-                                </div>
-                                {attentionItems.length > 0 ? (
-                                    <div className="flex flex-wrap gap-2">
-                                        {attentionItems.map(item => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                onClick={() => setMainTab(item.tab)}
-                                                title={item.title}
-                                                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition hover:brightness-110 ${item.tone}`}
-                                            >
-                                                <span className="font-black tabular-nums">{item.count}</span>
-                                                <span>{item.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                        Prices, account assignments, duplicates, and CSP dates look good.
-                                    </p>
-                                )}
-                            </section>
-                            <div className="flex gap-3 items-center justify-end shrink-0">
+                            <div className="flex min-w-0 flex-1 gap-3 items-center justify-end">
                                 {!finnhubApiKey && (
                                     <div className="flex items-center gap-2">
                                         <input
