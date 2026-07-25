@@ -4406,7 +4406,7 @@ const firebaseConfig = {
                 <div className={`min-h-screen p-4 sm:p-6 lg:p-8 ${darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-100 to-gray-200'}`}>
                     <div className="flex flex-col xl:flex-row gap-6 max-w-full mx-auto items-stretch xl:items-start">
                         <div className={`w-full min-w-0 xl:w-[77%]`}>
-                        <div className="flex flex-col gap-4 mb-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                        <div className="flex items-center justify-between mb-4">
                             <div>
                                 <div className="flex items-center gap-3">
                                     <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${darkMode ? '' : 'bg-gray-900/90 shadow-md'}`}>
@@ -4589,27 +4589,8 @@ const firebaseConfig = {
                                         </>
                                     )}
                                 </p>
-                                <div className="mt-3 flex items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDarkMode(!darkMode)}
-                                        className="flex items-center gap-2 rounded-lg bg-gray-700 px-4 py-2.5 text-white shadow-lg hover:bg-gray-800"
-                                        title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                                    >
-                                        {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
-                                        <span className="text-sm font-semibold">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleLogout}
-                                        className="flex items-center gap-2 rounded-lg bg-gray-500 px-5 py-2.5 text-white shadow-lg hover:bg-gray-600"
-                                    >
-                                        <LogOut size={20}/>
-                                        <span className="text-sm font-semibold">Logout</span>
-                                    </button>
-                                </div>
                             </div>
-                            <div className="flex flex-wrap gap-3 items-center justify-start 2xl:justify-end shrink-0 2xl:pl-6">
+                            <div className="flex gap-3 items-center justify-end shrink-0 pl-6">
                                 {!finnhubApiKey && (
                                     <div className="flex items-center gap-2">
                                         <input
@@ -4728,8 +4709,17 @@ const firebaseConfig = {
                                         </div>
                                     </div>
                                 )}
-                                <TodayAgenda darkMode={darkMode} />
-                                <AskK portfolio={askKPortfolio} darkMode={darkMode} embedded />
+                                <TodayAgenda currentUser={currentUser} darkMode={darkMode} />
+                                <button
+                                    type="button"
+                                    onClick={() => setDarkMode(!darkMode)}
+                                    className="flex items-center justify-center bg-gray-700 hover:bg-gray-800 text-white p-3 rounded-lg shadow-lg"
+                                    title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                                    aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                                >
+                                    {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
+                                </button>
+                                <button onClick={handleLogout} className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg shadow-lg"><LogOut size={20}/>Logout</button>
                             </div>
                         </div>
 
@@ -5488,6 +5478,9 @@ const firebaseConfig = {
                         ) : null)}
                     </div>
                 </div>
+
+                {/* Ask K — portfolio analysis assistant */}
+                <AskK portfolio={askKPortfolio} darkMode={darkMode} />
 
                 {/* Footer */}
                 <footer className={`text-center pt-8 pb-4 px-4 text-xs sm:text-sm border-t ${darkMode ? 'bg-gray-900 text-white border-gray-700' : 'bg-white text-gray-800 border-gray-200'}`}>
