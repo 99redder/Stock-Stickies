@@ -71,7 +71,7 @@ import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
 
-const OWNER_FIREBASE_UID = '1HRdhcxXoQaVuj8obVnPDPdJeac2'
+const OWNER_FIREBASE_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
 
 // Firebase web config (public client config; restrict key in Google Cloud Console)
 const firebaseConfig = {
