@@ -70,6 +70,7 @@ import html2canvas from 'html2canvas-pro'
 import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
+import RobinhoodSync from './components/RobinhoodSync.jsx'
 
 const OWNER_FIREBASE_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
 
@@ -1215,8 +1216,7 @@ const firebaseConfig = {
                         backupCreatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                         backupReason: reason
                     };
-                    db.collection('users').doc(userId).collection('snapshots').add(snapshotData)
-                        .catch((err) => console.warn('Snapshot backup failed:', err));
+                    await db.collection('users').doc(userId).collection('snapshots').add(snapshotData);
                 }
             };
 
@@ -1252,6 +1252,8 @@ const firebaseConfig = {
                         collapsedAccounts,
                         darkMode,
                         watchList,
+                        cashSecuredPuts,
+                        cashSecuredPutsSortMode,
                         nickname,
                         profilePhoto,
                         notesGroupMode,
@@ -1289,10 +1291,13 @@ const firebaseConfig = {
                     try {
                         await saveUserDoc(userId, auth.currentUser?.email || currentUser, updateData, { reason: 'manual-sync', forceBackup: true, minIntervalMs: 0 });
                         console.log('Sync completed successfully');
+                        return true;
                     } catch (err) {
                         console.error('Sync error:', err);
+                        return false;
                     }
                 }
+                return false;
             };
 
 
@@ -1541,6 +1546,94 @@ const firebaseConfig = {
 
             const showBrandedNotice = (message, title = 'Heads up', type = 'info', onConfirm = null) => {
                 setNoticeModal({ open: true, title, message, type, onConfirm });
+            };
+
+            const createCurrentAccountBackup = async (reason = 'manual-backup') => {
+                if (!db || !auth?.currentUser) throw new Error('Sign in again before creating a backup.');
+                const synced = await syncNow();
+                if (!synced) throw new Error('Your current Stock Stickies data could not be backed up. Nothing else was changed.');
+
+                const userRef = db.collection('users').doc(auth.currentUser.uid);
+                const current = await userRef.get();
+                if (!current.exists) throw new Error('Your Stock Stickies account data was not found.');
+                const currentData = current.data() || {};
+                const snapshot = await userRef.collection('snapshots').add({
+                    ...currentData,
+                    backupCreatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    backupReason: reason
+                });
+                return {
+                    id: snapshot.id,
+                    noteCount: Array.isArray(currentData.notes) ? currentData.notes.length : 0
+                };
+            };
+
+            const applyRobinhoodReconciliation = async (reconciliation) => {
+                if (!db || !auth?.currentUser) throw new Error('Sign in again before applying Robinhood changes.');
+                const backup = await createCurrentAccountBackup('pre-plaid-apply');
+                if (saveTimeoutRef.current) {
+                    clearTimeout(saveTimeoutRef.current);
+                    saveTimeoutRef.current = null;
+                }
+                const userRef = db.collection('users').doc(auth.currentUser.uid);
+                const current = await userRef.get();
+                if (!current.exists) throw new Error('Your Stock Stickies account data was not found.');
+
+                const currentData = current.data() || {};
+                const currentNotes = Array.isArray(currentData.notes) ? currentData.notes : notes;
+                const updatesById = new Map((reconciliation?.updates || []).map(change => [change.noteId, change]));
+                const syncedAt = new Date().toISOString();
+                const updatedNotes = currentNotes.map(note => {
+                    const change = updatesById.get(note.id);
+                    if (!change) return note;
+                    return {
+                        ...note,
+                        shares: change.newShares,
+                        account: change.newAccount,
+                        plaidAccountId: change.plaidAccountId,
+                        plaidSecurityId: change.plaidSecurityId,
+                        plaidSource: 'robinhood',
+                        plaidLastSyncedAt: syncedAt
+                    };
+                });
+
+                let importedNextId = Math.max(
+                    Number(currentData.nextId) || 1,
+                    Number(nextId) || 1,
+                    ...updatedNotes.map(note => (Number(note.id) || 0) + 1)
+                );
+                for (const position of reconciliation?.additions || []) {
+                    updatedNotes.unshift({
+                        id: importedNextId,
+                        title: position.ticker,
+                        text: '',
+                        color: UNCLASSIFIED_COLOR,
+                        classified: false,
+                        shares: position.quantity,
+                        account: position.stockStickiesAccount,
+                        plaidAccountId: position.accountId,
+                        plaidSecurityId: position.securityId,
+                        plaidSource: 'robinhood',
+                        plaidLastSyncedAt: syncedAt
+                    });
+                    importedNextId += 1;
+                }
+
+                await userRef.set({
+                    ...currentData,
+                    notes: updatedNotes,
+                    nextId: importedNextId,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: false });
+                isSavingRef.current = true;
+                setNotes(updatedNotes);
+                setNextId(importedNextId);
+                setUnlockedNotes({});
+                return {
+                    backup,
+                    updatedCount: reconciliation?.updates?.length || 0,
+                    addedCount: reconciliation?.additions?.length || 0
+                };
             };
 
             const loadBackupSnapshots = async () => {
@@ -4873,15 +4966,26 @@ const firebaseConfig = {
                         {!hideToolbarPanel && (
                         <div className={`rounded-lg shadow-md p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
-                                <button
-                                    onClick={() => {
-                                        setNotes([{id: nextId, title: '', text: '', color: UNCLASSIFIED_COLOR, classified: false}, ...notes]);
-                                        setNextId(nextId + 1);
-                                    }}
-                                    className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow-lg font-semibold"
-                                >
-                                    <Plus size={18}/> New Note
-                                </button>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <button
+                                        onClick={() => {
+                                            setNotes([{id: nextId, title: '', text: '', color: UNCLASSIFIED_COLOR, classified: false}, ...notes]);
+                                            setNextId(nextId + 1);
+                                        }}
+                                        className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow-lg font-semibold"
+                                    >
+                                        <Plus size={18}/> New Note
+                                    </button>
+                                    {isOwnerPortfolioUser && (
+                                        <RobinhoodSync
+                                            authUser={auth?.currentUser || null}
+                                            notes={notes}
+                                            darkMode={darkMode}
+                                            onCreateBackup={createCurrentAccountBackup}
+                                            onApply={applyRobinhoodReconciliation}
+                                        />
+                                    )}
+                                </div>
 
                                 <div className="flex flex-wrap items-center gap-4">
                                     <div className="flex items-center gap-3">
