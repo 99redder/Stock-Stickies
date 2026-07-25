@@ -515,6 +515,11 @@ const firebaseConfig = {
             return Number.isFinite(price) && price > 0 ? price : 0;
         };
 
+        const getPlaidPositionPrice = (note) => {
+            const price = Number(note?.plaidInstitutionPrice);
+            return note?.plaidSource === 'robinhood' && Number.isFinite(price) && price > 0 ? price : 0;
+        };
+
         function StickyNotesApp() {
             const [currentUser, setCurrentUser] = useState(null);
             const [userDataReady, setUserDataReady] = useState(false);
@@ -2277,23 +2282,23 @@ const firebaseConfig = {
             [notes]);
 
             const portfolioTickerKey = portfolioNotes.map(n =>
-                `${normalizeTicker(n.title)}:${n.shares || 0}:${getPlaidCryptoPrice(n)}`
+                `${normalizeTicker(n.title)}:${n.shares || 0}:${getPlaidPositionPrice(n)}`
             ).sort().join('|');
 
-            // Plaid is the price source for Robinhood crypto. Feed those prices into
-            // the shared map used by sorting, charts, exports, and account totals.
+            // Plaid's nightly snapshot provides a daily price floor for every synced
+            // Robinhood position. Finnhub can still overwrite stocks with fresher quotes.
             useEffect(() => {
-                const cryptoPrices = {};
+                const plaidPrices = {};
                 portfolioNotes.forEach(note => {
                     const ticker = normalizeTicker(note.title);
-                    const price = getPlaidCryptoPrice(note);
-                    if (ticker && price > 0) cryptoPrices[ticker] = price;
+                    const price = getPlaidPositionPrice(note);
+                    if (ticker && price > 0) plaidPrices[ticker] = price;
                 });
-                if (!Object.keys(cryptoPrices).length) return;
+                if (!Object.keys(plaidPrices).length) return;
                 setPortfolioPrices(previous => {
-                    const hasChange = Object.entries(cryptoPrices)
+                    const hasChange = Object.entries(plaidPrices)
                         .some(([ticker, price]) => previous[ticker] !== price);
-                    return hasChange ? { ...previous, ...cryptoPrices } : previous;
+                    return hasChange ? { ...previous, ...plaidPrices } : previous;
                 });
             }, [portfolioNotes, portfolioTickerKey]);
 

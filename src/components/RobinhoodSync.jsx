@@ -85,11 +85,9 @@ function buildRobinhoodReconciliation(notes, positions) {
     const plaidMetadataChanged =
       note.plaidSecurityType !== position.type ||
       Boolean(note.plaidIsCrypto) !== Boolean(position.isCrypto) ||
-      (position.isCrypto && (
-        (Number.isFinite(plaidPrice) &&
-          (!Number.isFinite(oldPlaidPrice) || Math.abs(oldPlaidPrice - plaidPrice) > 1e-8)) ||
-        note.plaidPriceAsOf !== position.priceAsOf
-      ))
+      (Number.isFinite(plaidPrice) &&
+        (!Number.isFinite(oldPlaidPrice) || Math.abs(oldPlaidPrice - plaidPrice) > 1e-8)) ||
+      note.plaidPriceAsOf !== position.priceAsOf
     if (sharesChanged || accountChanged || identifiersChanged || plaidMetadataChanged) {
       updates.push({
         noteId: note.id,
