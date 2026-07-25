@@ -4715,7 +4715,6 @@ const firebaseConfig = {
                                     <TodayAgenda
                                         key={auth?.currentUser?.uid || 'signed-out'}
                                         authUser={auth?.currentUser || null}
-                                        darkMode={darkMode}
                                     />
                                 )}
                                 <div className="fixed top-5 right-5 z-40 flex items-center gap-3">

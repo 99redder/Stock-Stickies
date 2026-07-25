@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80" viewBox="0 0 400 80" role="img" aria-label="Look Ahead Planner">
+  <defs>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g transform="translate(4 2) scale(.1484375)" filter="url(#glow)">
+    <rect width="512" height="512" rx="104" fill="#020603"/>
+    <rect x="86" y="104" width="340" height="330" rx="54" fill="#0D1410" stroke="#39FF14" stroke-width="22"/>
+    <path d="M97 186H415" stroke="#39FF14" stroke-width="22"/>
+    <path d="M166 78V132M346 78V132" stroke="#39FF14" stroke-width="28" stroke-linecap="round"/>
+    <g fill="#18311E">
+      <rect x="126" y="224" width="72" height="62" rx="13"/><rect x="220" y="224" width="72" height="62" rx="13"/><rect x="314" y="224" width="72" height="62" rx="13"/>
+      <rect x="126" y="308" width="72" height="62" rx="13"/><rect x="220" y="308" width="72" height="62" rx="13"/>
+      <rect x="126" y="392" width="72" height="20" rx="10"/><rect x="220" y="392" width="72" height="20" rx="10"/><rect x="314" y="392" width="72" height="20" rx="10"/>
+    </g>
+    <rect x="314" y="308" width="72" height="62" rx="13" fill="#B6FFAC"/>
+    <path d="M331 339H365M353 327L365 339L353 351" fill="none" stroke="#39FF14" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="92" y="39" fill="#39FF14" font-size="31" font-family="Inter, Arial, sans-serif" font-weight="800" letter-spacing="1" filter="url(#glow)">LOOK AHEAD</text>
+  <text x="94" y="64" fill="#B6FFAC" font-size="15" font-family="Inter, Arial, sans-serif" font-weight="600" letter-spacing="2">PLANNER</text>
+</svg>

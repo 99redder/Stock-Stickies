@@ -24,7 +24,7 @@ function safeColor(value) {
     return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : '#06b6d4'
 }
 
-export default function TodayAgenda({ authUser, darkMode }) {
+export default function TodayAgenda({ authUser }) {
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
@@ -100,31 +100,18 @@ export default function TodayAgenda({ authUser, darkMode }) {
         []
     )
 
-    const panelClass = darkMode
-        ? 'border-cyan-700/70 bg-gray-900 text-gray-100'
-        : 'border-cyan-300 bg-white text-gray-900'
-
     return (
         <section
-            className={`w-72 shrink-0 rounded-lg border shadow-lg px-3 py-2 ${panelClass}`}
+            className="w-72 shrink-0 rounded-xl border border-[#39ff14] bg-[#090f0b] px-3 py-2.5 text-[#b6ffac] shadow-[0_0_0_1px_rgba(57,255,20,0.12),0_0_22px_rgba(57,255,20,0.16)]"
             aria-label={`Look Ahead calendar for ${dateLabel}`}
         >
-            <div className="mb-1.5 flex items-center gap-2">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-cyan-500" aria-hidden="true">
-                    <rect x="3" y="4" width="18" height="17" rx="2" />
-                    <line x1="8" y1="2" x2="8" y2="6" />
-                    <line x1="16" y1="2" x2="16" y2="6" />
-                    <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                <div className="min-w-0 flex-1 text-left">
-                    <div className="text-[11px] font-black uppercase tracking-wider text-cyan-500">Today</div>
-                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{dateLabel}</div>
-                </div>
+            <div className="mb-2 flex items-center gap-2">
+                <img src="/assets/look-ahead-logo.svg" alt="Look Ahead Planner" className="h-10 min-w-0 flex-1 object-contain object-left" />
                 <button
                     type="button"
                     onClick={() => loadToday(undefined, true)}
                     disabled={loading}
-                    className={`rounded p-1.5 ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-100'} disabled:opacity-50`}
+                    className="shrink-0 rounded-lg border border-[#214526] bg-[#0f2a12] p-2 text-[#39ff14] transition-colors hover:border-[#ff4fd8] hover:text-[#ff4fd8] disabled:opacity-50"
                     title="Refresh today’s calendar"
                     aria-label="Refresh today’s calendar"
                 >
@@ -134,22 +121,28 @@ export default function TodayAgenda({ authUser, darkMode }) {
                     </svg>
                 </button>
             </div>
+            <div className="mb-2 flex items-center justify-between gap-2 border-t border-[#214526] pt-2">
+                <span className="rounded-full border border-[#39ff14] bg-[#0f2a12] px-2 py-0.5 font-mono text-[10px] font-black uppercase tracking-[0.14em] text-[#39ff14]">
+                    Look Ahead
+                </span>
+                <span className="text-right font-mono text-[11px] text-[#7dff63]">{dateLabel}</span>
+            </div>
 
             {loading && items.length === 0 ? (
-                <div className={`py-2 text-left text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading today’s items…</div>
+                <div className="py-2 text-left font-mono text-xs text-[#7dff63]">Loading today’s items…</div>
             ) : error ? (
-                <div className="py-2 text-left text-xs leading-snug text-red-500">{error}</div>
+                <div className="rounded-lg border border-[#5a2222] bg-[#16080f] px-2.5 py-2 text-left text-xs leading-snug text-[#ff8fb3]">{error}</div>
             ) : items.length === 0 ? (
-                <div className={`py-2 text-left text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nothing scheduled for today.</div>
+                <div className="py-2 text-left font-mono text-xs text-[#7dff63]">Nothing scheduled for today.</div>
             ) : (
                 <div className="max-h-24 space-y-1 overflow-y-auto pr-1">
                     {items.map((item) => (
                         <div
                             key={item.id}
-                            className={`flex items-start gap-2 rounded px-1.5 py-1 text-left text-xs ${darkMode ? 'bg-gray-800/80' : 'bg-gray-50'} ${item.status === 'done' ? 'opacity-55' : ''}`}
+                            className={`flex items-start gap-2 rounded-lg border border-[#214526] bg-[#0f2a12] px-2 py-1.5 text-left text-xs text-[#b6ffac] ${item.status === 'done' ? 'opacity-55' : ''}`}
                         >
                             <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: safeColor(item.category_color) }} />
-                            <span className={`w-[4.25rem] shrink-0 font-mono text-[11px] ${darkMode ? 'text-cyan-300' : 'text-cyan-700'}`}>
+                            <span className="w-[4.25rem] shrink-0 font-mono text-[11px] font-bold text-[#39ff14]">
                                 {formatTime(item.due_time) || 'Anytime'}
                             </span>
                             <span className={`min-w-0 break-words ${item.status === 'done' ? 'line-through' : ''}`}>{item.title}</span>
