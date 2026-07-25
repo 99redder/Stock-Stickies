@@ -24,7 +24,7 @@ function safeColor(value) {
     return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : '#06b6d4'
 }
 
-export default function TodayAgenda({ currentUser, darkMode }) {
+export default function TodayAgenda({ authUser, darkMode }) {
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
@@ -36,7 +36,7 @@ export default function TodayAgenda({ currentUser, darkMode }) {
     }, [])
 
     const loadToday = useCallback(async (signal, forceRefresh = false) => {
-        if (!currentUser) {
+        if (!authUser) {
             setItems([])
             setError('Sign in to load today’s calendar.')
             return
@@ -51,7 +51,7 @@ export default function TodayAgenda({ currentUser, darkMode }) {
             // Firebase refreshes short-lived ID tokens automatically. A single forced
             // refresh handles the edge case where a cached token expires mid-request.
             for (let attempt = 0; attempt < 2; attempt += 1) {
-                const idToken = await currentUser.getIdToken(forceRefresh || attempt === 1)
+                const idToken = await authUser.getIdToken(forceRefresh || attempt === 1)
                 response = await fetch(`${LOOK_AHEAD_API_URL}/api/planner/items?includeDone=1&dueDate=${encodeURIComponent(today)}`, {
                     headers: {
                         'Accept': 'application/json',
@@ -87,7 +87,7 @@ export default function TodayAgenda({ currentUser, darkMode }) {
         } finally {
             if (!signal?.aborted) setLoading(false)
         }
-    }, [currentUser])
+    }, [authUser])
 
     useEffect(() => {
         const controller = new AbortController()
