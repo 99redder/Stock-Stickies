@@ -31,14 +31,18 @@ function positionKey(account, ticker) {
   return `${account}:${normalizeTicker(ticker)}`
 }
 
-function buildRobinhoodReconciliation(notes, positions, ignoredCryptoTickers = []) {
-  const ignoredCrypto = new Set(
-    (Array.isArray(ignoredCryptoTickers) ? ignoredCryptoTickers : []).map(normalizeTicker)
-  )
+function buildRobinhoodReconciliation(notes, positions) {
   const usable = []
   const unsupported = []
   for (const position of Array.isArray(positions) ? positions : []) {
-    if (!position.stockStickiesAccount || !isSupportedTicker(position.ticker) || !Number.isFinite(position.quantity)) {
+    const cryptoHasPrice = !position.isCrypto ||
+      (Number.isFinite(position.institutionPrice) && position.institutionPrice > 0)
+    if (
+      !position.stockStickiesAccount ||
+      !isSupportedTicker(position.ticker) ||
+      !Number.isFinite(position.quantity) ||
+      !cryptoHasPrice
+    ) {
       unsupported.push(position)
       continue
     }
@@ -76,7 +80,17 @@ function buildRobinhoodReconciliation(notes, positions, ignoredCryptoTickers = [
     const identifiersChanged =
       note.plaidAccountId !== position.accountId ||
       note.plaidSecurityId !== position.securityId
-    if (sharesChanged || accountChanged || identifiersChanged) {
+    const plaidPrice = Number(position.institutionPrice)
+    const oldPlaidPrice = Number(note.plaidInstitutionPrice)
+    const plaidMetadataChanged =
+      note.plaidSecurityType !== position.type ||
+      Boolean(note.plaidIsCrypto) !== Boolean(position.isCrypto) ||
+      (position.isCrypto && (
+        (Number.isFinite(plaidPrice) &&
+          (!Number.isFinite(oldPlaidPrice) || Math.abs(oldPlaidPrice - plaidPrice) > 1e-8)) ||
+        note.plaidPriceAsOf !== position.priceAsOf
+      ))
+    if (sharesChanged || accountChanged || identifiersChanged || plaidMetadataChanged) {
       updates.push({
         noteId: note.id,
         ticker,
@@ -86,17 +100,21 @@ function buildRobinhoodReconciliation(notes, positions, ignoredCryptoTickers = [
         newAccount: position.stockStickiesAccount,
         plaidAccountId: position.accountId,
         plaidSecurityId: position.securityId,
+        plaidSecurityType: position.type,
+        plaidIsCrypto: Boolean(position.isCrypto),
+        plaidInstitutionPrice: position.institutionPrice,
+        plaidInstitutionValue: position.institutionValue,
+        plaidPriceAsOf: position.priceAsOf,
       })
     }
   }
 
-  const liveKeys = new Set(usable.map(position =>
+  const liveKeys = new Set((Array.isArray(positions) ? positions : []).map(position =>
     positionKey(position.stockStickiesAccount, position.ticker)
   ))
   const possibleClosed = notes.filter(note =>
     Number(note.shares) > 0 &&
     ['individual', 'traditional', 'roth'].includes(note.account) &&
-    !ignoredCrypto.has(normalizeTicker(note.title)) &&
     !liveKeys.has(positionKey(note.account, note.title))
   )
 
@@ -147,11 +165,7 @@ export default function RobinhoodSync({
   onApplyRef.current = onApply
 
   const reconciliation = useMemo(
-    () => buildRobinhoodReconciliation(
-      notes,
-      holdings?.positions || [],
-      holdings?.ignoredCryptoTickers || []
-    ),
+    () => buildRobinhoodReconciliation(notes, holdings?.positions || []),
     [notes, holdings]
   )
 
@@ -204,8 +218,7 @@ export default function RobinhoodSync({
           setHoldings(data)
           const automaticReconciliation = buildRobinhoodReconciliation(
             notesRef.current,
-            data.positions || [],
-            data.ignoredCryptoTickers || []
+            data.positions || []
           )
           if (automaticReconciliation.updates.length || automaticReconciliation.additions.length) {
             const applied = await onApplyRef.current(automaticReconciliation)
@@ -450,7 +463,7 @@ export default function RobinhoodSync({
                       )}
                       {reconciliation.unsupported.length > 0 && (
                         <p className={`mt-2 text-sm ${muted}`}>
-                          Unsupported/missing ticker or account mapping: {reconciliation.unsupported.map(position => position.ticker || position.name || 'Unknown security').join(', ')}.
+                          Unsupported or missing ticker, account mapping, quantity, or crypto price: {reconciliation.unsupported.map(position => position.ticker || position.name || 'Unknown security').join(', ')}.
                         </p>
                       )}
                     </div>

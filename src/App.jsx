@@ -506,6 +506,15 @@ const firebaseConfig = {
             return out;
         };
 
+        const isPlaidCryptoNote = (note) =>
+            note?.plaidIsCrypto === true || note?.plaidSecurityType === 'cryptocurrency';
+
+        const getPlaidCryptoPrice = (note) => {
+            if (!isPlaidCryptoNote(note)) return 0;
+            const price = Number(note?.plaidInstitutionPrice);
+            return Number.isFinite(price) && price > 0 ? price : 0;
+        };
+
         function StickyNotesApp() {
             const [currentUser, setCurrentUser] = useState(null);
             const [userDataReady, setUserDataReady] = useState(false);
@@ -695,7 +704,6 @@ const firebaseConfig = {
                 });
                 return normalized;
             };
-
             // Load cached portfolio prices immediately on init for instant chart display
             const [portfolioPrices, setPortfolioPrices] = useState(() => {
                 try {
@@ -1338,7 +1346,9 @@ const firebaseConfig = {
                     return;
                 }
 
-                const nonUsdPortfolioNotes = portfolioNotes.filter(note => !isUsdTicker(note.title));
+                const nonUsdPortfolioNotes = portfolioNotes.filter(note =>
+                    !isUsdTicker(note.title) && !isPlaidCryptoNote(note)
+                );
                 if (!finnhubApiKey && nonUsdPortfolioNotes.length > 0) {
                     showBrandedNotice('Please add your Finnhub API key first.');
                     return;
@@ -1351,6 +1361,11 @@ const firebaseConfig = {
                         const ticker = normalizeTicker(note.title);
                         if (isUsdTicker(ticker)) {
                             prices[ticker] = 1;
+                            continue;
+                        }
+                        const plaidCryptoPrice = getPlaidCryptoPrice(note);
+                        if (plaidCryptoPrice > 0) {
+                            prices[ticker] = plaidCryptoPrice;
                             continue;
                         }
                         const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
@@ -1598,6 +1613,11 @@ const firebaseConfig = {
                         account: change.newAccount,
                         plaidAccountId: change.plaidAccountId,
                         plaidSecurityId: change.plaidSecurityId,
+                        plaidSecurityType: change.plaidSecurityType || '',
+                        plaidIsCrypto: !!change.plaidIsCrypto,
+                        plaidInstitutionPrice: change.plaidInstitutionPrice ?? null,
+                        plaidInstitutionValue: change.plaidInstitutionValue ?? null,
+                        plaidPriceAsOf: change.plaidPriceAsOf || null,
                         plaidSource: 'robinhood',
                         plaidLastSyncedAt: syncedAt
                     };
@@ -1619,6 +1639,11 @@ const firebaseConfig = {
                         account: position.stockStickiesAccount,
                         plaidAccountId: position.accountId,
                         plaidSecurityId: position.securityId,
+                        plaidSecurityType: position.type || '',
+                        plaidIsCrypto: !!position.isCrypto,
+                        plaidInstitutionPrice: position.institutionPrice ?? null,
+                        plaidInstitutionValue: position.institutionValue ?? null,
+                        plaidPriceAsOf: position.priceAsOf || null,
                         plaidSource: 'robinhood',
                         plaidLastSyncedAt: syncedAt
                     });
@@ -1994,6 +2019,33 @@ const firebaseConfig = {
                     }
 
                     try {
+                        const plaidCryptoPrice = getPlaidCryptoPrice(expandedNote);
+                        if (plaidCryptoPrice > 0) {
+                            if (isMounted) {
+                                setStockData({
+                                    symbol: activeTicker,
+                                    currentPrice: plaidCryptoPrice,
+                                    previousClose: plaidCryptoPrice,
+                                    change: 0,
+                                    changePercent: 0,
+                                    dayHigh: plaidCryptoPrice,
+                                    dayLow: plaidCryptoPrice,
+                                    volume: null,
+                                    marketCap: null,
+                                    currency: 'USD',
+                                    peTTM: null,
+                                    peForward: null,
+                                    pbRatio: null,
+                                    dividendYield: null,
+                                    dividendRate: null,
+                                    week52High: null,
+                                    week52Low: null,
+                                    nextEarningsDate: null
+                                });
+                            }
+                            return;
+                        }
+
                         if (!finnhubApiKey) {
                             if (isMounted) {
                                 setStockError('Please enter your Finnhub API key in settings');
@@ -2098,7 +2150,7 @@ const firebaseConfig = {
                 return () => {
                     isMounted = false;
                 };
-            }, [activeTicker]);
+            }, [activeTicker, expandedNote, finnhubApiKey]);
 
             // News fetching effect
             useEffect(() => {
@@ -2224,13 +2276,34 @@ const firebaseConfig = {
                 notes.filter(n => n.title && n.shares && n.shares > 0),
             [notes]);
 
-            const portfolioTickerKey = portfolioNotes.map(n => `${normalizeTicker(n.title)}:${n.shares || 0}`).sort().join('|');
+            const portfolioTickerKey = portfolioNotes.map(n =>
+                `${normalizeTicker(n.title)}:${n.shares || 0}:${getPlaidCryptoPrice(n)}`
+            ).sort().join('|');
+
+            // Plaid is the price source for Robinhood crypto. Feed those prices into
+            // the shared map used by sorting, charts, exports, and account totals.
+            useEffect(() => {
+                const cryptoPrices = {};
+                portfolioNotes.forEach(note => {
+                    const ticker = normalizeTicker(note.title);
+                    const price = getPlaidCryptoPrice(note);
+                    if (ticker && price > 0) cryptoPrices[ticker] = price;
+                });
+                if (!Object.keys(cryptoPrices).length) return;
+                setPortfolioPrices(previous => {
+                    const hasChange = Object.entries(cryptoPrices)
+                        .some(([ticker, price]) => previous[ticker] !== price);
+                    return hasChange ? { ...previous, ...cryptoPrices } : previous;
+                });
+            }, [portfolioNotes, portfolioTickerKey]);
 
             // Portfolio price fetching effect - updates at 9:35am, 1pm, and 4:05pm EST
             useEffect(() => {
                 if (portfolioNotes.length === 0) return;
 
-                const nonUsdPortfolioNotes = portfolioNotes.filter(note => !isUsdTicker(note.title));
+                const nonUsdPortfolioNotes = portfolioNotes.filter(note =>
+                    !isUsdTicker(note.title) && !isPlaidCryptoNote(note)
+                );
                 if (!finnhubApiKey && nonUsdPortfolioNotes.length > 0) return;
 
                 let isMounted = true;
@@ -2315,6 +2388,11 @@ const firebaseConfig = {
                             const ticker = normalizeTicker(note.title);
                             if (isUsdTicker(ticker)) {
                                 prices[ticker] = 1;
+                                continue;
+                            }
+                            const plaidCryptoPrice = getPlaidCryptoPrice(note);
+                            if (plaidCryptoPrice > 0) {
+                                prices[ticker] = plaidCryptoPrice;
                                 continue;
                             }
                             const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
