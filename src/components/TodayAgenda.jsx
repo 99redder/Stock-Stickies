@@ -28,7 +28,6 @@ export default function TodayAgenda({ authUser, darkMode }) {
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
-    const [accessStatus, setAccessStatus] = useState('checking')
 
     useEffect(() => {
         // Remove the credential saved by the previous integration. Authentication now
@@ -39,8 +38,7 @@ export default function TodayAgenda({ authUser, darkMode }) {
     const loadToday = useCallback(async (signal, forceRefresh = false) => {
         if (!authUser) {
             setItems([])
-            setError('')
-            setAccessStatus('denied')
+            setError('Sign in to load today’s calendar.')
             return
         }
 
@@ -66,10 +64,7 @@ export default function TodayAgenda({ authUser, darkMode }) {
 
             const data = await response.json().catch(() => ({}))
             if (response.status === 401 || response.status === 403) {
-                setItems([])
-                setError('')
-                setAccessStatus('denied')
-                return
+                throw new Error('Unable to authorize Look Ahead for this account.')
             }
             if (!response.ok || data.ok === false) {
                 throw new Error(data.error || `Calendar request failed (${response.status}).`)
@@ -85,14 +80,9 @@ export default function TodayAgenda({ authUser, darkMode }) {
                 })
 
             setItems(todayItems)
-            setAccessStatus('authorized')
         } catch (requestError) {
             if (requestError?.name !== 'AbortError') {
                 setError(requestError?.message || 'Unable to load today’s calendar.')
-                // Do not reveal the feature until the server has positively authorized
-                // this account. Once authorized, keep the refresh control available
-                // through temporary network failures.
-                setAccessStatus((current) => current === 'authorized' ? current : 'checking')
             }
         } finally {
             if (!signal?.aborted) setLoading(false)
@@ -113,8 +103,6 @@ export default function TodayAgenda({ authUser, darkMode }) {
     const panelClass = darkMode
         ? 'border-cyan-700/70 bg-gray-900 text-gray-100'
         : 'border-cyan-300 bg-white text-gray-900'
-
-    if (accessStatus !== 'authorized') return null
 
     return (
         <section
