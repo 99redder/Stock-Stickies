@@ -5378,28 +5378,43 @@ const firebaseConfig = {
                                                         Map
                                                     </button>
                                                 </div>
-                                                <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
+                                                <div className={`flex flex-wrap items-center gap-1 rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
+                                                    <span className={`px-2 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                        Display
+                                                    </span>
                                                     <button
                                                         onClick={() => setPortfolioLegendVisible(!portfolioLegendVisible)}
-                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${!portfolioLegendVisible ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
-                                                        title={portfolioLegendVisible ? 'Hide portfolio labels' : 'Show portfolio labels'}
+                                                        aria-pressed={portfolioLegendVisible}
+                                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-semibold transition ${portfolioLegendVisible ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                        title="Show ticker labels and percentages around the chart"
                                                     >
-                                                        {portfolioLegendVisible ? 'Hide Legend' : 'Show Legend'}
+                                                        <span>Labels</span>
+                                                        <span className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${portfolioLegendVisible ? 'bg-white/25' : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-500')}`}>
+                                                            {portfolioLegendVisible ? 'On' : 'Off'}
+                                                        </span>
                                                     </button>
                                                     <button
                                                         onClick={() => setPortfolioLegendDollarAmounts(!portfolioLegendDollarAmounts)}
-                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${portfolioLegendDollarAmounts ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
-                                                        title={hidePortfolioValues ? 'Dollar amounts are hidden while portfolio values are hidden' : (portfolioLegendDollarAmounts ? 'Hide dollar amounts from labels' : 'Add dollar amounts to labels')}
+                                                        aria-pressed={portfolioLegendDollarAmounts}
+                                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-semibold transition ${portfolioLegendDollarAmounts ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                        title={hidePortfolioValues ? 'Dollar values remain private while portfolio privacy is enabled' : 'Show dollar values with chart labels'}
                                                     >
-                                                        {portfolioLegendDollarAmounts ? 'Hide $' : 'Add $'}
+                                                        <span>Dollar values</span>
+                                                        <span className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${portfolioLegendDollarAmounts ? 'bg-white/25' : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-500')}`}>
+                                                            {hidePortfolioValues ? 'Private' : (portfolioLegendDollarAmounts ? 'On' : 'Off')}
+                                                        </span>
                                                     </button>
                                                     {portfolioViewMode === 'donut' && cashPortfolioValue > 0 && (
                                                         <button
                                                             onClick={() => setPortfolioDonutIncludesCash(!portfolioDonutIncludesCash)}
-                                                            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${!portfolioDonutIncludesCash ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
-                                                            title={portfolioDonutIncludesCash ? 'Remove cash from the donut and show it as text' : 'Put cash back in the donut'}
+                                                            aria-pressed={portfolioDonutIncludesCash}
+                                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-semibold transition ${portfolioDonutIncludesCash ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                            title="Choose whether cash appears as a donut slice or as text below the chart"
                                                         >
-                                                            {portfolioDonutIncludesCash ? 'Hide Cash' : 'Show Cash'}
+                                                            <span>Cash</span>
+                                                            <span className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${portfolioDonutIncludesCash ? 'bg-white/25' : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-500')}`}>
+                                                                {portfolioDonutIncludesCash ? 'Slice' : 'Text'}
+                                                            </span>
                                                         </button>
                                                     )}
                                                 </div>
