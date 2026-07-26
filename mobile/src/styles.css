@@ -113,18 +113,21 @@ button { -webkit-tap-highlight-color: transparent; }
 .error-card { margin: 20px; border: 1px solid rgba(255,107,124,.25); border-radius: 16px; color: #ff99a6; background: rgba(255,107,124,.07); }
 
 .profile-scrim { position: fixed; z-index: 32; inset: 0; border: 0; background: rgba(0,0,0,.68); backdrop-filter: blur(4px); }
-.profile-modal { position: fixed; z-index: 33; top: calc(76px + env(safe-area-inset-top)); right: 14px; width: min(calc(100% - 28px), 360px); padding: 16px; border: 1px solid var(--line); border-radius: 20px; background: #111822; box-shadow: 0 24px 70px rgba(0,0,0,.55); }
+.profile-modal { position: fixed; z-index: 33; top: calc(76px + env(safe-area-inset-top)); right: 14px; width: min(calc(100% - 28px), 360px); max-height: calc(100dvh - 96px - env(safe-area-inset-top)); padding: 16px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 20px; background: #111822; box-shadow: 0 24px 70px rgba(0,0,0,.55); }
 .profile-modal header { display: grid; grid-template-columns: 44px minmax(0, 1fr) 40px; align-items: center; gap: 10px; }
 .profile-modal header img, .profile-modal-avatar { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; object-fit: cover; color: #fff; background: #30405a; font-weight: 850; }
 .profile-modal header div { min-width: 0; }
 .profile-modal header strong, .profile-modal header small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-modal header strong { font-size: 14px; }
 .profile-modal header small { margin-top: 4px; color: var(--muted); font-size: 10px; }
-.profile-meta { margin: 16px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; }
+.profile-section-label { margin: 18px 2px 7px; color: #718096; font-size: 9px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.profile-meta { margin: 0 0 16px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; }
 .profile-meta div { min-height: 42px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
 .profile-meta div:last-child { border: 0; }
 .profile-meta span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.profile-meta strong { font-size: 12px; }
+.profile-meta strong { max-width: 62%; text-align: right; font-size: 12px; line-height: 1.35; }
+.profile-meta strong.verified { color: var(--green); }
+.profile-meta strong.unverified { color: #f6c85f; }
 .signout-button { width: 100%; height: 43px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(255,107,124,.35); border-radius: 12px; color: #ff9aa6; background: rgba(255,107,124,.08); font-weight: 800; }
 
 .ask-k-fab { position: fixed; z-index: 16; right: 18px; bottom: calc(15px + env(safe-area-inset-bottom)); height: 46px; padding: 0 16px 0 7px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(57,217,138,.42); border-radius: 999px; color: #effff7; background: #157a4a; box-shadow: 0 12px 30px rgba(0,0,0,.38); font-weight: 800; }

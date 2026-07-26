@@ -59,6 +59,14 @@ const money = (value, digits = 0) => new Intl.NumberFormat('en-US', {
 const number = (value, digits = 2) => Number(value || 0).toLocaleString('en-US', {
   maximumFractionDigits: digits,
 })
+const profileDate = (value, includeTime = false) => {
+  if (!value) return 'Unavailable'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unavailable'
+  return date.toLocaleString([], includeTime
+    ? { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }
+    : { month: 'short', day: 'numeric', year: 'numeric' })
+}
 const isCrypto = (note) => note?.plaidIsCrypto === true || note?.plaidSecurityType === 'cryptocurrency'
 const plaidPrice = (note) => {
   const price = Number(note?.plaidInstitutionPrice)
@@ -788,6 +796,11 @@ export default function App() {
     ...ACCOUNT_IDS.filter((id) => accountTotals[id] || putObligationByAccount[id] || brokerAccountMetrics[id].hasBalance || brokerAccountMetrics[id].hasHoldings),
     ...(accountTotals[UNASSIGNED] ? [UNASSIGNED] : []),
   ]
+  const signInMethods = [...new Set((user.providerData || []).map((provider) => {
+    if (provider?.providerId === 'google.com') return 'Google'
+    if (provider?.providerId === 'password') return 'Email & password'
+    return provider?.providerId || null
+  }).filter(Boolean))].join(', ') || 'Email & password'
 
   return (
     <div className="app-shell">
@@ -924,9 +937,17 @@ export default function App() {
               <div><strong id="profile-title">{nickname || 'Stock Stickies profile'}</strong><small>{user.email}</small></div>
               <button className="icon-button" type="button" onClick={() => setProfileOpen(false)} aria-label="Close profile"><Icon name="close" /></button>
             </header>
+            <p className="profile-section-label">Profile</p>
+            <div className="profile-meta profile-account-details">
+              <div><span>Member since</span><strong>{profileDate(user.metadata?.creationTime)}</strong></div>
+              <div><span>Last login</span><strong>{profileDate(user.metadata?.lastSignInTime, true)}</strong></div>
+              <div><span>Sign-in method</span><strong>{signInMethods}</strong></div>
+              <div><span>Email status</span><strong className={user.emailVerified ? 'verified' : 'unverified'}>{user.emailVerified ? 'Verified' : 'Not verified'}</strong></div>
+            </div>
+            <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 15</strong></div>
+              <div><span>Version</span><strong>Build 16</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
