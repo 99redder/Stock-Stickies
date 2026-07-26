@@ -3,7 +3,7 @@ main = "src/index.js"
 compatibility_date = "2026-02-15"
 
 [vars]
-ALLOWED_ORIGINS = "https://stockstickies.com,https://www.stockstickies.com,http://localhost:5173,http://127.0.0.1:5173"
+ALLOWED_ORIGINS = "https://stockstickies.com,https://www.stockstickies.com,https://stock-stickies-mobile.eastern-shore-ai.chatgpt.site,http://localhost:5173,http://127.0.0.1:5173"
 
 # Ask K Assistant secrets (set via `wrangler secret put` from this folder):
 # - STOCKSTICKIES_ASKK_API_KEY: API key for the LLM provider (required)

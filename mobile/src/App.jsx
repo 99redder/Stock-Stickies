@@ -27,10 +27,8 @@ try {
   console.error('Firebase initialization failed', error)
 }
 
-// Keep browser requests on the mobile app's own origin. Its Worker forwards
-// Ask K requests server-side, so installed builds do not depend on CORS rules
-// for whichever Sites hostname is serving the PWA.
-const ASKK_API_URL = import.meta.env.VITE_ASKK_API_URL || '/api/ask-k'
+const ASKK_API_URL = import.meta.env.VITE_ASKK_API_URL
+  || 'https://stock-stickies-askk.99redder.workers.dev/api/ask-k'
 
 const ACCOUNTS = [
   { id: 'individual', label: 'Individual', short: 'Taxable', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.' },
