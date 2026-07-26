@@ -137,14 +137,28 @@ function PortfolioDonut({ positions, total, cashValue, extraCashValue = 0 }) {
   const chartRef = useRef(null)
 
   useEffect(() => {
-    if (!canvasRef.current || !positions.length) return undefined
+    if (!canvasRef.current || (!positions.length && extraCashValue <= 0)) return undefined
     const cash = positions.filter((position) => position.isCash)
     const stocks = positions.filter((position) => !position.isCash)
     const combinedCashValue = cash.reduce((sum, item) => sum + item.value, 0) + extraCashValue
+    const chartTotal = stocks.reduce((sum, item) => sum + item.value, 0) + combinedCashValue
+    const stockSlices = stocks
+      .map((position) => ({ ...position, chartPercentage: chartTotal > 0 ? (position.value / chartTotal) * 100 : 0 }))
+      .sort((a, b) => b.value - a.value)
+    const minSlicePercent = 2.5
+    const maxNamedSlices = 8
+    let namedStocks = stockSlices
+      .filter((position) => position.chartPercentage >= minSlicePercent)
+      .slice(0, maxNamedSlices)
+    if (!namedStocks.length) namedStocks = stockSlices.slice(0, Math.min(stockSlices.length, 5))
+    const namedSet = new Set(namedStocks)
+    const smallStocks = stockSlices.filter((position) => !namedSet.has(position))
+    const othersValue = smallStocks.reduce((sum, position) => sum + position.value, 0)
     const slices = [
-      ...(combinedCashValue > 0 ? [{ ticker: 'Cash', value: combinedCashValue }] : []),
-      ...stocks,
-    ]
+      ...(combinedCashValue > 0 ? [{ ticker: 'Cash', value: combinedCashValue, chartColor: '#16a34a' }] : []),
+      ...namedStocks,
+      ...(othersValue > 0 ? [{ ticker: 'Others', value: othersValue, chartColor: '#9ca3af' }] : []),
+    ].sort((a, b) => b.value - a.value)
     const ctx = canvasRef.current.getContext('2d')
     chartRef.current?.destroy()
     chartRef.current = new Chart(ctx, {
@@ -153,7 +167,7 @@ function PortfolioDonut({ positions, total, cashValue, extraCashValue = 0 }) {
         labels: slices.map((slice) => slice.ticker),
         datasets: [{
           data: slices.map((slice) => slice.value),
-          backgroundColor: slices.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+          backgroundColor: slices.map((slice, index) => slice.chartColor || CHART_COLORS[index % CHART_COLORS.length]),
           borderColor: '#11161f',
           borderWidth: 3,
           hoverOffset: 5,
@@ -174,7 +188,7 @@ function PortfolioDonut({ positions, total, cashValue, extraCashValue = 0 }) {
             callbacks: {
               label: (context) => {
                 const value = Number(context.raw || 0)
-                const percent = total > 0 ? (value / total) * 100 : 0
+                const percent = chartTotal > 0 ? (value / chartTotal) * 100 : 0
                 return ` ${money(value)} · ${percent.toFixed(1)}%`
               },
             },
@@ -366,7 +380,7 @@ function Login() {
         </div>
         <footer className="login-footer">
           <span>Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noreferrer">Eastern Shore AI, LLC</a></span>
-          <small>Mobile Portfolio · Build 14</small>
+          <small>Mobile Portfolio</small>
         </footer>
       </section>
     </main>
@@ -397,6 +411,8 @@ export default function App() {
   const [installEvent, setInstallEvent] = useState(null)
   const [brokerageSnapshot, setBrokerageSnapshot] = useState(null)
   const [brokerageError, setBrokerageError] = useState('')
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [chartExpanded, setChartExpanded] = useState(false)
 
   useEffect(() => {
     const onInstall = (event) => {
@@ -777,15 +793,12 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <div className="brand-mark small"><span /><span /><span /></div>
-          <div><strong>Stock Stickies</strong><small>Mobile Portfolio</small></div>
+          <StockStickiesLogo compact />
         </div>
         <div className="top-actions">
           {installEvent && <button className="icon-button" type="button" onClick={install} aria-label="Install app"><Icon name="install" /></button>}
-          <button className="profile-button" type="button" onClick={() => auth.signOut()} aria-label="Sign out">
+          <button className="profile-button" type="button" onClick={() => setProfileOpen(true)} aria-label="Open profile">
             {profilePhoto ? <img src={profilePhoto} alt="" /> : <span className="profile-avatar">{(nickname || user.email || '?').charAt(0).toUpperCase()}</span>}
-            <span className="profile-build">Build 14</span>
-            <Icon name="logout" size={16} />
           </button>
         </div>
       </header>
@@ -796,7 +809,6 @@ export default function App() {
             <div>
               <div className="hero-meta">
                 <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
-                <span className="build-badge">BUILD 14</span>
               </div>
               <h1>{money(accountBalance)}</h1>
               <small className="balance-caption">
@@ -832,10 +844,16 @@ export default function App() {
               ))}
             </nav>
 
-            <section className="chart-card">
-              {filteredPositions.length || cashValue > 0
-                ? <PortfolioDonut positions={donutPositions} total={accountBalance} cashValue={cashValue} extraCashValue={hasBrokerPortfolio ? brokerCashValue : 0} />
-                : <div className="empty-chart">No positions in this account.</div>}
+            <section className={`chart-card ${chartExpanded ? 'expanded' : 'collapsed'}`}>
+              <button className="chart-toggle" type="button" onClick={() => setChartExpanded((current) => !current)} aria-expanded={chartExpanded}>
+                <span><strong>Portfolio allocation</strong><small>2.5% slice threshold · smaller holdings grouped as Others</small></span>
+                <span>{chartExpanded ? 'Minimize' : 'Show donut'} <Icon name="chevron" size={16} /></span>
+              </button>
+              {chartExpanded && (
+                filteredPositions.length || cashValue > 0
+                  ? <PortfolioDonut positions={donutPositions} total={accountBalance} cashValue={cashValue} extraCashValue={hasBrokerPortfolio ? brokerCashValue : 0} />
+                  : <div className="empty-chart">No positions in this account.</div>
+              )}
               <div className="chart-stats">
                 <div><span>Positions</span><strong>{filteredPositions.length}</strong></div>
                 <div><span>Available cash</span><strong>{money(cashValue)}</strong></div>
@@ -896,6 +914,28 @@ export default function App() {
           </>
         )}
       </main>
+
+      {profileOpen && (
+        <>
+          <button className="profile-scrim" type="button" aria-label="Close profile" onClick={() => setProfileOpen(false)} />
+          <section className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+            <header>
+              {profilePhoto ? <img src={profilePhoto} alt="" /> : <span className="profile-modal-avatar">{(nickname || user.email || '?').charAt(0).toUpperCase()}</span>}
+              <div><strong id="profile-title">{nickname || 'Stock Stickies profile'}</strong><small>{user.email}</small></div>
+              <button className="icon-button" type="button" onClick={() => setProfileOpen(false)} aria-label="Close profile"><Icon name="close" /></button>
+            </header>
+            <div className="profile-meta">
+              <div><span>App</span><strong>Mobile Portfolio</strong></div>
+              <div><span>Version</span><strong>Build 15</strong></div>
+              <div><span>Access</span><strong>Read only</strong></div>
+            </div>
+            <button className="signout-button" type="button" onClick={() => auth.signOut()}>
+              <Icon name="logout" size={18} />
+              Sign out
+            </button>
+          </section>
+        </>
+      )}
 
       <AskK portfolio={askKPortfolio} />
     </div>
