@@ -466,6 +466,16 @@ stock_stickies:plaid:robinhood:performance:snapshots:
 stock_stickies:plaid:robinhood:performance:transactions:
 ```
 
+The performance config supports `manualExternalFlows[year]` for institution exports that
+contain cash movements Plaid omitted. Each record has a stable `id`, Stock Stickies
+`account`, ISO `date`, recognized `subtype`, signed investor-perspective `flow` (deposit
+positive, withdrawal negative), and source note. The Worker converts those records to
+Plaid's opposite amount-sign convention, replaces any Plaid external flows for the same
+manually reconciled account to prevent duplicates, and preserves investment trades.
+`cashFlowCoverage` records the source (for example `manual-robinhood-csv`), while
+`cashFlowCoverageThrough` records the export's last covered date. The authenticated
+opening-value POST must preserve these config fields when updating opening balances.
+
 The Worker also writes daily account snapshots so performance can continue from observed
 values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
 the Individual account. When external cash-flow history is incomplete, the API/frontend
