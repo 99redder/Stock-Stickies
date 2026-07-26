@@ -476,6 +476,16 @@ manually reconciled account to prevent duplicates, and preserves investment trad
 `cashFlowCoverageThrough` records the export's last covered date. The authenticated
 opening-value POST must preserve these config fields when updating opening balances.
 
+When Plaid's account-value bridge cannot reproduce the institution's own performance,
+`performanceReconciliations[year][account]` can hold an institution-reported anchor:
+`reportedGain`, optional `reportedRealizedGain`, the Plaid `anchorValue` observed at the
+same time, ISO `asOf` date, and source. The Worker returns the institution gain on the
+anchor date and rolls it forward using later Plaid value changes less later external cash
+flows. This avoids permanently hardcoding a number while preventing an unreliable Plaid
+opening/ending-value bridge from overriding Robinhood's own P&L. When any account uses an
+institution anchor, combined dollar YTD is the sum of account gains and the combined
+percentage is omitted rather than mixing incompatible return methodologies.
+
 The Worker also writes daily account snapshots so performance can continue from observed
 values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
 the Individual account. When external cash-flow history is incomplete, the API/frontend
