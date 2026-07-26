@@ -111,6 +111,27 @@ function Icon({ name, size = 20 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
 
+function StockStickiesLogo({ compact = false }) {
+  return (
+    <div className={`stock-stickies-logo ${compact ? 'compact' : ''}`} aria-label="Stock Stickies">
+      <svg width={compact ? 42 : 58} height={compact ? 42 : 58} viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <rect x="2" y="2" width="44" height="44" rx="4" fill="#1a1a2e" stroke="#00ff9f" strokeWidth="2" />
+        <path d="M8 32 L16 20 L22 26 L32 12 L40 18" stroke="#39ff14" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="16" cy="20" r="3" fill="#39ff14" />
+        <circle cx="32" cy="12" r="3" fill="#39ff14" />
+        <rect x="6" y="36" width="8" height="6" fill="#39ff14" opacity=".7" />
+        <rect x="16" y="33" width="8" height="9" fill="#39ff14" opacity=".8" />
+        <rect x="26" y="30" width="8" height="12" fill="#39ff14" opacity=".9" />
+        <rect x="36" y="34" width="6" height="8" fill="#39ff14" opacity=".6" />
+      </svg>
+      <span>
+        <strong>STOCK</strong>
+        <small>STICKIES</small>
+      </span>
+    </div>
+  )
+}
+
 function PortfolioDonut({ positions, total, cashValue, extraCashValue = 0 }) {
   const canvasRef = useRef(null)
   const chartRef = useRef(null)
@@ -268,16 +289,25 @@ function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [resetMode, setResetMode] = useState(false)
+  const [success, setSuccess] = useState('')
 
   const signIn = async (event) => {
     event.preventDefault()
     setBusy(true)
     setError('')
+    setSuccess('')
     try {
       if (!auth) throw new Error('Firebase is not configured for this app.')
-      await auth.signInWithEmailAndPassword(email.trim().toLowerCase(), password)
+      const normalizedEmail = email.trim().toLowerCase()
+      if (resetMode) {
+        await auth.sendPasswordResetEmail(normalizedEmail)
+        setSuccess('Password reset email sent.')
+      } else {
+        await auth.signInWithEmailAndPassword(normalizedEmail, password)
+      }
     } catch (reason) {
-      setError(reason?.message || 'Unable to sign in.')
+      setError(reason?.message || (resetMode ? 'Unable to send the reset email.' : 'Unable to sign in.'))
     } finally {
       setBusy(false)
     }
@@ -286,6 +316,7 @@ function Login() {
   const googleSignIn = async () => {
     setBusy(true)
     setError('')
+    setSuccess('')
     try {
       if (!auth) throw new Error('Firebase is not configured for this app.')
       await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
@@ -299,19 +330,44 @@ function Login() {
   return (
     <main className="login-page">
       <section className="login-card">
-        <div className="brand-mark"><span /><span /><span /></div>
-        <p className="eyebrow">MOBILE COMPANION · BUILD 13</p>
-        <h1>Stock Stickies</h1>
-        <p className="login-copy">Your portfolio, distilled for your phone. View-only and always dark.</p>
+        <StockStickiesLogo />
+        <p className="login-copy">Capture stock ideas, track your portfolio value, and keep your investing notes organized.</p>
         <form onSubmit={signIn}>
-          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          <label>Email<input type="email" autoComplete="username" placeholder="Enter email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          {!resetMode && <label>Password<input type="password" autoComplete="current-password" placeholder="Enter password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+          {success && <p className="form-success" role="status">{success}</p>}
+          <button className="primary-button" type="submit" disabled={busy}>
+            {busy ? 'Please wait…' : resetMode ? 'Send Reset Email' : 'Login'}
+          </button>
         </form>
-        <div className="divider"><span>or</span></div>
-        <button className="google-button" type="button" onClick={googleSignIn} disabled={busy}>Continue with Google</button>
-        <p className="readonly-note"><span>●</span> This app can read your Stock Stickies data but never edits it.</p>
+        {!resetMode && (
+          <>
+            <div className="divider"><span>or</span></div>
+            <button className="google-button" type="button" onClick={googleSignIn} disabled={busy}>
+              <span className="google-mark">G</span>
+              Continue with Google
+            </button>
+            <a className="account-help-link" href="https://stockstickies.com">New here? How to create an account</a>
+          </>
+        )}
+        <div className="login-links">
+          <a href="https://stockstickies.com">{resetMode ? 'Return to the main site' : 'Sign Up with Email'}</a>
+          <button
+            type="button"
+            onClick={() => {
+              setResetMode((current) => !current)
+              setError('')
+              setSuccess('')
+            }}
+          >
+            {resetMode ? 'Back to login' : 'Forgot password?'}
+          </button>
+        </div>
+        <footer className="login-footer">
+          <span>Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noreferrer">Eastern Shore AI, LLC</a></span>
+          <small>Mobile Portfolio · Build 14</small>
+        </footer>
       </section>
     </main>
   )
@@ -708,7 +764,7 @@ export default function App() {
     setInstallEvent(null)
   }
 
-  if (!authReady) return <div className="splash"><div className="brand-mark"><span /><span /><span /></div><p>Opening your portfolio…</p></div>
+  if (!authReady) return <div className="splash"><StockStickiesLogo compact /><p>Opening your portfolio…</p></div>
   if (!user) return <Login />
   if (!dataReady) return <div className="splash"><div className="loader" /><p>Loading your portfolio…</p></div>
 
@@ -728,7 +784,7 @@ export default function App() {
           {installEvent && <button className="icon-button" type="button" onClick={install} aria-label="Install app"><Icon name="install" /></button>}
           <button className="profile-button" type="button" onClick={() => auth.signOut()} aria-label="Sign out">
             {profilePhoto ? <img src={profilePhoto} alt="" /> : <span className="profile-avatar">{(nickname || user.email || '?').charAt(0).toUpperCase()}</span>}
-            <span className="profile-build">Build 13</span>
+            <span className="profile-build">Build 14</span>
             <Icon name="logout" size={16} />
           </button>
         </div>
@@ -740,7 +796,7 @@ export default function App() {
             <div>
               <div className="hero-meta">
                 <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
-                <span className="build-badge">BUILD 13</span>
+                <span className="build-badge">BUILD 14</span>
               </div>
               <h1>{money(accountBalance)}</h1>
               <small className="balance-caption">
