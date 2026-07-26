@@ -688,19 +688,34 @@ export default function App() {
         (lowest, candidate) => !lowest || candidate.value < lowest.value ? candidate : lowest,
         null,
       )
-      const actualCash = hasBrokerMetrics
+      const reconciledActualCash = hasBrokerMetrics
         ? (reconciledCash?.value || 0)
         : noteActualCash
+      const cashPool = hasBrokerMetrics
+        ? (cashHolding || reconciledActualCash)
+        : noteActualCash
+      const cashIncludesCspCollateral = cspCollateral > 0
+        && cashPool > 0
+        && (
+          !institutionAvailable
+          || Math.abs(institutionAvailable - cashPool) < 0.01
+        )
+      const actualCash = cashIncludesCspCollateral ? 0 : reconciledActualCash
       const sgov = hasBrokerMetrics ? brokerMetrics.sgovValue : noteSgov
       const sgovCostBasis = hasBrokerMetrics
         ? (brokerMetrics.hasSgovCostBasis ? brokerMetrics.sgovCostBasis : null)
         : (noteSgovPositionsWithBasis.length ? noteSgovCostBasis : null)
       return [id, {
         actualCash,
-        actualCashSource: hasBrokerMetrics ? (reconciledCash?.source || 'unavailable') : 'note',
+        actualCashSource: cashIncludesCspCollateral
+          ? 'unavailable'
+          : (hasBrokerMetrics ? (reconciledCash?.source || 'unavailable') : 'note'),
+        cashPool,
+        cashIncludesCspCollateral,
         sgov,
         sgovCostBasis,
         totalAvailableCash: actualCash + sgov,
+        totalCashPool: cashPool + sgov,
       }]
     }))
   }, [allPositions, brokerAccountMetrics, cashSecuredPuts])
@@ -768,9 +783,6 @@ export default function App() {
     return totals
   }, [cashSecuredPuts])
   const totalPutObligation = Object.values(putObligationByAccount).reduce((sum, value) => sum + value, 0)
-  const scopedPutObligation = accountFilter === 'all'
-    ? totalPutObligation
-    : (putObligationByAccount[accountFilter] || 0)
   const accountDisplayBalances = Object.fromEntries(ACCOUNT_IDS.map((id) => [
     id,
     brokerAccountMetrics[id].hasBalance
@@ -788,12 +800,8 @@ export default function App() {
     ? ACCOUNT_IDS.some((id) => brokerAccountMetrics[id].hasBalance || brokerAccountMetrics[id].hasHoldings)
     : Boolean(brokerAccountMetrics[accountFilter]?.hasBalance || brokerAccountMetrics[accountFilter]?.hasHoldings)
   const scopedCashAccountIds = accountFilter === 'all' ? ACCOUNT_IDS : [accountFilter]
-  const actualCashValue = scopedCashAccountIds
-    .reduce((sum, id) => sum + (cashMetricsByAccount[id]?.actualCash || 0), 0)
-  const sgovValue = scopedCashAccountIds
-    .reduce((sum, id) => sum + (cashMetricsByAccount[id]?.sgov || 0), 0)
-  const totalAvailableCash = actualCashValue + sgovValue
-  const totalCash = totalAvailableCash + scopedPutObligation
+  const totalCash = scopedCashAccountIds
+    .reduce((sum, id) => sum + (cashMetricsByAccount[id]?.totalCashPool || 0), 0)
   const allCashPositionRows = scopedCashAccountIds
     .flatMap((id) => {
       const accountLabel = getAccountLabel(id)
@@ -801,7 +809,19 @@ export default function App() {
       const accountSgovCostBasis = cashMetricsByAccount[id]?.sgovCostBasis ?? null
       const accountSgovPnL = accountSgovCostBasis == null ? null : accountSgovValue - accountSgovCostBasis
       return [
-        {
+        cashMetricsByAccount[id]?.cashIncludesCspCollateral ? {
+          id: `cash-summary-${id}`,
+          account: id,
+          ticker: 'CASH',
+          category: 'Brokerage cash · includes CSP-secured cash',
+          accountLabel,
+          value: cashMetricsByAccount[id]?.cashPool || 0,
+          summaryKind: 'cash',
+          summaryType: 'Brokerage cash pool',
+          includeInCashTotal: true,
+          includeInComposition: true,
+          summaryNote: 'Plaid reports the full brokerage cash pool, not Robinhood buying power. CSP collateral is already included and is not added again.',
+        } : {
           id: `cash-summary-${id}`,
           account: id,
           ticker: 'CASH',
@@ -810,6 +830,8 @@ export default function App() {
           value: cashMetricsByAccount[id]?.actualCash || 0,
           summaryKind: 'cash',
           summaryType: 'Liquid cash',
+          includeInCashTotal: true,
+          includeInComposition: true,
           summaryNote: cashMetricsByAccount[id]?.actualCashSource === 'account-equation'
             ? 'Available cash derived from account value less non-cash holdings and CSP collateral.'
             : cashMetricsByAccount[id]?.actualCashSource === 'institution-available'
@@ -827,6 +849,9 @@ export default function App() {
           value: putObligationByAccount[id] || 0,
           summaryKind: 'csp',
           summaryType: 'Reserved collateral',
+          includeInCashTotal: false,
+          includeInComposition: false,
+          summaryNote: 'Nominal assignment obligation shown for reference. It is not added to brokerage cash because the secured cash is already included there.',
         },
         {
           id: `sgov-summary-${id}`,
@@ -842,6 +867,8 @@ export default function App() {
             : null,
           summaryKind: 'sgov',
           summaryType: 'Cash equivalent',
+          includeInCashTotal: true,
+          includeInComposition: true,
         },
       ]
     })
@@ -851,7 +878,9 @@ export default function App() {
     return {
       account: id,
       accountLabel: getAccountLabel(id),
-      total: components.reduce((sum, position) => sum + position.value, 0),
+      total: components
+        .filter((position) => position.includeInCashTotal !== false)
+        .reduce((sum, position) => sum + position.value, 0),
       components,
     }
   })
@@ -859,7 +888,7 @@ export default function App() {
     ...sortedPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV'),
   ]
   const displayCompositionTotal = [
-    ...allCashPositionRows,
+    ...allCashPositionRows.filter((position) => position.includeInComposition !== false),
     ...filteredPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV'),
   ].reduce((sum, position) => sum + position.value, 0)
   const displayPositions = displayPositionCandidates.map((position) => ({
@@ -883,11 +912,12 @@ export default function App() {
         longMarketValue: Number(grandTotal.toFixed(2)),
         accountBalance: Number(grandAccountBalance.toFixed(2)),
         actualCashBalance: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].actualCash, 0).toFixed(2)),
+        brokerageCashPool: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].cashPool, 0).toFixed(2)),
         sgovValue: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].sgov, 0).toFixed(2)),
         cashBalance: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
         availableCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
         totalAvailableCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
-        totalCash: Number((ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0) + totalPutObligation).toFixed(2)),
+        totalCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalCashPool, 0).toFixed(2)),
         cspObligation: Number(totalPutObligation.toFixed(2)),
         longPlusCspExposure: Number((grandTotal + totalPutObligation).toFixed(2)),
         positionCount: allPositions.length,
@@ -909,11 +939,13 @@ export default function App() {
           marketValue: Number((accountTotals[account.id]?.value || 0).toFixed(2)),
           accountBalance: Number(accountDisplayBalances[account.id].toFixed(2)),
           actualCashBalance: Number(cashMetricsByAccount[account.id].actualCash.toFixed(2)),
+          brokerageCashPool: Number(cashMetricsByAccount[account.id].cashPool.toFixed(2)),
+          cashIncludesCspCollateral: cashMetricsByAccount[account.id].cashIncludesCspCollateral,
           sgovValue: Number(cashMetricsByAccount[account.id].sgov.toFixed(2)),
           cashBalance: Number(cashMetricsByAccount[account.id].totalAvailableCash.toFixed(2)),
           availableCash: Number(cashMetricsByAccount[account.id].totalAvailableCash.toFixed(2)),
           totalAvailableCash: Number(cashMetricsByAccount[account.id].totalAvailableCash.toFixed(2)),
-          totalCash: Number((cashMetricsByAccount[account.id].totalAvailableCash + (putObligationByAccount[account.id] || 0)).toFixed(2)),
+          totalCash: Number(cashMetricsByAccount[account.id].totalCashPool.toFixed(2)),
           knownCostBasis: Number(allPositions
             .filter((position) => position.account === account.id && position.unrealizedPnL != null)
             .reduce((sum, position) => sum + position.costBasis, 0)
@@ -1181,7 +1213,11 @@ export default function App() {
                                 <div>
                                   <strong>{position.ticker}</strong>
                                   <span>{position.category}</span>
-                                  <small>Allocation {allocation.toFixed(2)}%</small>
+                                  <small>
+                                    {position.includeInComposition === false
+                                      ? 'Shown separately · not added to total cash'
+                                      : `Allocation ${allocation.toFixed(2)}%`}
+                                  </small>
                                 </div>
                                 <strong>{money(position.value)}</strong>
                               </div>
@@ -1300,7 +1336,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 30</strong></div>
+              <div><span>Version</span><strong>Build 31</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
