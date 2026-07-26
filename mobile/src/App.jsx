@@ -28,8 +28,8 @@ try {
 }
 
 const ASKK_API_URL = import.meta.env.VITE_ASKK_API_URL
-  || 'https://stock-stickies-askk.99redder.workers.dev/api/ask-k'
-const BROKERAGE_API_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/holdings'
+  || 'https://stock-stickies-askk.99redder.workers.dev/api/ask-k?client=mobile-build-9'
+const BROKERAGE_API_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/holdings?client=mobile-build-9'
 
 const ACCOUNTS = [
   { id: 'individual', label: 'Individual', short: 'Taxable', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.' },
@@ -832,7 +832,7 @@ export default function App() {
         )}
       </main>
 
-      <div className="readonly-pill">READ ONLY · BUILD 8</div>
+      <div className="readonly-pill">READ ONLY · BUILD 9</div>
       <AskK portfolio={askKPortfolio} />
     </div>
   )
