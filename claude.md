@@ -483,8 +483,10 @@ same time, ISO `asOf` date, and source. The Worker returns the institution gain 
 anchor date and rolls it forward using later Plaid value changes less later external cash
 flows. This avoids permanently hardcoding a number while preventing an unreliable Plaid
 opening/ending-value bridge from overriding Robinhood's own P&L. When any account uses an
-institution anchor, combined dollar YTD is the sum of account gains and the combined
-percentage is omitted rather than mixing incompatible return methodologies.
+institution anchor, its account-level percentage uses the same Modified Dietz
+time-weighted capital denominator with the institution-reported dollar gain. Combined
+dollar YTD is the sum of account gains, while the combined percentage is omitted rather
+than mixing incompatible return methodologies.
 
 The Worker also writes daily account snapshots so performance can continue from observed
 values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
