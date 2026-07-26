@@ -3,6 +3,7 @@ import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
 import 'firebase/compat/app-check'
+import { createYtdShareCard, shareOrDownloadYtdCard } from './ytdShareCard'
 
 const firebaseConfig = {
   // Firebase web configuration is public client metadata. Keep production
@@ -124,6 +125,7 @@ function Icon({ name, size = 20 }) {
     send: <><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></>,
     logout: <><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M21 19V5a2 2 0 0 0-2-2h-6" /></>,
     install: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
+    share: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="m8.6 10.6 6.8-4.2M8.6 13.4l6.8 4.2" /></>,
   }
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
@@ -1051,6 +1053,38 @@ export default function App() {
     setInstallEvent(null)
   }
 
+  const shareYtdPerformance = async () => {
+    if (scopedYtdPerformance?.status !== 'ready') {
+      setRefreshMessage('YTD performance is not ready for this account yet.')
+      return
+    }
+    const year = ytdPerformance?.year || new Date().getFullYear()
+    const scopeLabel = accountFilter === 'all' ? 'All Accounts' : getAccountLabel(accountFilter)
+    const displayName = nickname || user.email?.split('@')[0] || 'Investor'
+    const accountSlug = accountFilter === 'all' ? 'all-accounts' : accountFilter
+    try {
+      const blob = await createYtdShareCard({
+        year,
+        gain: scopedYtdPerformance.gain,
+        returnPercent: scopedYtdPerformance.returnPercent,
+        scopeLabel,
+        displayName,
+        profilePhoto,
+      })
+      const result = await shareOrDownloadYtdCard(
+        blob,
+        `stock-stickies-${year}-ytd-${accountSlug}.png`,
+        `${displayName}'s ${year} YTD performance`,
+      )
+      if (result === 'downloaded') setRefreshMessage('Your YTD performance image has been downloaded.')
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        console.error('Unable to create YTD performance image', error)
+        setRefreshMessage('Unable to create the YTD performance image. Please try again.')
+      }
+    }
+  }
+
   if (!authReady) return <div className="splash"><StockStickiesLogo compact /><p>Opening your portfolio…</p></div>
   if (!user) return <Login />
   if (!dataReady) return <div className="splash"><div className="loader" /><p>Loading your portfolio…</p></div>
@@ -1118,10 +1152,16 @@ export default function App() {
                   : 'Estimated balance · positions & CSP collateral'}
               </small>
             </div>
-            <button className="refresh-button" type="button" onClick={refreshPrices} disabled={refreshing}>
-              <Icon name="refresh" />
-              <span>{refreshing ? 'Updating…' : 'Update'}</span>
-            </button>
+            <div className="hero-actions">
+              <button className="share-ytd-button" type="button" onClick={shareYtdPerformance} disabled={scopedYtdPerformance?.status !== 'ready'}>
+                <Icon name="share" size={18} />
+                <span>Share YTD</span>
+              </button>
+              <button className="refresh-button" type="button" onClick={refreshPrices} disabled={refreshing}>
+                <Icon name="refresh" />
+                <span>{refreshing ? 'Updating…' : 'Update'}</span>
+              </button>
+            </div>
           </div>
           <div className="status-line">
             <span className={missingPrices ? 'status-dot warning' : 'status-dot'} />
@@ -1336,7 +1376,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 31</strong></div>
+              <div><span>Version</span><strong>Build 32</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

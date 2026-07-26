@@ -497,9 +497,28 @@ history.” It must not show a raw balance decline as a large YTD loss. A Robinh
 transaction CSV can be used to reconcile the missing Individual cash flows; statement
 balances alone are insufficient.
 
+### YTD Social Share Card
+
+Desktop and mobile expose a **Share YTD** control for the currently selected portfolio
+scope. All Accounts produces the combined YTD card; selecting Individual, Traditional IRA,
+or Roth IRA produces that account's card. The control is disabled unless that scope's
+performance status is `ready`.
+
+`mobile/src/ytdShareCard.js` is the source implementation. Desktop re-exports it through
+`src/utils/ytdShareCard.js` so both experiences render the same 1600×900 (16:9) PNG. The
+card includes the current Stock Stickies mark/wordmark, profile photo or initials,
+nickname/email-prefix fallback, account scope, YTD dollar gain, available cash-flow-
+adjusted return percentage, as-of date, site address, and a short performance disclaimer.
+It deliberately omits balances, positions, and account numbers.
+
+On devices that support sharing image files, including the installed iPhone PWA, the
+control opens the native share sheet. Other browsers download the PNG. Profile photos are
+fetched into a local blob before drawing; if the image cannot be read safely, the renderer
+uses initials so a cross-origin image cannot break the export.
+
 ### PWA Versioning and Update Behavior
 
-The visible release was **Build 31** when this guide was updated. Every mobile release must
+The visible release was **Build 32** when this guide was updated. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |

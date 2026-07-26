@@ -67,6 +67,7 @@ import 'firebase/compat/app-check'
 import { Chart } from 'chart.js/auto'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
 import html2canvas from 'html2canvas-pro'
+import { createYtdShareCard, shareOrDownloadYtdCard } from './utils/ytdShareCard'
 import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
@@ -145,6 +146,7 @@ const firebaseConfig = {
         const Lock = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
         const Unlock = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>;
         const Download = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+        const Share = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.6 6.8-4.2M8.6 13.4l6.8 4.2"/></svg>;
 
         // Default stock-focused categories (users can customize/delete/add later)
         const DEFAULT_COLOR_LABELS = {
@@ -1537,6 +1539,40 @@ const firebaseConfig = {
                 } catch (error) {
                     console.error('Snapshot download failed:', error);
                     showBrandedNotice('Snapshot download failed. Please try again.');
+                }
+            };
+
+            const handleShareYtdPerformance = async () => {
+                if (shownYtdPerformance?.status !== 'ready') {
+                    showBrandedNotice('YTD performance is not ready for this account yet.');
+                    return;
+                }
+                const year = robinhoodPerformance?.year || new Date().getFullYear();
+                const scopeLabel = portfolioAccountFilter === 'all'
+                    ? 'All Accounts'
+                    : getAccountLabel(portfolioAccountFilter);
+                const displayName = nickname || currentUser?.split('@')[0] || 'Investor';
+                const accountSlug = portfolioAccountFilter === 'all' ? 'all-accounts' : portfolioAccountFilter;
+                try {
+                    const blob = await createYtdShareCard({
+                        year,
+                        gain: shownYtdPerformance.gain,
+                        returnPercent: shownYtdPerformance.returnPercent,
+                        scopeLabel,
+                        displayName,
+                        profilePhoto,
+                    });
+                    const result = await shareOrDownloadYtdCard(
+                        blob,
+                        `stock-stickies-${year}-ytd-${accountSlug}.png`,
+                        `${displayName}'s ${year} YTD performance`,
+                    );
+                    if (result === 'downloaded') showBrandedNotice('Your YTD performance image has been downloaded.');
+                } catch (error) {
+                    if (error?.name !== 'AbortError') {
+                        console.error('Unable to create YTD performance image', error);
+                        showBrandedNotice('Unable to create the YTD performance image. Please try again.');
+                    }
                 }
             };
 
@@ -5522,6 +5558,19 @@ const firebaseConfig = {
                                         </button>
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={handleShareYtdPerformance}
+                                            disabled={shownYtdPerformance?.status !== 'ready'}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border inline-flex items-center gap-2 ${
+                                                shownYtdPerformance?.status !== 'ready'
+                                                    ? (darkMode ? 'border-gray-700 text-gray-500 cursor-not-allowed' : 'border-gray-200 text-gray-400 cursor-not-allowed')
+                                                    : (darkMode ? 'border-green-400/60 text-green-200 hover:text-green-100 hover:border-green-300 hover:bg-green-500/10' : 'border-green-500 text-green-700 hover:bg-green-50')
+                                            }`}
+                                            title="Create a social image of this YTD performance"
+                                        >
+                                            <Share size={16}/>
+                                            Share YTD
+                                        </button>
                                         <button
                                             onClick={handleRefreshPortfolioPrices}
                                             disabled={portfolioLoading}

@@ -54,6 +54,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .hero-ytd.unavailable strong { color: var(--muted); }
 .pnl-coverage { display: block; margin-top: 3px; color: #647185; font-size: 8px; }
 .balance-caption { display: block; max-width: 270px; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.35; }
+.hero-actions { display: grid; gap: 8px; flex: 0 0 auto; }
+.share-ytd-button { min-width: 98px; height: 42px; padding: 0 12px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(91,140,255,.42); border-radius: 13px; color: #9bb8ff; background: rgba(91,140,255,.1); font-size: 12px; font-weight: 800; }
+.share-ytd-button:disabled { opacity: .38; }
 .refresh-button { min-width: 98px; height: 42px; padding: 0 14px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(57,217,138,.35); border-radius: 13px; color: var(--green); background: rgba(57,217,138,.09); font-size: 13px; font-weight: 750; }
 .refresh-button:disabled { opacity: .65; }
 .refresh-button:disabled svg { animation: spin 1s linear infinite; }
