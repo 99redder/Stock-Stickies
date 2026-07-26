@@ -513,7 +513,10 @@ balances, positions, account numbers, and disclaimer copy.
 
 The control opens a preview with **Copy image** and **Share / Save** actions. Copy image
 writes the PNG directly to the system clipboard when the browser supports image clipboard
-items. Desktop always downloads from Share / Download instead of entering the browser's
+items. A **$ + % / % only** selector regenerates the card before export; percentage-only
+mode removes the dollar gain and adds `-percent-only` to the filename. It is offered only
+when a reconciled return percentage is available. Desktop always downloads from Share /
+Download instead of entering the browser's
 unreliable file-share path. Mobile opens the native share sheet when supported and falls
 back to download if sharing fails. Profile photos use both the saved profile image and the
 current authentication-provider PFP as candidates. Remote photos are fetched into a local
@@ -522,7 +525,7 @@ photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-The visible release was **Build 35** when this guide was updated. Every mobile release must
+The visible release was **Build 36** when this guide was updated. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |

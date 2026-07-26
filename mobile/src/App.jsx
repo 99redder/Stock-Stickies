@@ -354,6 +354,7 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [ytdSharePreview, setYtdSharePreview] = useState(null)
   const [ytdCopyStatus, setYtdCopyStatus] = useState('')
+  const [ytdCardUpdating, setYtdCardUpdating] = useState(false)
   const [cashSectionExpanded, setCashSectionExpanded] = useState(false)
   const [expandedCashAccounts, setExpandedCashAccounts] = useState({})
 
@@ -1065,21 +1066,26 @@ export default function App() {
     const displayName = nickname || user.email?.split('@')[0] || 'Investor'
     const accountSlug = accountFilter === 'all' ? 'all-accounts' : accountFilter
     try {
-      const blob = await createYtdShareCard({
+      const cardData = {
         year,
         gain: scopedYtdPerformance.gain,
         returnPercent: scopedYtdPerformance.returnPercent,
         scopeLabel,
         displayName,
         profilePhoto: [profilePhoto, user.photoURL],
-      })
-      const filename = `stock-stickies-${year}-ytd-${accountSlug}.png`
+        displayMode: 'full',
+      }
+      const blob = await createYtdShareCard(cardData)
+      const filenameBase = `stock-stickies-${year}-ytd-${accountSlug}`
       setYtdCopyStatus('')
       setYtdSharePreview({
         blob,
         url: URL.createObjectURL(blob),
-        filename,
+        filename: `${filenameBase}.png`,
+        filenameBase,
         title: `${displayName}'s ${year} YTD performance`,
+        cardData,
+        displayMode: 'full',
       })
     } catch (error) {
       if (error?.name !== 'AbortError') {
@@ -1093,6 +1099,34 @@ export default function App() {
     if (ytdSharePreview?.url) URL.revokeObjectURL(ytdSharePreview.url)
     setYtdSharePreview(null)
     setYtdCopyStatus('')
+    setYtdCardUpdating(false)
+  }
+
+  const setYtdDisplayMode = async (displayMode) => {
+    if (!ytdSharePreview?.cardData || ytdSharePreview.displayMode === displayMode || ytdCardUpdating) return
+    setYtdCardUpdating(true)
+    setYtdCopyStatus('Updating preview…')
+    try {
+      const cardData = { ...ytdSharePreview.cardData, displayMode }
+      const blob = await createYtdShareCard(cardData)
+      const url = URL.createObjectURL(blob)
+      const oldUrl = ytdSharePreview.url
+      setYtdSharePreview((current) => ({
+        ...current,
+        blob,
+        url,
+        cardData,
+        displayMode,
+        filename: `${current.filenameBase}${displayMode === 'percent-only' ? '-percent-only' : ''}.png`,
+      }))
+      window.setTimeout(() => URL.revokeObjectURL(oldUrl), 1000)
+      setYtdCopyStatus(displayMode === 'percent-only' ? 'Dollar gain hidden.' : '')
+    } catch (error) {
+      console.error('Unable to update YTD performance image', error)
+      setYtdCopyStatus('Unable to update the preview. Please try again.')
+    } finally {
+      setYtdCardUpdating(false)
+    }
   }
 
   const copyYtdImage = async () => {
@@ -1403,13 +1437,22 @@ export default function App() {
               <div><strong id="ytd-share-title">YTD performance image</strong><small>Ready to copy, share, or save.</small></div>
               <button className="icon-button" type="button" onClick={closeYtdSharePreview} aria-label="Close"><Icon name="close" /></button>
             </header>
+            {ytdSharePreview.cardData?.returnPercent != null && (
+              <div className="ytd-display-mode">
+                <span>Performance shown</span>
+                <div>
+                  <button type="button" disabled={ytdCardUpdating} className={ytdSharePreview.displayMode === 'full' ? 'active' : ''} onClick={() => setYtdDisplayMode('full')}>$ + %</button>
+                  <button type="button" disabled={ytdCardUpdating} className={ytdSharePreview.displayMode === 'percent-only' ? 'active' : ''} onClick={() => setYtdDisplayMode('percent-only')}>% only</button>
+                </div>
+              </div>
+            )}
             <div className="ytd-share-preview">
               <img src={ytdSharePreview.url} alt="Preview of your Stock Stickies YTD performance image" />
             </div>
             <p className={ytdCopyStatus === 'Copied!' ? 'ytd-copy-status success' : 'ytd-copy-status'} role="status">{ytdCopyStatus}</p>
             <div className="ytd-share-actions">
-              <button className="copy-image-button" type="button" onClick={copyYtdImage}>{ytdCopyStatus === 'Copied!' ? 'Copied!' : 'Copy image'}</button>
-              <button className="share-image-button" type="button" onClick={shareOrSaveYtdImage}>Share / Save</button>
+              <button className="copy-image-button" type="button" disabled={ytdCardUpdating} onClick={copyYtdImage}>{ytdCopyStatus === 'Copied!' ? 'Copied!' : 'Copy image'}</button>
+              <button className="share-image-button" type="button" disabled={ytdCardUpdating} onClick={shareOrSaveYtdImage}>Share / Save</button>
             </div>
           </section>
         </>
@@ -1434,7 +1477,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 35</strong></div>
+              <div><span>Version</span><strong>Build 36</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

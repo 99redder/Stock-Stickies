@@ -168,12 +168,19 @@ button { -webkit-tap-highlight-color: transparent; }
 .ytd-share-modal header strong, .ytd-share-modal header small { display: block; }
 .ytd-share-modal header strong { font-size: 14px; }
 .ytd-share-modal header small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.ytd-display-mode { margin-bottom: 10px; padding: 9px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 11px; background: #0d1219; }
+.ytd-display-mode > span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+.ytd-display-mode > div { display: inline-flex; padding: 3px; border-radius: 9px; background: #1b2533; }
+.ytd-display-mode button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 7px; color: #9aa7b8; background: transparent; font-size: 10px; font-weight: 850; }
+.ytd-display-mode button.active { color: #062f1d; background: var(--green); }
+.ytd-display-mode button:disabled { opacity: .55; }
 .ytd-share-preview { padding: 7px; border-radius: 14px; background: #080b10; }
 .ytd-share-preview img { display: block; width: 100%; border-radius: 10px; }
 .ytd-copy-status { min-height: 17px; margin: 9px 2px 2px; color: var(--muted); font-size: 10px; font-weight: 750; }
 .ytd-copy-status.success { color: var(--green); }
 .ytd-share-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .ytd-share-actions button { min-height: 44px; border-radius: 12px; font-size: 12px; font-weight: 850; }
+.ytd-share-actions button:disabled { opacity: .5; }
 .copy-image-button { border: 0; color: #062f1d; background: var(--green); }
 .share-image-button { border: 1px solid #40506a; color: #dce4ef; background: #182130; }
 

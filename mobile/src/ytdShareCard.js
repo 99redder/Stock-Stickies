@@ -149,6 +149,7 @@ export async function createYtdShareCard({
   scopeLabel,
   displayName,
   profilePhoto,
+  displayMode = 'full',
 }) {
   const canvas = document.createElement('canvas')
   canvas.width = CARD_WIDTH
@@ -227,28 +228,41 @@ export async function createYtdShareCard({
   ctx.textAlign = 'left'
   ctx.fillText(`${year} YTD PERFORMANCE`, 143, 296)
 
-  const numericGain = Number(gain || 0)
-  const gainText = `${numericGain > 0 ? '+' : ''}${new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(numericGain)}`
-  const positive = numericGain >= 0
-  ctx.fillStyle = positive ? '#39d98a' : '#ff6b7c'
-  fitText(ctx, gainText, 1320, 142, 900)
-  ctx.fillText(gainText, 118, 493)
+  const hasReturnPercent = returnPercent != null && Number.isFinite(Number(returnPercent))
+  const numericPercent = hasReturnPercent ? Number(returnPercent) : null
+  const percentText = hasReturnPercent
+    ? `${numericPercent > 0 ? '+' : ''}${numericPercent.toFixed(2)}%`
+    : ''
+  const percentOnly = displayMode === 'percent-only' && hasReturnPercent
 
-  if (returnPercent != null && Number.isFinite(Number(returnPercent))) {
-    const numericPercent = Number(returnPercent)
-    const percentText = `${numericPercent > 0 ? '+' : ''}${numericPercent.toFixed(2)}%`
+  if (percentOnly) {
+    ctx.fillStyle = numericPercent >= 0 ? '#39d98a' : '#ff6b7c'
+    fitText(ctx, percentText, 1320, 142, 900)
+    ctx.fillText(percentText, 118, 493)
+    ctx.fillStyle = '#aab6c6'
+    ctx.font = '650 27px Inter, ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText('cash-flow-adjusted return', 122, 558)
+  } else {
+    const numericGain = Number(gain || 0)
+    const gainText = `${numericGain > 0 ? '+' : ''}${new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numericGain)}`
+    ctx.fillStyle = numericGain >= 0 ? '#39d98a' : '#ff6b7c'
+    fitText(ctx, gainText, 1320, 142, 900)
+    ctx.fillText(gainText, 118, 493)
+  }
+
+  if (!percentOnly && hasReturnPercent) {
     ctx.font = '850 64px Inter, ui-sans-serif, system-ui, sans-serif'
     ctx.fillText(percentText, 122, 590)
     const percentWidth = ctx.measureText(percentText).width
     ctx.fillStyle = '#aab6c6'
     ctx.font = '650 24px Inter, ui-sans-serif, system-ui, sans-serif'
     ctx.fillText('cash-flow-adjusted return', 122 + percentWidth + 32, 584)
-  } else {
+  } else if (!percentOnly) {
     ctx.fillStyle = '#aab6c6'
     ctx.font = '650 27px Inter, ui-sans-serif, system-ui, sans-serif'
     ctx.fillText('Cash-flow-adjusted year-to-date gain', 122, 576)

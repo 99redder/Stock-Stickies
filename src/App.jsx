@@ -610,6 +610,7 @@ const firebaseConfig = {
             const profilePhotoMenuRef = useRef(null);
             const [ytdSharePreview, setYtdSharePreview] = useState(null);
             const [ytdCopyStatus, setYtdCopyStatus] = useState('');
+            const [ytdCardUpdating, setYtdCardUpdating] = useState(false);
             const [editingNickname, setEditingNickname] = useState(false);
             const [hidePortfolioValues, setHidePortfolioValues] = useState(false);
             const [robinhoodPerformance, setRobinhoodPerformance] = useState(null);
@@ -1286,7 +1287,7 @@ const firebaseConfig = {
                         cashSecuredPuts,
                         cashSecuredPutsSortMode,
                         nickname,
-                        profilePhoto: [profilePhoto, auth.currentUser?.photoURL],
+                        profilePhoto,
                         notesGroupMode,
                         portfolioLegendVisible,
                         portfolioLegendDollarAmounts,
@@ -1556,21 +1557,26 @@ const firebaseConfig = {
                 const displayName = nickname || currentUser?.split('@')[0] || 'Investor';
                 const accountSlug = portfolioAccountFilter === 'all' ? 'all-accounts' : portfolioAccountFilter;
                 try {
-                    const blob = await createYtdShareCard({
+                    const cardData = {
                         year,
                         gain: shownYtdPerformance.gain,
                         returnPercent: shownYtdPerformance.returnPercent,
                         scopeLabel,
                         displayName,
-                        profilePhoto,
-                    });
-                    const filename = `stock-stickies-${year}-ytd-${accountSlug}.png`;
+                        profilePhoto: [profilePhoto, auth.currentUser?.photoURL],
+                        displayMode: 'full',
+                    };
+                    const blob = await createYtdShareCard(cardData);
+                    const filenameBase = `stock-stickies-${year}-ytd-${accountSlug}`;
                     setYtdCopyStatus('');
                     setYtdSharePreview({
                         blob,
                         url: URL.createObjectURL(blob),
-                        filename,
+                        filename: `${filenameBase}.png`,
+                        filenameBase,
                         title: `${displayName}'s ${year} YTD performance`,
+                        cardData,
+                        displayMode: 'full',
                     });
                 } catch (error) {
                     if (error?.name !== 'AbortError') {
@@ -1584,6 +1590,34 @@ const firebaseConfig = {
                 if (ytdSharePreview?.url) URL.revokeObjectURL(ytdSharePreview.url);
                 setYtdSharePreview(null);
                 setYtdCopyStatus('');
+                setYtdCardUpdating(false);
+            };
+
+            const handleYtdDisplayMode = async (displayMode) => {
+                if (!ytdSharePreview?.cardData || ytdSharePreview.displayMode === displayMode || ytdCardUpdating) return;
+                setYtdCardUpdating(true);
+                setYtdCopyStatus('Updating preview…');
+                try {
+                    const cardData = { ...ytdSharePreview.cardData, displayMode };
+                    const blob = await createYtdShareCard(cardData);
+                    const url = URL.createObjectURL(blob);
+                    const oldUrl = ytdSharePreview.url;
+                    setYtdSharePreview((current) => ({
+                        ...current,
+                        blob,
+                        url,
+                        cardData,
+                        displayMode,
+                        filename: `${current.filenameBase}${displayMode === 'percent-only' ? '-percent-only' : ''}.png`,
+                    }));
+                    window.setTimeout(() => URL.revokeObjectURL(oldUrl), 1000);
+                    setYtdCopyStatus(displayMode === 'percent-only' ? 'Dollar gain hidden.' : '');
+                } catch (error) {
+                    console.error('Unable to update YTD performance image', error);
+                    setYtdCopyStatus('Unable to update the preview. Please try again.');
+                } finally {
+                    setYtdCardUpdating(false);
+                }
             };
 
             const handleCopyYtdImage = async () => {
@@ -6178,16 +6212,25 @@ const firebaseConfig = {
                                     <X size={20}/>
                                 </button>
                             </div>
+                            {ytdSharePreview.cardData?.returnPercent != null && (
+                                <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                    <span className={`text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Performance shown</span>
+                                    <div className={`inline-flex rounded-lg p-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                        <button type="button" disabled={ytdCardUpdating} onClick={() => handleYtdDisplayMode('full')} className={`rounded-md px-3 py-1.5 text-xs font-bold ${ytdSharePreview.displayMode === 'full' ? 'bg-green-500 text-gray-950' : (darkMode ? 'text-gray-300' : 'text-gray-600')}`}>$ + %</button>
+                                        <button type="button" disabled={ytdCardUpdating} onClick={() => handleYtdDisplayMode('percent-only')} className={`rounded-md px-3 py-1.5 text-xs font-bold ${ytdSharePreview.displayMode === 'percent-only' ? 'bg-green-500 text-gray-950' : (darkMode ? 'text-gray-300' : 'text-gray-600')}`}>% only</button>
+                                    </div>
+                                </div>
+                            )}
                             <div className={`p-3 sm:p-5 ${darkMode ? 'bg-gray-950' : 'bg-gray-100'}`}>
                                 <img src={ytdSharePreview.url} alt="Preview of your Stock Stickies YTD performance image" className="block w-full rounded-xl shadow-lg" />
                             </div>
                             <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                                 <p className={`min-h-5 text-xs font-semibold ${ytdCopyStatus === 'Copied!' ? 'text-green-500' : (darkMode ? 'text-gray-400' : 'text-gray-500')}`} role="status">{ytdCopyStatus}</p>
                                 <div className="flex gap-2">
-                                    <button type="button" onClick={handleCopyYtdImage} className="flex-1 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-bold text-gray-950 hover:bg-green-400 sm:flex-none">
+                                    <button type="button" disabled={ytdCardUpdating} onClick={handleCopyYtdImage} className="flex-1 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-bold text-gray-950 hover:bg-green-400 disabled:opacity-50 sm:flex-none">
                                         {ytdCopyStatus === 'Copied!' ? 'Copied!' : 'Copy image'}
                                     </button>
-                                    <button type="button" onClick={handleShareOrDownloadYtdImage} className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-bold sm:flex-none ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
+                                    <button type="button" disabled={ytdCardUpdating} onClick={handleShareOrDownloadYtdImage} className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-bold disabled:opacity-50 sm:flex-none ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
                                         Share / Download
                                     </button>
                                 </div>
