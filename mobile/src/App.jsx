@@ -576,6 +576,7 @@ export default function App() {
       currentBalance: 0,
       availableBalance: 0,
       holdingsValue: 0,
+      nonCashHoldingsValue: 0,
       actualCashValue: 0,
       sgovValue: 0,
       sgovCostBasis: 0,
@@ -620,7 +621,9 @@ export default function App() {
       const ticker = normalizeTicker(position?.ticker)
       metrics[id].holdingsValue += value
       metrics[id].hasHoldings = true
-      if (ticker === 'CUR:USD' || ticker === 'USD') {
+      const isRawCash = ticker === 'CUR:USD' || ticker === 'USD'
+      if (!isRawCash) metrics[id].nonCashHoldingsValue += value
+      if (isRawCash) {
         metrics[id].actualCashValue += value
         metrics[id].cashBalance += value
       } else if (ticker === 'SGOV') {
@@ -670,12 +673,20 @@ export default function App() {
         : cspCollateral > 0 && institutionAvailable > cspCollateral
           ? institutionAvailable - cspCollateral
           : institutionAvailable
+      const balanceDerivedAvailable = brokerMetrics?.hasBalance
+        ? Math.max(0, brokerMetrics.currentBalance - brokerMetrics.nonCashHoldingsValue - cspCollateral)
+        : null
       const availableCashCandidates = [
-        cashHolding > 0 ? cashHolding : null,
-        adjustedInstitutionAvailable > 0 ? adjustedInstitutionAvailable : null,
-      ].filter((value) => value != null)
+        cashHolding > 0 ? { value: cashHolding, source: 'cash-holding' } : null,
+        adjustedInstitutionAvailable > 0 ? { value: adjustedInstitutionAvailable, source: 'institution-available' } : null,
+        balanceDerivedAvailable > 0 ? { value: balanceDerivedAvailable, source: 'account-equation' } : null,
+      ].filter(Boolean)
+      const reconciledCash = availableCashCandidates.reduce(
+        (lowest, candidate) => !lowest || candidate.value < lowest.value ? candidate : lowest,
+        null,
+      )
       const actualCash = hasBrokerMetrics
-        ? (availableCashCandidates.length ? Math.min(...availableCashCandidates) : 0)
+        ? (reconciledCash?.value || 0)
         : noteActualCash
       const sgov = hasBrokerMetrics ? brokerMetrics.sgovValue : noteSgov
       const sgovCostBasis = hasBrokerMetrics
@@ -683,13 +694,7 @@ export default function App() {
         : (noteSgovPositionsWithBasis.length ? noteSgovCostBasis : null)
       return [id, {
         actualCash,
-        actualCashSource: hasBrokerMetrics
-          ? cspCollateral > 0
-            ? 'reconciled-cash'
-            : brokerMetrics?.hasAvailableBalance
-              ? 'institution-available'
-              : 'cash-holding'
-          : 'note',
+        actualCashSource: hasBrokerMetrics ? (reconciledCash?.source || 'unavailable') : 'note',
         sgov,
         sgovCostBasis,
         totalAvailableCash: actualCash + sgov,
@@ -798,8 +803,8 @@ export default function App() {
           value: cashMetricsByAccount[id]?.actualCash || 0,
           summaryKind: 'cash',
           summaryType: 'Liquid cash',
-          summaryNote: cashMetricsByAccount[id]?.actualCashSource === 'reconciled-cash'
-            ? 'Reconciled from the brokerage cash holding, account balance, and CSP collateral.'
+          summaryNote: cashMetricsByAccount[id]?.actualCashSource === 'account-equation'
+            ? 'Available cash derived from account value less non-cash holdings and CSP collateral.'
             : cashMetricsByAccount[id]?.actualCashSource === 'institution-available'
             ? 'Available cash reported by the linked institution.'
             : cashMetricsByAccount[id]?.actualCashSource === 'cash-holding'
@@ -1262,7 +1267,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 26</strong></div>
+              <div><span>Version</span><strong>Build 27</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
