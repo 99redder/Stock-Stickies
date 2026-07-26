@@ -161,6 +161,7 @@ export default function RobinhoodSync({
   darkMode,
   onCreateBackup,
   onApply,
+  onPerformanceChange,
 }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -171,11 +172,23 @@ export default function RobinhoodSync({
   const [backup, setBackup] = useState(null)
   const [result, setResult] = useState(null)
   const [autoSyncState, setAutoSyncState] = useState('idle')
+  const [openingValues, setOpeningValues] = useState({
+    individual: '',
+    traditional: '',
+    roth: '',
+  })
+  const [savingPerformance, setSavingPerformance] = useState(false)
+  const [performanceMessage, setPerformanceMessage] = useState('')
   const autoSyncStartedRef = useRef(false)
   const notesRef = useRef(notes)
   const onApplyRef = useRef(onApply)
-  notesRef.current = notes
-  onApplyRef.current = onApply
+  const onPerformanceChangeRef = useRef(onPerformanceChange)
+
+  useEffect(() => {
+    notesRef.current = notes
+    onApplyRef.current = onApply
+    onPerformanceChangeRef.current = onPerformanceChange
+  }, [notes, onApply, onPerformanceChange])
 
   const reconciliation = useMemo(
     () => buildRobinhoodReconciliation(notes, holdings?.positions || []),
@@ -208,6 +221,16 @@ export default function RobinhoodSync({
     return data
   }, [authUser])
 
+  const applyPerformance = useCallback((performance) => {
+    if (!performance) return
+    onPerformanceChangeRef.current?.(performance)
+    setOpeningValues({
+      individual: performance.accounts?.individual?.openingValue ?? '',
+      traditional: performance.accounts?.traditional?.openingValue ?? '',
+      roth: performance.accounts?.roth?.openingValue ?? '',
+    })
+  }, [])
+
   useEffect(() => {
     if (!ready || !authUser || autoSyncStartedRef.current) return undefined
 
@@ -229,6 +252,7 @@ export default function RobinhoodSync({
 
           const data = await apiFetch('/api/stock-stickies/plaid/holdings')
           setHoldings(data)
+          applyPerformance(data.performance)
           const automaticReconciliation = buildRobinhoodReconciliation(
             notesRef.current,
             data.positions || []
@@ -249,14 +273,13 @@ export default function RobinhoodSync({
     }, 0)
 
     return () => window.clearTimeout(timer)
-  }, [apiFetch, authUser, ready])
+  }, [apiFetch, applyPerformance, authUser, ready])
 
   const openSync = async () => {
     setOpen(true)
     setLoading(true)
     setError('')
     setResult(null)
-    setHoldings(null)
     try {
       const [backupResult, statusResult] = await Promise.allSettled([
         onCreateBackup('pre-plaid-connection'),
@@ -283,6 +306,7 @@ export default function RobinhoodSync({
     try {
       const data = await apiFetch('/api/stock-stickies/plaid/holdings')
       setHoldings(data)
+      applyPerformance(data.performance)
       setStatus(previous => ({ ...(previous || {}), investmentsEnabled: true }))
     } catch (holdingsError) {
       setError(holdingsError?.message || 'Robinhood positions could not be loaded.')
@@ -338,6 +362,38 @@ export default function RobinhoodSync({
       setError(applyError?.message || 'No Stock Stickies changes were applied.')
     } finally {
       setApplying(false)
+    }
+  }
+
+  const savePerformanceReconciliation = async () => {
+    const year = Number(holdings?.performance?.year || new Date().getFullYear())
+    const parsed = Object.fromEntries(
+      Object.entries(openingValues).map(([id, value]) => [
+        id,
+        String(value).trim()
+          ? Number(String(value).replace(/[$,\s]/g, ''))
+          : Number.NaN,
+      ])
+    )
+    if (Object.values(parsed).some(value => !Number.isFinite(value) || value < 0)) {
+      setError('Enter a valid non-negative opening value for all three accounts.')
+      return
+    }
+    setSavingPerformance(true)
+    setError('')
+    setPerformanceMessage('')
+    try {
+      const data = await apiFetch('/api/stock-stickies/plaid/performance', {
+        method: 'POST',
+        body: JSON.stringify({ year, openingValues: parsed }),
+      })
+      setHoldings(previous => ({ ...(previous || {}), performance: data.performance }))
+      applyPerformance(data.performance)
+      setPerformanceMessage(`${year} opening values reconciled. Daily snapshots are active.`)
+    } catch (performanceError) {
+      setError(performanceError?.message || 'The opening values could not be saved.')
+    } finally {
+      setSavingPerformance(false)
     }
   }
 
@@ -403,6 +459,11 @@ export default function RobinhoodSync({
                   Applied {result.updatedCount} share update{result.updatedCount === 1 ? '' : 's'} and added {result.addedCount} new position note{result.addedCount === 1 ? '' : 's'}. Rollback backup: {result.backup.id}.
                 </div>
               )}
+              {performanceMessage && (
+                <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-3 text-sm text-emerald-400">
+                  {performanceMessage}
+                </div>
+              )}
 
               {!holdings && (
                 <div className={`rounded-xl border p-4 ${card}`}>
@@ -428,6 +489,93 @@ export default function RobinhoodSync({
 
               {holdings && (
                 <>
+                  <div className={`rounded-xl border p-4 ${card}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="font-bold">{holdings.performance?.year || new Date().getFullYear()} YTD performance</div>
+                        <p className={`mt-1 text-xs ${muted}`}>
+                          Enter each account’s December 31 closing value. Plaid activity adjusts for contributions and withdrawals; daily closing snapshots continue automatically.
+                        </p>
+                      </div>
+                      {holdings.performance?.total?.status === 'ready' && (
+                        <div className="text-right">
+                          <div className={`text-xs ${muted}`}>All accounts</div>
+                          <div className={`text-lg font-black tabular-nums ${
+                            Number(holdings.performance.total.gain) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                          }`}>
+                            {Number(holdings.performance.total.gain) >= 0 ? '+' : ''}
+                            {Number(holdings.performance.total.gain).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                            {Number.isFinite(holdings.performance.total.returnPercent) &&
+                              ` · ${holdings.performance.total.returnPercent >= 0 ? '+' : ''}${holdings.performance.total.returnPercent.toFixed(2)}%`}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      {[
+                        ['individual', 'Individual'],
+                        ['traditional', 'Traditional IRA'],
+                        ['roth', 'Roth IRA'],
+                      ].map(([id, label]) => {
+                        const performance = holdings.performance?.accounts?.[id]
+                        return (
+                          <label key={id} className="block">
+                            <span className={`text-xs font-semibold ${muted}`}>{label} opening value</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={openingValues[id]}
+                              onChange={(event) => setOpeningValues(current => ({
+                                ...current,
+                                [id]: event.target.value,
+                              }))}
+                              placeholder="0.00"
+                              className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm tabular-nums ${
+                                darkMode
+                                  ? 'border-gray-700 bg-gray-900 text-white'
+                                  : 'border-gray-300 bg-white text-gray-900'
+                              }`}
+                            />
+                            {performance?.status === 'ready' && (
+                              <>
+                                <span className={`mt-1 block text-xs font-bold ${
+                                  Number(performance.gain) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                                }`}>
+                                  YTD {Number(performance.gain) >= 0 ? '+' : ''}
+                                  {Number(performance.gain).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                                  {Number.isFinite(performance.returnPercent) &&
+                                    ` · ${performance.returnPercent >= 0 ? '+' : ''}${performance.returnPercent.toFixed(2)}%`}
+                                </span>
+                                <span className={`mt-1 block text-[10px] ${muted}`}>
+                                  Net external flow {Number(performance.netExternalFlow) >= 0 ? '+' : ''}
+                                  {Number(performance.netExternalFlow).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                                  {' · '}{performance.externalFlowCount} recognized flow{performance.externalFlowCount === 1 ? '' : 's'}
+                                </span>
+                              </>
+                            )}
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className={`text-xs ${muted}`}>
+                        {holdings.performance?.snapshotCount || 0} daily snapshot{holdings.performance?.snapshotCount === 1 ? '' : 's'} stored
+                        {holdings.performance?.asOf ? ` · through ${holdings.performance.asOf}` : ''}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={savePerformanceReconciliation}
+                        disabled={savingPerformance}
+                        className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingPerformance ? 'Reconciling activity…' : 'Save opening values'}
+                      </button>
+                    </div>
+                    {holdings.performance?.warnings?.map((warning) => (
+                      <p key={warning} className="mt-2 text-xs text-amber-500">{warning}</p>
+                    ))}
+                  </div>
+
                   <div className="grid gap-3 sm:grid-cols-4">
                     {[
                       ['Share updates', reconciliation.updates.length],

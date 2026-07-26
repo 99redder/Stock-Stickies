@@ -737,6 +737,10 @@ export default function App() {
       coveredCount,
     }
   }, [accountTotals])
+  const ytdPerformance = brokerageSnapshot?.performance || null
+  const scopedYtdPerformance = accountFilter === 'all'
+    ? ytdPerformance?.total
+    : ytdPerformance?.accounts?.[accountFilter]
 
   const sortedPositions = useMemo(() => {
     const query = search.trim().toUpperCase()
@@ -1059,6 +1063,18 @@ export default function App() {
               {scopedPnlTotals.coveredCount > 0 && scopedPnlTotals.missingCount > 0 && (
                 <small className="pnl-coverage">Cost basis for {scopedPnlTotals.coveredCount} of {filteredPositions.length} positions</small>
               )}
+              <div className={scopedYtdPerformance?.status === 'ready'
+                ? (scopedYtdPerformance.gain >= 0 ? 'hero-ytd gain' : 'hero-ytd loss')
+                : 'hero-ytd unavailable'}>
+                <span>{ytdPerformance?.year || new Date().getFullYear()} YTD</span>
+                <strong>
+                  {scopedYtdPerformance?.status === 'ready'
+                    ? `${signedMoney(scopedYtdPerformance.gain)}${scopedYtdPerformance.returnPercent == null ? '' : ` · ${signedPercent(scopedYtdPerformance.returnPercent)}`}`
+                    : ytdPerformance
+                      ? 'Needs opening values'
+                      : 'Loading…'}
+                </strong>
+              </div>
               <small className="balance-caption">
                 {hasBrokerPortfolio
                   ? 'Linked brokerage balance · positions, cash & CSP collateral'
@@ -1088,6 +1104,12 @@ export default function App() {
                     ? `P&L ${signedMoney(allPnlTotals.unrealizedPnL)}`
                     : 'P&L unavailable'}
                 </small>
+                {ytdPerformance?.total?.status === 'ready' && (
+                  <small className={ytdPerformance.total.gain >= 0 ? 'gain' : 'loss'}>
+                    YTD {signedMoney(ytdPerformance.total.gain)}
+                    {ytdPerformance.total.returnPercent == null ? '' : ` · ${signedPercent(ytdPerformance.total.returnPercent)}`}
+                  </small>
+                )}
               </button>
               {presentAccounts.map((id) => (
                 <button type="button" key={id} className={accountFilter === id ? 'active' : ''} onClick={() => setAccountFilter(id)}>
@@ -1098,6 +1120,12 @@ export default function App() {
                       ? `${accountTotals[id].missingPnlCount > 0 ? 'Known P&L' : 'P&L'} ${signedMoney(accountTotals[id].unrealizedPnL)}`
                       : 'P&L unavailable'}
                   </small>
+                  {ytdPerformance?.accounts?.[id]?.status === 'ready' && (
+                    <small className={ytdPerformance.accounts[id].gain >= 0 ? 'gain' : 'loss'}>
+                      YTD {signedMoney(ytdPerformance.accounts[id].gain)}
+                      {ytdPerformance.accounts[id].returnPercent == null ? '' : ` · ${signedPercent(ytdPerformance.accounts[id].returnPercent)}`}
+                    </small>
+                  )}
                 </button>
               ))}
             </nav>
@@ -1267,7 +1295,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 27</strong></div>
+              <div><span>Version</span><strong>Build 28</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

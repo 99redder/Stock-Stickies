@@ -608,6 +608,7 @@ const firebaseConfig = {
             const profilePhotoMenuRef = useRef(null);
             const [editingNickname, setEditingNickname] = useState(false);
             const [hidePortfolioValues, setHidePortfolioValues] = useState(false);
+            const [robinhoodPerformance, setRobinhoodPerformance] = useState(null);
             const [marketauxApiKey, setMarketauxApiKey] = useState('');
             const [newsData, setNewsData] = useState(null);
             const [newsLoading, setNewsLoading] = useState(false);
@@ -2597,6 +2598,9 @@ const firebaseConfig = {
                     missingCount: portfolioData.length - covered.length,
                 };
             }, [portfolioData]);
+            const shownYtdPerformance = portfolioAccountFilter === 'all'
+                ? robinhoodPerformance?.total
+                : robinhoodPerformance?.accounts?.[portfolioAccountFilter];
             portfolioDataRef.current = portfolioData;
 
             // Don't strand the user on an account tab whose last position was just removed.
@@ -5074,6 +5078,7 @@ const firebaseConfig = {
                                             darkMode={darkMode}
                                             onCreateBackup={createCurrentAccountBackup}
                                             onApply={applyRobinhoodReconciliation}
+                                            onPerformanceChange={setRobinhoodPerformance}
                                         />
                                     )}
                                     <button
@@ -5356,6 +5361,15 @@ const firebaseConfig = {
                                         ) : (
                                             <div className="mt-1 text-sm font-semibold opacity-60">Unavailable</div>
                                         )}
+                                        {robinhoodPerformance?.total?.status === 'ready' && (
+                                            <div className={`mt-1 text-xs font-bold ${
+                                                robinhoodPerformance.total.gain >= 0 ? 'text-green-600' : 'text-red-600'
+                                            }`}>
+                                                {robinhoodPerformance.year} YTD {formatSignedUsd(robinhoodPerformance.total.gain)}
+                                                {robinhoodPerformance.total.returnPercent != null &&
+                                                    ` · ${formatSignedPercent(robinhoodPerformance.total.returnPercent)}`}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -5391,6 +5405,17 @@ const firebaseConfig = {
                                             ) : accountValue > 0 ? (
                                                 <span className={`block text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>P&amp;L unavailable</span>
                                             ) : null}
+                                            {robinhoodPerformance?.accounts?.[accountId]?.status === 'ready' && (
+                                                <span className={`block text-xs font-semibold ${
+                                                    robinhoodPerformance.accounts[accountId].gain >= 0
+                                                        ? (darkMode ? 'text-green-300' : 'text-green-700')
+                                                        : (darkMode ? 'text-red-300' : 'text-red-700')
+                                                }`}>
+                                                    {robinhoodPerformance.year} YTD {formatSignedUsd(robinhoodPerformance.accounts[accountId].gain)}
+                                                    {robinhoodPerformance.accounts[accountId].returnPercent != null &&
+                                                        ` · ${formatSignedPercent(robinhoodPerformance.accounts[accountId].returnPercent)}`}
+                                                </span>
+                                            )}
                                         </span>
                                     </button>
                                     {!isCollapsed && (
@@ -5467,6 +5492,19 @@ const firebaseConfig = {
                                                     </p>
                                                 )}
                                             </div>
+                                            <div className={`mt-1 text-sm font-bold ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${
+                                                shownYtdPerformance?.status === 'ready'
+                                                    ? (shownYtdPerformance.gain >= 0
+                                                        ? (darkMode ? 'text-green-300' : 'text-green-700')
+                                                        : (darkMode ? 'text-red-300' : 'text-red-700'))
+                                                    : (darkMode ? 'text-gray-500' : 'text-gray-400')
+                                            }`}>
+                                                {shownYtdPerformance?.status === 'ready'
+                                                    ? `${robinhoodPerformance.year} YTD ${formatSignedUsd(shownYtdPerformance.gain)}${shownYtdPerformance.returnPercent == null ? '' : ` · ${formatSignedPercent(shownYtdPerformance.returnPercent)}`}`
+                                                    : robinhoodPerformance
+                                                        ? `${robinhoodPerformance.year} YTD needs opening values`
+                                                        : 'YTD performance loading…'}
+                                            </div>
                                             {portfolioAccountFilter !== 'all' && grandPortfolioValue > 0 && (
                                                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                                     {((totalPortfolioValue / grandPortfolioValue) * 100).toFixed(1)}% of ${grandPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} across all accounts
@@ -5517,6 +5555,9 @@ const firebaseConfig = {
                                                 coveredCount: accountTotals[accountId]?.pnlPositionCount || 0,
                                                 missingCount: accountTotals[accountId]?.missingPnlCount || 0,
                                             };
+                                            const ytd = accountId === 'all'
+                                                ? robinhoodPerformance?.total
+                                                : robinhoodPerformance?.accounts?.[accountId];
                                             return (
                                                 <button
                                                     key={accountId}
@@ -5541,6 +5582,16 @@ const firebaseConfig = {
                                                             ? `${pnl.missingCount > 0 ? 'Known P&L' : 'P&L'} ${formatSignedUsd(pnl.unrealizedPnL)}`
                                                             : 'P&L unavailable'}
                                                     </div>
+                                                    {ytd?.status === 'ready' && (
+                                                        <div className={`mt-0.5 text-[10px] font-semibold ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${
+                                                            ytd.gain >= 0
+                                                                ? (isActive ? 'text-current' : (darkMode ? 'text-green-300' : 'text-green-700'))
+                                                                : (isActive ? 'text-current' : (darkMode ? 'text-red-300' : 'text-red-700'))
+                                                        }`}>
+                                                            YTD {formatSignedUsd(ytd.gain)}
+                                                            {ytd.returnPercent != null && ` · ${formatSignedPercent(ytd.returnPercent)}`}
+                                                        </div>
+                                                    )}
                                                 </button>
                                             );
                                         })}

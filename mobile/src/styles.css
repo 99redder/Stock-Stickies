@@ -46,6 +46,12 @@ button { -webkit-tap-highlight-color: transparent; }
 .hero-pnl.gain strong { color: var(--green); }
 .hero-pnl.loss strong { color: var(--danger); }
 .hero-pnl.unavailable strong { color: var(--muted); }
+.hero-ytd { margin-top: 5px; display: flex; align-items: baseline; gap: 7px; font-variant-numeric: tabular-nums; }
+.hero-ytd span { color: var(--muted); font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
+.hero-ytd strong { font-size: 13px; }
+.hero-ytd.gain strong { color: var(--green); }
+.hero-ytd.loss strong { color: var(--danger); }
+.hero-ytd.unavailable strong { color: var(--muted); }
 .pnl-coverage { display: block; margin-top: 3px; color: #647185; font-size: 8px; }
 .balance-caption { display: block; max-width: 270px; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.35; }
 .refresh-button { min-width: 98px; height: 42px; padding: 0 14px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(57,217,138,.35); border-radius: 13px; color: var(--green); background: rgba(57,217,138,.09); font-size: 13px; font-weight: 750; }
