@@ -511,14 +511,16 @@ nickname/email-prefix fallback, account scope, YTD dollar gain, available cash-f
 adjusted return percentage, as-of date, site address, and a short performance disclaimer.
 It deliberately omits balances, positions, and account numbers.
 
-On devices that support sharing image files, including the installed iPhone PWA, the
-control opens the native share sheet. Other browsers download the PNG. Profile photos are
-fetched into a local blob before drawing; if the image cannot be read safely, the renderer
-uses initials so a cross-origin image cannot break the export.
+The control opens a preview with **Copy image** and **Share / Save** actions. Copy image
+writes the PNG directly to the system clipboard when the browser supports image clipboard
+items. Share / Save opens the native share sheet on devices that support sharing image
+files, including the installed iPhone PWA; other browsers download the PNG. Profile photos
+are fetched into a local blob before drawing; if the image cannot be read safely, the
+renderer uses initials so a cross-origin image cannot break the export.
 
 ### PWA Versioning and Update Behavior
 
-The visible release was **Build 32** when this guide was updated. Every mobile release must
+The visible release was **Build 33** when this guide was updated. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |

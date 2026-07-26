@@ -3,7 +3,7 @@ import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
 import 'firebase/compat/app-check'
-import { createYtdShareCard, shareOrDownloadYtdCard } from './ytdShareCard'
+import { copyYtdCardToClipboard, createYtdShareCard, shareOrDownloadYtdCard } from './ytdShareCard'
 
 const firebaseConfig = {
   // Firebase web configuration is public client metadata. Keep production
@@ -352,6 +352,8 @@ export default function App() {
   const [brokerageSnapshot, setBrokerageSnapshot] = useState(null)
   const [brokerageError, setBrokerageError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [ytdSharePreview, setYtdSharePreview] = useState(null)
+  const [ytdCopyStatus, setYtdCopyStatus] = useState('')
   const [cashSectionExpanded, setCashSectionExpanded] = useState(false)
   const [expandedCashAccounts, setExpandedCashAccounts] = useState({})
 
@@ -1071,16 +1073,52 @@ export default function App() {
         displayName,
         profilePhoto,
       })
-      const result = await shareOrDownloadYtdCard(
+      const filename = `stock-stickies-${year}-ytd-${accountSlug}.png`
+      setYtdCopyStatus('')
+      setYtdSharePreview({
         blob,
-        `stock-stickies-${year}-ytd-${accountSlug}.png`,
-        `${displayName}'s ${year} YTD performance`,
-      )
-      if (result === 'downloaded') setRefreshMessage('Your YTD performance image has been downloaded.')
+        url: URL.createObjectURL(blob),
+        filename,
+        title: `${displayName}'s ${year} YTD performance`,
+      })
     } catch (error) {
       if (error?.name !== 'AbortError') {
         console.error('Unable to create YTD performance image', error)
         setRefreshMessage('Unable to create the YTD performance image. Please try again.')
+      }
+    }
+  }
+
+  const closeYtdSharePreview = () => {
+    if (ytdSharePreview?.url) URL.revokeObjectURL(ytdSharePreview.url)
+    setYtdSharePreview(null)
+    setYtdCopyStatus('')
+  }
+
+  const copyYtdImage = async () => {
+    if (!ytdSharePreview?.blob) return
+    try {
+      await copyYtdCardToClipboard(ytdSharePreview.blob)
+      setYtdCopyStatus('Copied!')
+    } catch (error) {
+      console.error('Unable to copy YTD performance image', error)
+      setYtdCopyStatus('Copy is not supported here — use Share / Save.')
+    }
+  }
+
+  const shareOrSaveYtdImage = async () => {
+    if (!ytdSharePreview?.blob) return
+    try {
+      const result = await shareOrDownloadYtdCard(
+        ytdSharePreview.blob,
+        ytdSharePreview.filename,
+        ytdSharePreview.title,
+      )
+      if (result === 'downloaded') setYtdCopyStatus('Downloaded!')
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        console.error('Unable to share YTD performance image', error)
+        setYtdCopyStatus('Unable to share the image. Please try again.')
       }
     }
   }
@@ -1357,6 +1395,26 @@ export default function App() {
         )}
       </main>
 
+      {ytdSharePreview && (
+        <>
+          <button className="ytd-share-scrim" type="button" aria-label="Close YTD performance image" onClick={closeYtdSharePreview} />
+          <section className="ytd-share-modal" role="dialog" aria-modal="true" aria-labelledby="ytd-share-title">
+            <header>
+              <div><strong id="ytd-share-title">YTD performance image</strong><small>Ready to copy, share, or save.</small></div>
+              <button className="icon-button" type="button" onClick={closeYtdSharePreview} aria-label="Close"><Icon name="close" /></button>
+            </header>
+            <div className="ytd-share-preview">
+              <img src={ytdSharePreview.url} alt="Preview of your Stock Stickies YTD performance image" />
+            </div>
+            <p className={ytdCopyStatus === 'Copied!' ? 'ytd-copy-status success' : 'ytd-copy-status'} role="status">{ytdCopyStatus}</p>
+            <div className="ytd-share-actions">
+              <button className="copy-image-button" type="button" onClick={copyYtdImage}>{ytdCopyStatus === 'Copied!' ? 'Copied!' : 'Copy image'}</button>
+              <button className="share-image-button" type="button" onClick={shareOrSaveYtdImage}>Share / Save</button>
+            </div>
+          </section>
+        </>
+      )}
+
       {profileOpen && (
         <>
           <button className="profile-scrim" type="button" aria-label="Close profile" onClick={() => setProfileOpen(false)} />
@@ -1376,7 +1434,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 32</strong></div>
+              <div><span>Version</span><strong>Build 33</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

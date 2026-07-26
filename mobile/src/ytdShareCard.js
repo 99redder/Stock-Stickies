@@ -257,3 +257,12 @@ export async function shareOrDownloadYtdCard(blob, filename, shareTitle) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   return 'downloaded'
 }
+
+export async function copyYtdCardToClipboard(blob) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+    throw new Error('Image clipboard is not supported by this browser.')
+  }
+  await navigator.clipboard.write([
+    new ClipboardItem({ 'image/png': blob }),
+  ])
+}

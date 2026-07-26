@@ -67,7 +67,7 @@ import 'firebase/compat/app-check'
 import { Chart } from 'chart.js/auto'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
 import html2canvas from 'html2canvas-pro'
-import { createYtdShareCard, shareOrDownloadYtdCard } from './utils/ytdShareCard'
+import { copyYtdCardToClipboard, createYtdShareCard, shareOrDownloadYtdCard } from './utils/ytdShareCard'
 import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
@@ -608,6 +608,8 @@ const firebaseConfig = {
             const [profilePhotoMenuOpen, setProfilePhotoMenuOpen] = useState(false);
             const profilePhotoInputRef = useRef(null);
             const profilePhotoMenuRef = useRef(null);
+            const [ytdSharePreview, setYtdSharePreview] = useState(null);
+            const [ytdCopyStatus, setYtdCopyStatus] = useState('');
             const [editingNickname, setEditingNickname] = useState(false);
             const [hidePortfolioValues, setHidePortfolioValues] = useState(false);
             const [robinhoodPerformance, setRobinhoodPerformance] = useState(null);
@@ -1562,16 +1564,52 @@ const firebaseConfig = {
                         displayName,
                         profilePhoto,
                     });
-                    const result = await shareOrDownloadYtdCard(
+                    const filename = `stock-stickies-${year}-ytd-${accountSlug}.png`;
+                    setYtdCopyStatus('');
+                    setYtdSharePreview({
                         blob,
-                        `stock-stickies-${year}-ytd-${accountSlug}.png`,
-                        `${displayName}'s ${year} YTD performance`,
-                    );
-                    if (result === 'downloaded') showBrandedNotice('Your YTD performance image has been downloaded.');
+                        url: URL.createObjectURL(blob),
+                        filename,
+                        title: `${displayName}'s ${year} YTD performance`,
+                    });
                 } catch (error) {
                     if (error?.name !== 'AbortError') {
                         console.error('Unable to create YTD performance image', error);
                         showBrandedNotice('Unable to create the YTD performance image. Please try again.');
+                    }
+                }
+            };
+
+            const closeYtdSharePreview = () => {
+                if (ytdSharePreview?.url) URL.revokeObjectURL(ytdSharePreview.url);
+                setYtdSharePreview(null);
+                setYtdCopyStatus('');
+            };
+
+            const handleCopyYtdImage = async () => {
+                if (!ytdSharePreview?.blob) return;
+                try {
+                    await copyYtdCardToClipboard(ytdSharePreview.blob);
+                    setYtdCopyStatus('Copied!');
+                } catch (error) {
+                    console.error('Unable to copy YTD performance image', error);
+                    setYtdCopyStatus('Copy is not supported here — use Share / Download.');
+                }
+            };
+
+            const handleShareOrDownloadYtdImage = async () => {
+                if (!ytdSharePreview?.blob) return;
+                try {
+                    const result = await shareOrDownloadYtdCard(
+                        ytdSharePreview.blob,
+                        ytdSharePreview.filename,
+                        ytdSharePreview.title,
+                    );
+                    if (result === 'downloaded') setYtdCopyStatus('Downloaded!');
+                } catch (error) {
+                    if (error?.name !== 'AbortError') {
+                        console.error('Unable to share YTD performance image', error);
+                        setYtdCopyStatus('Unable to share the image. Please try again.');
                     }
                 }
             };
@@ -6126,6 +6164,37 @@ const firebaseConfig = {
 
                 {/* Ask K — portfolio analysis assistant */}
                 <AskK portfolio={askKPortfolio} darkMode={darkMode} />
+
+                {ytdSharePreview && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8" role="dialog" aria-modal="true" aria-labelledby="ytd-share-title">
+                        <button className="absolute inset-0 bg-black/75 backdrop-blur-sm" type="button" onClick={closeYtdSharePreview} aria-label="Close YTD performance image" />
+                        <section className={`relative w-full max-w-4xl overflow-hidden rounded-2xl border shadow-2xl ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'}`}>
+                            <div className={`flex items-center justify-between border-b px-4 py-3 sm:px-5 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                <div>
+                                    <h2 id="ytd-share-title" className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>YTD performance image</h2>
+                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Ready to copy, share, or save.</p>
+                                </div>
+                                <button type="button" onClick={closeYtdSharePreview} className={`rounded-lg p-2 ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-100'}`} aria-label="Close">
+                                    <X size={20}/>
+                                </button>
+                            </div>
+                            <div className={`p-3 sm:p-5 ${darkMode ? 'bg-gray-950' : 'bg-gray-100'}`}>
+                                <img src={ytdSharePreview.url} alt="Preview of your Stock Stickies YTD performance image" className="block w-full rounded-xl shadow-lg" />
+                            </div>
+                            <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                                <p className={`min-h-5 text-xs font-semibold ${ytdCopyStatus === 'Copied!' ? 'text-green-500' : (darkMode ? 'text-gray-400' : 'text-gray-500')}`} role="status">{ytdCopyStatus}</p>
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={handleCopyYtdImage} className="flex-1 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-bold text-gray-950 hover:bg-green-400 sm:flex-none">
+                                        {ytdCopyStatus === 'Copied!' ? 'Copied!' : 'Copy image'}
+                                    </button>
+                                    <button type="button" onClick={handleShareOrDownloadYtdImage} className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-bold sm:flex-none ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
+                                        Share / Download
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                )}
 
                 {/* Footer */}
                 <footer className={`text-center pt-8 pb-4 px-4 text-xs sm:text-sm border-t ${darkMode ? 'bg-gray-900 text-white border-gray-700' : 'bg-white text-gray-800 border-gray-200'}`}>
