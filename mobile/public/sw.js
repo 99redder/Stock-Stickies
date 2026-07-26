@@ -1,4 +1,4 @@
-const CACHE = 'stock-stickies-mobile-v19'
+const CACHE = 'stock-stickies-mobile-v20'
 const APP_SHELL = ['/', '/manifest.webmanifest']
 
 self.addEventListener('install', (event) => {

@@ -654,6 +654,7 @@ export default function App() {
   const brokerAccountMetrics = useMemo(() => {
     const metrics = Object.fromEntries(ACCOUNT_IDS.map((id) => [id, {
       currentBalance: 0,
+      availableBalance: 0,
       holdingsValue: 0,
       actualCashValue: 0,
       sgovValue: 0,
@@ -661,6 +662,7 @@ export default function App() {
       hasSgovCostBasis: false,
       cashBalance: 0,
       hasBalance: false,
+      hasAvailableBalance: false,
       hasHoldings: false,
     }]))
     const accountById = new Map()
@@ -676,6 +678,15 @@ export default function App() {
       if (Number.isFinite(currentBalance)) {
         metrics[id].currentBalance += currentBalance
         metrics[id].hasBalance = true
+      }
+      const availableBalance = account.availableBalance === null
+        || account.availableBalance === undefined
+        || account.availableBalance === ''
+        ? Number.NaN
+        : Number(account.availableBalance)
+      if (Number.isFinite(availableBalance)) {
+        metrics[id].availableBalance += availableBalance
+        metrics[id].hasAvailableBalance = true
       }
       accountById.set(account.accountId, id)
     }
@@ -727,19 +738,31 @@ export default function App() {
         .reduce((sum, position) => sum + position.costBasis, 0)
       const brokerMetrics = brokerAccountMetrics[id]
       const hasBrokerMetrics = Boolean(brokerMetrics?.hasBalance || brokerMetrics?.hasHoldings)
-      const actualCash = hasBrokerMetrics ? brokerMetrics.actualCashValue : noteActualCash
+      const cspCollateral = cashSecuredPuts
+        .filter((put) => getPutAccount(put) === id)
+        .reduce((sum, put) => sum + (Number(put.strike) || 0) * (Number(put.qty) || 0) * 100, 0)
+      const actualCash = brokerMetrics?.hasAvailableBalance
+        ? Math.max(0, brokerMetrics.availableBalance)
+        : hasBrokerMetrics
+          ? Math.max(0, brokerMetrics.actualCashValue - cspCollateral)
+          : noteActualCash
       const sgov = hasBrokerMetrics ? brokerMetrics.sgovValue : noteSgov
       const sgovCostBasis = hasBrokerMetrics
         ? (brokerMetrics.hasSgovCostBasis ? brokerMetrics.sgovCostBasis : null)
         : (noteSgovPositionsWithBasis.length ? noteSgovCostBasis : null)
       return [id, {
         actualCash,
+        actualCashSource: brokerMetrics?.hasAvailableBalance
+          ? 'institution-available'
+          : hasBrokerMetrics
+            ? 'cash-minus-csp'
+            : 'note',
         sgov,
         sgovCostBasis,
         totalAvailableCash: actualCash + sgov,
       }]
     }))
-  }, [allPositions, brokerAccountMetrics])
+  }, [allPositions, brokerAccountMetrics, cashSecuredPuts])
 
   const filteredPositions = useMemo(() => {
     const scoped = accountFilter === 'all'
@@ -845,6 +868,11 @@ export default function App() {
           value: cashMetricsByAccount[id]?.actualCash || 0,
           summaryKind: 'cash',
           summaryType: 'Liquid cash',
+          summaryNote: cashMetricsByAccount[id]?.actualCashSource === 'institution-available'
+            ? 'Available cash reported by the linked institution.'
+            : cashMetricsByAccount[id]?.actualCashSource === 'cash-minus-csp'
+              ? 'Cash holding less cash-secured put collateral.'
+              : 'Available cash from the portfolio note.',
         },
         {
           id: `csp-summary-${id}`,
@@ -1214,7 +1242,7 @@ export default function App() {
                                 <div><span>P&amp;L return</span><strong className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>{position.unrealizedPnLPercent == null ? 'Unavailable' : signedPercent(position.unrealizedPnLPercent, 2)}</strong></div>
                               </>
                             )}
-                            <small>{position.costBasis != null ? 'Estimated using the latest displayed price and Plaid cost basis.' : 'Calculated for the selected portfolio.'}</small>
+                            <small>{position.costBasis != null ? 'Estimated using the latest displayed price and Plaid cost basis.' : (position.summaryNote || 'Calculated for the selected portfolio.')}</small>
                           </>
                         ) : (
                           <>
@@ -1258,7 +1286,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 22</strong></div>
+              <div><span>Version</span><strong>Build 23</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
