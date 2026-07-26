@@ -741,10 +741,16 @@ export default function App() {
       const cspCollateral = cashSecuredPuts
         .filter((put) => getPutAccount(put) === id)
         .reduce((sum, put) => sum + (Number(put.strike) || 0) * (Number(put.qty) || 0) * 100, 0)
+      const cashLessCsp = Math.max(0, brokerMetrics?.actualCashValue - cspCollateral)
+      const hasCollateralizedCash = hasBrokerMetrics
+        && brokerMetrics.actualCashValue > 0
+        && cspCollateral > 0
       const actualCash = brokerMetrics?.hasAvailableBalance
-        ? Math.max(0, brokerMetrics.availableBalance)
+        ? hasCollateralizedCash
+          ? Math.min(Math.max(0, brokerMetrics.availableBalance), cashLessCsp)
+          : Math.max(0, brokerMetrics.availableBalance)
         : hasBrokerMetrics
-          ? Math.max(0, brokerMetrics.actualCashValue - cspCollateral)
+          ? cashLessCsp
           : noteActualCash
       const sgov = hasBrokerMetrics ? brokerMetrics.sgovValue : noteSgov
       const sgovCostBasis = hasBrokerMetrics
@@ -753,7 +759,9 @@ export default function App() {
       return [id, {
         actualCash,
         actualCashSource: brokerMetrics?.hasAvailableBalance
-          ? 'institution-available'
+          ? hasCollateralizedCash
+            ? 'institution-and-csp'
+            : 'institution-available'
           : hasBrokerMetrics
             ? 'cash-minus-csp'
             : 'note',
@@ -870,6 +878,8 @@ export default function App() {
           summaryType: 'Liquid cash',
           summaryNote: cashMetricsByAccount[id]?.actualCashSource === 'institution-available'
             ? 'Available cash reported by the linked institution.'
+            : cashMetricsByAccount[id]?.actualCashSource === 'institution-and-csp'
+              ? 'The lower of institution-reported available cash and cash holding less CSP collateral.'
             : cashMetricsByAccount[id]?.actualCashSource === 'cash-minus-csp'
               ? 'Cash holding less cash-secured put collateral.'
               : 'Available cash from the portfolio note.',
@@ -1286,7 +1296,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 23</strong></div>
+              <div><span>Version</span><strong>Build 24</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
