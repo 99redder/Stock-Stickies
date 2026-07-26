@@ -56,6 +56,14 @@ const money = (value, digits = 0) => new Intl.NumberFormat('en-US', {
   minimumFractionDigits: digits,
   maximumFractionDigits: digits,
 }).format(Number(value || 0))
+const signedMoney = (value, digits = 0) => {
+  const amount = Number(value || 0)
+  return `${amount > 0 ? '+' : ''}${money(amount, digits)}`
+}
+const signedPercent = (value, digits = 1) => {
+  const amount = Number(value || 0)
+  return `${amount > 0 ? '+' : ''}${amount.toFixed(digits)}%`
+}
 const number = (value, digits = 2) => Number(value || 0).toLocaleString('en-US', {
   maximumFractionDigits: digits,
 })
@@ -534,18 +542,72 @@ export default function App() {
   )
 
   const allPositions = useMemo(() => {
+    const brokerByPlaidAccountSecurity = new Map()
+    const brokerByStockAccountSecurity = new Map()
+    const brokerByAccountTicker = new Map()
+    for (const holding of Array.isArray(brokerageSnapshot?.positions) ? brokerageSnapshot.positions : []) {
+      const holdingTicker = normalizeTicker(holding?.ticker) === 'CUR:USD'
+        ? 'USD'
+        : normalizeTicker(holding?.ticker)
+      const holdingAccount = ACCOUNT_IDS.includes(holding?.stockStickiesAccount)
+        ? holding.stockStickiesAccount
+        : ''
+      if (holding?.securityId && holding?.accountId) {
+        brokerByPlaidAccountSecurity.set(`${holding.accountId}:${holding.securityId}`, holding)
+      }
+      if (holdingAccount && holding?.securityId) {
+        brokerByStockAccountSecurity.set(`${holdingAccount}:${holding.securityId}`, holding)
+      }
+      if (holdingAccount && holdingTicker) {
+        brokerByAccountTicker.set(`${holdingAccount}:${holdingTicker}`, holding)
+      }
+    }
     const raw = portfolioNotes.map((note) => {
       const ticker = normalizeTicker(note.title)
-      const price = ticker === 'USD' ? 1 : Number(prices[ticker] || plaidPrice(note) || 0)
+      const account = getAccount(note)
+      const brokerHolding = (note.plaidAccountId && note.plaidSecurityId
+        && brokerByPlaidAccountSecurity.get(`${note.plaidAccountId}:${note.plaidSecurityId}`))
+        || (note.plaidSecurityId && brokerByStockAccountSecurity.get(`${account}:${note.plaidSecurityId}`))
+        || brokerByAccountTicker.get(`${account}:${ticker}`)
+      const brokerPrice = Number(brokerHolding?.institutionPrice)
+      const price = ticker === 'USD'
+        ? 1
+        : Number(prices[ticker] || (Number.isFinite(brokerPrice) && brokerPrice > 0 ? brokerPrice : 0) || plaidPrice(note) || 0)
       const shares = Number(note.shares) || 0
       const category = colorLabels[note.color] || 'Unclassified'
+      const rawCostBasis = brokerHolding?.costBasis ?? note.plaidCostBasis
+      const parsedCostBasis = Number(rawCostBasis)
+      const taxLots = Array.isArray(brokerHolding?.taxLots)
+        ? brokerHolding.taxLots
+        : (Array.isArray(note.plaidTaxLots) ? note.plaidTaxLots : [])
+      const isShort = taxLots.length > 0 && taxLots.every((lot) => lot?.positionType === 'SHORT')
+      const hasCostBasis = ticker !== 'USD'
+        && !isShort
+        && rawCostBasis !== null
+        && rawCostBasis !== undefined
+        && rawCostBasis !== ''
+        && Number.isFinite(parsedCostBasis)
+        && parsedCostBasis >= 0
+      const costBasis = hasCostBasis ? parsedCostBasis : null
+      const value = shares * price
+      const unrealizedPnL = hasCostBasis && price > 0 ? value - costBasis : null
+      const unrealizedPnLPercent = unrealizedPnL != null && costBasis > 0
+        ? (unrealizedPnL / costBasis) * 100
+        : null
       return {
         id: note.id,
         ticker,
         shares,
         price,
-        value: shares * price,
-        account: getAccount(note),
+        value,
+        costBasis,
+        unrealizedPnL,
+        unrealizedPnLPercent,
+        taxLots,
+        taxLotCount: Number.isFinite(Number(brokerHolding?.taxLotCount))
+          ? Math.max(0, Math.trunc(Number(brokerHolding.taxLotCount)))
+          : taxLots.length,
+        account,
         category,
         note: String(note.text || '').trim(),
         isCash: category.trim().toLowerCase() === 'cash' || ticker === 'USD' || ticker === 'SGOV',
@@ -556,7 +618,7 @@ export default function App() {
       ...position,
       percentage: total > 0 ? (position.value / total) * 100 : 0,
     }))
-  }, [portfolioNotes, prices, colorLabels])
+  }, [portfolioNotes, prices, colorLabels, brokerageSnapshot])
 
   const accountTotals = useMemo(() => {
     const totals = {}
@@ -574,6 +636,8 @@ export default function App() {
       holdingsValue: 0,
       actualCashValue: 0,
       sgovValue: 0,
+      sgovCostBasis: 0,
+      hasSgovCostBasis: false,
       cashBalance: 0,
       hasBalance: false,
       hasHoldings: false,
@@ -609,6 +673,17 @@ export default function App() {
         metrics[id].cashBalance += value
       } else if (ticker === 'SGOV') {
         metrics[id].sgovValue += value
+        const costBasis = Number(position?.costBasis)
+        if (
+          position?.costBasis !== null &&
+          position?.costBasis !== undefined &&
+          position?.costBasis !== '' &&
+          Number.isFinite(costBasis) &&
+          costBasis >= 0
+        ) {
+          metrics[id].sgovCostBasis += costBasis
+          metrics[id].hasSgovCostBasis = true
+        }
         metrics[id].cashBalance += value
       }
     }
@@ -625,13 +700,21 @@ export default function App() {
       const noteSgov = allPositions
         .filter((position) => position.account === id && position.ticker === 'SGOV')
         .reduce((sum, position) => sum + position.value, 0)
+      const noteSgovPositionsWithBasis = allPositions
+        .filter((position) => position.account === id && position.ticker === 'SGOV' && position.costBasis != null)
+      const noteSgovCostBasis = noteSgovPositionsWithBasis
+        .reduce((sum, position) => sum + position.costBasis, 0)
       const brokerMetrics = brokerAccountMetrics[id]
       const hasBrokerMetrics = Boolean(brokerMetrics?.hasBalance || brokerMetrics?.hasHoldings)
       const actualCash = hasBrokerMetrics ? brokerMetrics.actualCashValue : noteActualCash
       const sgov = hasBrokerMetrics ? brokerMetrics.sgovValue : noteSgov
+      const sgovCostBasis = hasBrokerMetrics
+        ? (brokerMetrics.hasSgovCostBasis ? brokerMetrics.sgovCostBasis : null)
+        : (noteSgovPositionsWithBasis.length ? noteSgovCostBasis : null)
       return [id, {
         actualCash,
         sgov,
+        sgovCostBasis,
         totalAvailableCash: actualCash + sgov,
       }]
     }))
@@ -704,6 +787,9 @@ export default function App() {
   const cashPositionRows = scopedCashAccountIds
     .flatMap((id) => {
       const accountLabel = getAccountLabel(id)
+      const accountSgovValue = cashMetricsByAccount[id]?.sgov || 0
+      const accountSgovCostBasis = cashMetricsByAccount[id]?.sgovCostBasis ?? null
+      const accountSgovPnL = accountSgovCostBasis == null ? null : accountSgovValue - accountSgovCostBasis
       return [
         {
           id: `cash-summary-${id}`,
@@ -728,7 +814,12 @@ export default function App() {
           ticker: 'SGOV',
           category: 'Treasury cash equivalent',
           accountLabel,
-          value: cashMetricsByAccount[id]?.sgov || 0,
+          value: accountSgovValue,
+          costBasis: accountSgovCostBasis,
+          unrealizedPnL: accountSgovPnL,
+          unrealizedPnLPercent: accountSgovCostBasis > 0
+            ? (accountSgovPnL / accountSgovCostBasis) * 100
+            : null,
           summaryKind: 'sgov',
           summaryType: 'Cash equivalent',
         },
@@ -757,6 +848,10 @@ export default function App() {
   const askKPortfolio = useMemo(() => {
     const grandTotal = allPositions.reduce((sum, position) => sum + position.value, 0)
     const positionIds = new Set(allPositions.map((position) => position.id))
+    const positionsWithCostBasis = allPositions.filter((position) => position.costBasis != null)
+    const positionsWithUnrealizedPnL = positionsWithCostBasis.filter((position) => position.unrealizedPnL != null)
+    const knownCostBasis = positionsWithUnrealizedPnL.reduce((sum, position) => sum + position.costBasis, 0)
+    const knownUnrealizedPnL = positionsWithUnrealizedPnL.reduce((sum, position) => sum + position.unrealizedPnL, 0)
     return {
       asOf: new Date().toISOString(),
       nickname: nickname || null,
@@ -774,6 +869,13 @@ export default function App() {
         positionCount: allPositions.length,
         cspCount: cashSecuredPuts.length,
         missingPrices: allPositions.filter((position) => position.price <= 0).length,
+        positionsWithCostBasis: positionsWithCostBasis.length,
+        positionsWithUnrealizedPnL: positionsWithUnrealizedPnL.length,
+        knownCostBasis: Number(knownCostBasis.toFixed(2)),
+        knownUnrealizedPnL: Number(knownUnrealizedPnL.toFixed(2)),
+        knownUnrealizedPnLPercent: knownCostBasis > 0
+          ? Number(((knownUnrealizedPnL / knownCostBasis) * 100).toFixed(2))
+          : null,
       },
       accounts: [
         ...ACCOUNTS.map((account) => ({
@@ -788,6 +890,14 @@ export default function App() {
           availableCash: Number(cashMetricsByAccount[account.id].totalAvailableCash.toFixed(2)),
           totalAvailableCash: Number(cashMetricsByAccount[account.id].totalAvailableCash.toFixed(2)),
           totalCash: Number((cashMetricsByAccount[account.id].totalAvailableCash + (putObligationByAccount[account.id] || 0)).toFixed(2)),
+          knownCostBasis: Number(allPositions
+            .filter((position) => position.account === account.id && position.unrealizedPnL != null)
+            .reduce((sum, position) => sum + position.costBasis, 0)
+            .toFixed(2)),
+          knownUnrealizedPnL: Number(allPositions
+            .filter((position) => position.account === account.id && position.unrealizedPnL != null)
+            .reduce((sum, position) => sum + position.unrealizedPnL, 0)
+            .toFixed(2)),
           positionCount: accountTotals[account.id]?.count || 0,
           percentOfTotal: grandTotal > 0 ? Number((((accountTotals[account.id]?.value || 0) / grandTotal) * 100).toFixed(2)) : 0,
           cspObligation: Number((putObligationByAccount[account.id] || 0).toFixed(2)),
@@ -806,6 +916,12 @@ export default function App() {
         shares: position.shares,
         price: Number(position.price.toFixed(4)),
         value: Number(position.value.toFixed(2)),
+        costBasis: position.costBasis == null ? null : Number(position.costBasis.toFixed(2)),
+        unrealizedPnL: position.unrealizedPnL == null ? null : Number(position.unrealizedPnL.toFixed(2)),
+        unrealizedPnLPercent: position.unrealizedPnLPercent == null
+          ? null
+          : Number(position.unrealizedPnLPercent.toFixed(2)),
+        taxLotCount: position.taxLotCount,
         percentOfPortfolio: Number(position.percentage.toFixed(2)),
         account: position.account,
         accountLabel: getAccountLabel(position.account),
@@ -997,7 +1113,11 @@ export default function App() {
                       </div>
                       <div className="value-block">
                         <strong>{money(position.value)}</strong>
-                        <span>{position.percentage.toFixed(2)}%</span>
+                        <span className={position.unrealizedPnL == null ? '' : (position.unrealizedPnL >= 0 ? 'gain' : 'loss')}>
+                          {position.unrealizedPnL == null
+                            ? `${position.percentage.toFixed(2)}%`
+                            : `${signedMoney(position.unrealizedPnL)} · ${position.unrealizedPnLPercent == null ? 'n/a' : signedPercent(position.unrealizedPnLPercent)}`}
+                        </span>
                       </div>
                       <Icon name="chevron" size={16} />
                     </button>
@@ -1008,15 +1128,25 @@ export default function App() {
                             <div><span>Type</span><strong>{position.summaryType}</strong></div>
                             <div><span>Portfolio</span><strong>{position.accountLabel}</strong></div>
                             <div><span>Amount</span><strong>{money(position.value, 2)}</strong></div>
-                            <small>Calculated for the selected portfolio.</small>
+                            {position.costBasis != null && (
+                              <>
+                                <div><span>Cost basis</span><strong>{money(position.costBasis, 2)}</strong></div>
+                                <div><span>Unrealized P&amp;L</span><strong className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>{signedMoney(position.unrealizedPnL, 2)}</strong></div>
+                                <div><span>P&amp;L return</span><strong className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>{position.unrealizedPnLPercent == null ? 'Unavailable' : signedPercent(position.unrealizedPnLPercent, 2)}</strong></div>
+                              </>
+                            )}
+                            <small>{position.costBasis != null ? 'Estimated using the latest displayed price and Plaid cost basis.' : 'Calculated for the selected portfolio.'}</small>
                           </>
                         ) : (
                           <>
                             <div><span>Shares</span><strong>{number(position.shares, 6)}</strong></div>
                             <div><span>Price</span><strong>{position.price ? money(position.price, 2) : 'Unavailable'}</strong></div>
                             <div><span>Market value</span><strong>{money(position.value, 2)}</strong></div>
+                            <div><span>Allocation</span><strong>{position.percentage.toFixed(2)}%</strong></div>
+                            <div><span>Cost basis</span><strong>{position.costBasis == null ? 'Unavailable' : money(position.costBasis, 2)}</strong></div>
+                            <div><span>Unrealized P&amp;L</span><strong className={position.unrealizedPnL == null ? '' : (position.unrealizedPnL >= 0 ? 'gain' : 'loss')}>{position.unrealizedPnL == null ? 'Unavailable' : signedMoney(position.unrealizedPnL, 2)}</strong></div>
                             {position.note && <p>{position.note}</p>}
-                            <small>Read-only · Edit this position in the desktop app.</small>
+                            <small>{position.costBasis == null ? 'Cost basis was not provided by the brokerage.' : `Estimated return ${position.unrealizedPnLPercent == null ? 'unavailable' : signedPercent(position.unrealizedPnLPercent, 2)} using the latest displayed price.`}</small>
                           </>
                         )}
                       </div>
@@ -1049,7 +1179,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 19</strong></div>
+              <div><span>Version</span><strong>Build 20</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

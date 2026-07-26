@@ -82,12 +82,25 @@ function buildRobinhoodReconciliation(notes, positions) {
       note.plaidSecurityId !== position.securityId
     const plaidPrice = Number(position.institutionPrice)
     const oldPlaidPrice = Number(note.plaidInstitutionPrice)
+    const plaidCostBasis = Number(position.costBasis)
+    const oldPlaidCostBasis = Number(note.plaidCostBasis)
+    const costBasisChanged =
+      (position.costBasis == null) !== (note.plaidCostBasis == null) ||
+      (Number.isFinite(plaidCostBasis) &&
+        (!Number.isFinite(oldPlaidCostBasis) || Math.abs(oldPlaidCostBasis - plaidCostBasis) > 1e-8))
+    const taxLotCount = Number(position.taxLotCount)
+    const normalizedTaxLotCount = Number.isFinite(taxLotCount)
+      ? Math.max(0, Math.trunc(taxLotCount))
+      : (Array.isArray(position.taxLots) ? position.taxLots.length : 0)
+    const taxLotsChanged = Number(note.plaidTaxLotCount || 0) !== normalizedTaxLotCount
     const plaidMetadataChanged =
       note.plaidSecurityType !== position.type ||
       Boolean(note.plaidIsCrypto) !== Boolean(position.isCrypto) ||
       (Number.isFinite(plaidPrice) &&
         (!Number.isFinite(oldPlaidPrice) || Math.abs(oldPlaidPrice - plaidPrice) > 1e-8)) ||
-      note.plaidPriceAsOf !== position.priceAsOf
+      note.plaidPriceAsOf !== position.priceAsOf ||
+      costBasisChanged ||
+      taxLotsChanged
     if (sharesChanged || accountChanged || identifiersChanged || plaidMetadataChanged) {
       updates.push({
         noteId: note.id,
@@ -102,6 +115,8 @@ function buildRobinhoodReconciliation(notes, positions) {
         plaidIsCrypto: Boolean(position.isCrypto),
         plaidInstitutionPrice: position.institutionPrice,
         plaidInstitutionValue: position.institutionValue,
+        plaidCostBasis: position.costBasis,
+        plaidTaxLotCount: normalizedTaxLotCount,
         plaidPriceAsOf: position.priceAsOf,
       })
     }

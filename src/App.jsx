@@ -1628,6 +1628,8 @@ const firebaseConfig = {
                         plaidIsCrypto: !!change.plaidIsCrypto,
                         plaidInstitutionPrice: change.plaidInstitutionPrice ?? null,
                         plaidInstitutionValue: change.plaidInstitutionValue ?? null,
+                        plaidCostBasis: change.plaidCostBasis ?? null,
+                        plaidTaxLotCount: Number(change.plaidTaxLotCount) || 0,
                         plaidPriceAsOf: change.plaidPriceAsOf || null,
                         plaidSource: 'robinhood',
                         plaidLastSyncedAt: syncedAt
@@ -1654,6 +1656,10 @@ const firebaseConfig = {
                         plaidIsCrypto: !!position.isCrypto,
                         plaidInstitutionPrice: position.institutionPrice ?? null,
                         plaidInstitutionValue: position.institutionValue ?? null,
+                        plaidCostBasis: position.costBasis ?? null,
+                        plaidTaxLotCount: Number.isFinite(Number(position.taxLotCount))
+                            ? Math.max(0, Math.trunc(Number(position.taxLotCount)))
+                            : (Array.isArray(position.taxLots) ? position.taxLots.length : 0),
                         plaidPriceAsOf: position.priceAsOf || null,
                         plaidSource: 'robinhood',
                         plaidLastSyncedAt: syncedAt
@@ -2444,7 +2450,32 @@ const firebaseConfig = {
                     const ticker = normalizeTicker(n.title);
                     const price = isUsdTicker(ticker) ? 1 : portfolioPrices[ticker] || 0;
                     const value = price * n.shares;
-                    return { ticker: ticker || n.title, shares: n.shares, price, value, noteId: n.id, color: n.color, account: getNoteAccount(n) };
+                    const rawCostBasis = n.plaidCostBasis;
+                    const parsedCostBasis = Number(rawCostBasis);
+                    const hasCostBasis = rawCostBasis !== null
+                        && rawCostBasis !== undefined
+                        && rawCostBasis !== ''
+                        && Number.isFinite(parsedCostBasis)
+                        && parsedCostBasis >= 0;
+                    const costBasis = hasCostBasis ? parsedCostBasis : null;
+                    const hasMarketValue = Number.isFinite(price) && price > 0;
+                    const unrealizedPnL = hasCostBasis && hasMarketValue ? value - costBasis : null;
+                    const unrealizedPnLPercent = unrealizedPnL != null && costBasis > 0
+                        ? (unrealizedPnL / costBasis) * 100
+                        : null;
+                    return {
+                        ticker: ticker || n.title,
+                        shares: n.shares,
+                        price,
+                        value,
+                        costBasis,
+                        unrealizedPnL,
+                        unrealizedPnLPercent,
+                        taxLotCount: Number(n.plaidTaxLotCount) || 0,
+                        noteId: n.id,
+                        color: n.color,
+                        account: getNoteAccount(n)
+                    };
                 });
                 const totalValue = holdings.reduce((sum, h) => sum + h.value, 0);
                 return holdings.map(h => ({
@@ -2611,6 +2642,8 @@ const firebaseConfig = {
                     h.shares,
                     Number((h.price || 0).toFixed(4)),
                     Number((h.value || 0).toFixed(2)),
+                    h.costBasis == null ? '' : Number(h.costBasis.toFixed(2)),
+                    h.unrealizedPnL == null ? '' : Number(h.unrealizedPnL.toFixed(2)),
                     Number((h.percentage || 0).toFixed(4)),
                     h.color,
                     colorLabels[h.color] || ''
@@ -2624,6 +2657,10 @@ const firebaseConfig = {
                 const trimNote = (t) => String(t || '').trim().slice(0, 1500);
                 // Ask K always sees every account, regardless of which one is on screen.
                 const missingPrices = allPortfolioData.filter(h => !Number.isFinite(h.price) || h.price <= 0).length;
+                const positionsWithCostBasis = allPortfolioData.filter(h => h.costBasis != null);
+                const positionsWithUnrealizedPnL = positionsWithCostBasis.filter(h => h.unrealizedPnL != null);
+                const knownCostBasis = positionsWithUnrealizedPnL.reduce((sum, h) => sum + h.costBasis, 0);
+                const knownUnrealizedPnL = positionsWithUnrealizedPnL.reduce((sum, h) => sum + h.unrealizedPnL, 0);
 
                 return {
                     asOf: new Date().toISOString(),
@@ -2634,7 +2671,14 @@ const firebaseConfig = {
                         longPlusCspExposure: Number((grandPortfolioValue + totalPutObligation).toFixed(2)),
                         positionCount: allPortfolioData.length,
                         cspCount: cashSecuredPuts.length,
-                        missingPrices
+                        missingPrices,
+                        positionsWithCostBasis: positionsWithCostBasis.length,
+                        positionsWithUnrealizedPnL: positionsWithUnrealizedPnL.length,
+                        knownCostBasis: Number(knownCostBasis.toFixed(2)),
+                        knownUnrealizedPnL: Number(knownUnrealizedPnL.toFixed(2)),
+                        knownUnrealizedPnLPercent: knownCostBasis > 0
+                            ? Number(((knownUnrealizedPnL / knownCostBasis) * 100).toFixed(2))
+                            : null
                     },
                     // Account definitions + per-account totals. Positions carry an `account`
                     // id so Ask K can answer composite or per-account questions.
@@ -2644,6 +2688,14 @@ const firebaseConfig = {
                             label: a.label,
                             strategy: a.strategy,
                             marketValue: Number((accountTotals[a.id]?.value || 0).toFixed(2)),
+                            knownCostBasis: Number(allPortfolioData
+                                .filter(h => h.account === a.id && h.unrealizedPnL != null)
+                                .reduce((sum, h) => sum + h.costBasis, 0)
+                                .toFixed(2)),
+                            knownUnrealizedPnL: Number(allPortfolioData
+                                .filter(h => h.account === a.id && h.unrealizedPnL != null)
+                                .reduce((sum, h) => sum + h.unrealizedPnL, 0)
+                                .toFixed(2)),
                             positionCount: accountTotals[a.id]?.positionCount || 0,
                             percentOfTotal: grandPortfolioValue > 0
                                 ? Number((((accountTotals[a.id]?.value || 0) / grandPortfolioValue) * 100).toFixed(2))
@@ -2668,6 +2720,12 @@ const firebaseConfig = {
                             shares: h.shares,
                             price: Number((h.price || 0).toFixed(4)),
                             value: Number((h.value || 0).toFixed(2)),
+                            costBasis: h.costBasis == null ? null : Number(h.costBasis.toFixed(2)),
+                            unrealizedPnL: h.unrealizedPnL == null ? null : Number(h.unrealizedPnL.toFixed(2)),
+                            unrealizedPnLPercent: h.unrealizedPnLPercent == null
+                                ? null
+                                : Number(h.unrealizedPnLPercent.toFixed(2)),
+                            taxLotCount: h.taxLotCount,
                             percentOfPortfolio: Number((h.percentage || 0).toFixed(2)),
                             account: h.account,
                             accountLabel: getAccountLabel(h.account),
@@ -2756,8 +2814,8 @@ const firebaseConfig = {
                 if (portfolioData.length === 0) {
                     lines.push('_No positions._');
                 } else {
-                    lines.push('| # | Ticker | Account | Category | Shares | Price | Market value | % of shown |');
-                    lines.push('|---|---|---|---|---|---|---|---|');
+                    lines.push('| # | Ticker | Account | Category | Shares | Price | Market value | Cost basis | Unrealized P&L | % of shown |');
+                    lines.push('|---|---|---|---|---|---|---|---|---|---|');
                     portfolioData.forEach((h, i) => {
                         const priced = Number.isFinite(h.price) && h.price > 0;
                         const cells = [
@@ -2768,6 +2826,10 @@ const firebaseConfig = {
                             h.shares.toLocaleString(),
                             priced ? money(h.price) : 'no price',
                             priced ? money(h.value) : '—',
+                            h.costBasis == null ? 'unavailable' : money(h.costBasis),
+                            h.unrealizedPnL == null
+                                ? 'unavailable'
+                                : `${h.unrealizedPnL >= 0 ? '+' : ''}${money(h.unrealizedPnL)}${h.unrealizedPnLPercent == null ? '' : ` (${h.unrealizedPnLPercent >= 0 ? '+' : ''}${h.unrealizedPnLPercent.toFixed(2)}%)`}`,
                             `${h.percentage.toFixed(2)}%`
                         ];
                         lines.push(`| ${cells.join(' | ')} |`);
@@ -3205,7 +3267,10 @@ const firebaseConfig = {
                                             if (hidePortfolioValues) {
                                                 return `${h.ticker}: ${h.shares} shares (${h.percentage.toFixed(1)}%)`;
                                             }
-                                            return `${h.ticker}: ${h.shares} shares @ $${h.price.toFixed(2)} = $${h.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${h.percentage.toFixed(1)}%)`;
+                                            const pnl = h.unrealizedPnL == null
+                                                ? ''
+                                                : ` | P&L ${h.unrealizedPnL >= 0 ? '+' : ''}${formatUsd(h.unrealizedPnL)}${h.unrealizedPnLPercent == null ? '' : ` (${h.unrealizedPnLPercent >= 0 ? '+' : ''}${h.unrealizedPnLPercent.toFixed(1)}%)`}`;
+                                            return `${h.ticker}: ${h.shares} shares @ $${h.price.toFixed(2)} = $${h.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${h.percentage.toFixed(1)}%)${pnl}`;
                                         }
                                     }
                                 },

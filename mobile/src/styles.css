@@ -102,6 +102,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .ticker-block span { display: block; margin-top: 4px; overflow: hidden; color: var(--muted); font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
 .value-block { text-align: right; font-variant-numeric: tabular-nums; }
 .value-block span { display: block; margin-top: 4px; color: var(--green); font-size: 10px; }
+.value-block span.gain, .position-detail strong.gain { color: #39d98a; }
+.value-block span.loss, .position-detail strong.loss { color: #ff6b7c; }
 .position-row > button > svg { color: #627085; transition: transform .2s ease; }
 .position-row.expanded > button > svg { transform: rotate(180deg); }
 .position-detail { padding: 0 14px 14px 49px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
