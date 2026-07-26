@@ -23,26 +23,59 @@ const fitText = (ctx, text, maxWidth, startingSize, weight = 800) => {
   return size
 }
 
-const loadImage = async (source) => {
-  if (!source) return null
-  let objectUrl = ''
-  try {
-    const response = await fetch(source)
-    if (!response.ok) return null
-    objectUrl = URL.createObjectURL(await response.blob())
-    const image = new Image()
-    image.decoding = 'async'
-    await new Promise((resolve, reject) => {
-      image.onload = resolve
-      image.onerror = reject
-      image.src = objectUrl
-    })
-    return image
-  } catch {
-    return null
-  } finally {
-    if (objectUrl) URL.revokeObjectURL(objectUrl)
+const decodeImage = (source, crossOrigin = '') => new Promise((resolve, reject) => {
+  const image = new Image()
+  image.decoding = 'async'
+  if (crossOrigin) image.crossOrigin = crossOrigin
+  image.referrerPolicy = 'no-referrer'
+  image.onload = () => resolve(image)
+  image.onerror = reject
+  image.src = source
+})
+
+const loadImage = async (sources) => {
+  const candidates = (Array.isArray(sources) ? sources : [sources]).filter(Boolean)
+  for (const source of candidates) {
+    let objectUrl = ''
+    try {
+      if (String(source).startsWith('data:') || String(source).startsWith('blob:')) {
+        return await decodeImage(source)
+      }
+      const response = await fetch(source, {
+        mode: 'cors',
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+      })
+      if (!response.ok) throw new Error(`Profile image returned ${response.status}`)
+      objectUrl = URL.createObjectURL(await response.blob())
+      return await decodeImage(objectUrl)
+    } catch {
+      try {
+        return await decodeImage(source, 'anonymous')
+      } catch {
+        // Try the next available profile-photo source.
+      }
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
   }
+  return null
+}
+
+const downloadBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const isMobileShareDevice = () => {
+  if (navigator.userAgentData?.mobile === true) return true
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')
 }
 
 const drawBrandMark = (ctx, x, y, size) => {
@@ -211,9 +244,10 @@ export async function createYtdShareCard({
     const percentText = `${numericPercent > 0 ? '+' : ''}${numericPercent.toFixed(2)}%`
     ctx.font = '850 64px Inter, ui-sans-serif, system-ui, sans-serif'
     ctx.fillText(percentText, 122, 590)
+    const percentWidth = ctx.measureText(percentText).width
     ctx.fillStyle = '#aab6c6'
-    ctx.font = '650 26px Inter, ui-sans-serif, system-ui, sans-serif'
-    ctx.fillText('cash-flow-adjusted return', 122 + ctx.measureText(percentText).width + 28, 584)
+    ctx.font = '650 24px Inter, ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText('cash-flow-adjusted return', 122 + percentWidth + 32, 584)
   } else {
     ctx.fillStyle = '#aab6c6'
     ctx.font = '650 27px Inter, ui-sans-serif, system-ui, sans-serif'
@@ -243,18 +277,17 @@ export async function createYtdShareCard({
 
 export async function shareOrDownloadYtdCard(blob, filename, shareTitle) {
   const file = new File([blob], filename, { type: 'image/png' })
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
-    await navigator.share({ files: [file], title: shareTitle })
-    return 'shared'
+  if (isMobileShareDevice() && navigator.share && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: shareTitle })
+      return 'shared'
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error
+      downloadBlob(blob, filename)
+      return 'downloaded'
+    }
   }
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(blob, filename)
   return 'downloaded'
 }
 

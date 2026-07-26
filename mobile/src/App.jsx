@@ -1071,7 +1071,7 @@ export default function App() {
         returnPercent: scopedYtdPerformance.returnPercent,
         scopeLabel,
         displayName,
-        profilePhoto,
+        profilePhoto: [profilePhoto, user.photoURL],
       })
       const filename = `stock-stickies-${year}-ytd-${accountSlug}.png`
       setYtdCopyStatus('')
@@ -1434,7 +1434,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 33</strong></div>
+              <div><span>Version</span><strong>Build 34</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

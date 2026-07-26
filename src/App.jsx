@@ -1286,7 +1286,7 @@ const firebaseConfig = {
                         cashSecuredPuts,
                         cashSecuredPutsSortMode,
                         nickname,
-                        profilePhoto,
+                        profilePhoto: [profilePhoto, auth.currentUser?.photoURL],
                         notesGroupMode,
                         portfolioLegendVisible,
                         portfolioLegendDollarAmounts,

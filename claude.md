@@ -513,14 +513,16 @@ It deliberately omits balances, positions, and account numbers.
 
 The control opens a preview with **Copy image** and **Share / Save** actions. Copy image
 writes the PNG directly to the system clipboard when the browser supports image clipboard
-items. Share / Save opens the native share sheet on devices that support sharing image
-files, including the installed iPhone PWA; other browsers download the PNG. Profile photos
-are fetched into a local blob before drawing; if the image cannot be read safely, the
-renderer uses initials so a cross-origin image cannot break the export.
+items. Desktop always downloads from Share / Download instead of entering the browser's
+unreliable file-share path. Mobile opens the native share sheet when supported and falls
+back to download if sharing fails. Profile photos use both the saved profile image and the
+current authentication-provider PFP as candidates. Remote photos are fetched into a local
+blob before drawing, with a CORS-safe image fallback; initials are used only when neither
+photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-The visible release was **Build 33** when this guide was updated. Every mobile release must
+The visible release was **Build 34** when this guide was updated. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |
