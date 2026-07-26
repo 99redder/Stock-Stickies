@@ -1,22 +1,28 @@
 # Stock Stickies — Project Context
 
 ## Overview
-A React SPA for managing stock-related sticky notes with portfolio tracking, real-time stock quotes, news, and cloud sync via Firebase. Deployed to GitHub Pages at `https://stockstickies.com`.
+Stock Stickies has **two separate React applications in this repository**:
+
+1. The full desktop application at `https://stockstickies.com` (and `https://www.stockstickies.com`). It owns note editing, portfolio management, categories, settings, and Firestore writes.
+2. The read-only mobile companion PWA at `https://mobile.stockstickies.com`. It has its own source tree, build, hosting project, service worker, manifest, layout, and release number.
+
+Both apps authenticate against the same Firebase project and read the same `users/{uid}` Firestore document. The mobile app also calls separate Cloudflare Workers for brokerage/Plaid data and Ask K. A desktop deployment does **not** deploy mobile, and a mobile deployment does **not** deploy desktop.
 
 ---
 
 ## Tech Stack
-| Layer | Technology |
+| Layer | Desktop | Mobile |
 |---|---|
-| Frontend | React 19 (npm) |
-| Build Tool | Vite 7 |
-| Styling | Tailwind CSS v4 (via `@tailwindcss/vite` plugin) |
-| Auth & DB | Firebase v12 — Firestore + Firebase Auth |
-| Security | Firebase App Check with reCAPTCHA v3 |
-| Stock API | Finnhub (quotes, fundamentals, earnings) |
-| News API | MarketAux |
-| Charts | Chart.js v4 + chartjs-plugin-datalabels |
-| Screenshot | html2canvas-pro |
+| Frontend | React 19 | React 19 |
+| Build | Vite 7 | Vite 7 + Cloudflare/Sites plugins |
+| Styling | Tailwind CSS v4 | Purpose-built CSS in `mobile/src/styles.css` |
+| Auth/data | Firebase Auth + Firestore | Same Firebase Auth + read-only Firestore subscription |
+| Hosting | GitHub Pages | OpenAI Sites custom domain |
+| Brokerage | Portfolio notes plus Finnhub pricing | Plaid/Robinhood data through `rentals-api` Worker |
+| AI | Ask K portfolio context | Ask K Worker, with all accounts supplied |
+| PWA | No | Manifest, service worker, installable Home Screen app |
+
+Shared services include Firebase v12, Firebase App Check/reCAPTCHA v3, Finnhub, MarketAux, and Cloudflare Workers. Desktop also uses Chart.js and `html2canvas-pro`.
 
 ---
 
@@ -27,10 +33,11 @@ Sticky-Notes/
 ├── vite.config.js                     # Vite config (react + tailwindcss plugins)
 ├── package.json                       # npm scripts: dev, build, lint, preview
 ├── eslint.config.js
-├── CLAUDE.md                          # This file
+├── claude.md                          # This project/agent reference
 ├── ENCRYPTION_IMPLEMENTATION.md
 ├── SECURITY_RECOMMENDATIONS.md
 ├── CNAME                              # GitHub Pages domain → www.stockstickies.com
+├── .github/workflows/deploy.yml       # Desktop-only GitHub Pages workflow
 ├── public/
 │   ├── robots.txt                     # SEO: allow all, link to sitemap
 │   ├── sitemap.xml                    # SEO: canonical URL for the SPA
@@ -45,16 +52,56 @@ Sticky-Notes/
 │   ├── index.css
 │   └── components/
 │       └── NoteCard.jsx               # Draggable note card component
-└── assets/                            # Mirror of public/assets (keep in sync)
+├── assets/                            # Mirror of public/assets (keep in sync)
+└── mobile/                            # Separate mobile companion application
+    ├── .openai/hosting.json           # Existing Sites project identity; never replace/invent
+    ├── index.html
+    ├── package.json
+    ├── vite.config.js
+    ├── wrangler.jsonc
+    ├── build/sites-vite-plugin.js     # Copies hosting metadata into the build
+    ├── worker/index.js                # Static asset Worker entry
+    ├── src/
+    │   ├── main.jsx                   # PWA registration and version-update checks
+    │   ├── App.jsx                    # Mobile UI, auth, Firestore, brokerage, Ask K
+    │   └── styles.css                 # Mobile-only design system/layout
+    └── public/
+        ├── manifest.webmanifest
+        ├── sw.js
+        ├── version.json
+        ├── reset.html
+        ├── _headers
+        └── stock-stickies-app-icon-v2-*.png
 ```
 
-### Build & Deploy
+### Desktop Build and Deployment
+
 ```bash
-npm run dev        # Local dev server (Vite HMR)
-npm run build      # Produces dist/ — then push to GitHub Pages
-npm run preview    # Preview dist/ locally
+npm ci
+npm run dev
+npm run build      # Produces root dist/
+npm run preview
 ```
-GitHub Pages reads from the `main` branch. The `CNAME` file routes `www.stockstickies.com` to the Pages site.
+
+Pushing `main` triggers `.github/workflows/deploy.yml`. GitHub Actions uses Node 20, injects the desktop Firebase/reCAPTCHA secrets at build time, builds the root project, copies `CNAME` into `dist/`, and deploys that artifact to GitHub Pages. The workflow does not enter or deploy `mobile/`.
+
+### Mobile Build and Deployment
+
+Run mobile commands from `mobile/`, not the repository root:
+
+```bash
+cd mobile
+npm ci
+npm run dev
+npm run build
+npm run preview
+```
+
+The mobile build produces a Sites/Worker-compatible artifact under `mobile/dist/`, including the client assets, server entry, and copied `.openai/hosting.json`.
+
+Because `mobile/.openai/hosting.json` exists, mobile must be released with the **Sites build/save/deploy workflow**. Always reuse the opaque `project_id` in that file. Never create a second site or substitute a guessed ID. Push the exact source state first, package that same commit, save a version using that commit SHA, then deploy the saved version. A GitHub push alone only releases desktop.
+
+The intended production address is always `https://mobile.stockstickies.com`. The Sites provider URL may also work, but it is not the user-facing install URL.
 
 ---
 
@@ -265,6 +312,235 @@ intents are also described in the Ask K worker system prompt (`worker/src/index.
 
 ---
 
+## Mobile Companion Architecture
+
+The mobile app is not a responsive build of desktop. It is a separate, deliberately
+read-only portfolio companion under `mobile/`. Do not move mobile UI into `src/App.jsx`,
+do not deploy the root `dist/` to the mobile domain, and do not assume a root build contains
+mobile changes.
+
+### Product and Design Boundaries
+
+- Mobile uses the current dark Stock Stickies design on both the login screen and the
+  authenticated app. Do not restore the old login artwork, old yellow-sticky logo, or old
+  white-background PWA icon.
+- The current icons are `mobile/public/stock-stickies-app-icon-v2-*.png`, referenced by
+  `manifest.webmanifest`. Keep the normal and maskable entries intact.
+- Mobile has **no portfolio-allocation donut or treemap**. Those visualizations remain part
+  of desktop and must not be removed from desktop when changing mobile.
+- Position cards show portfolio composition as a neutral percentage in its own location.
+  Red/green values are reserved for financial gain/loss, so composition must not look like
+  performance.
+- Cost-basis gain/loss is always labeled **Unrealized P&L**. “2026 YTD” is a separate,
+  cash-flow-adjusted performance measure and must never be relabeled as unrealized P&L.
+- Build information belongs inside the Profile modal under App details, not beside the
+  avatar or in the main portfolio view. The profile modal must retain all existing profile
+  data such as member since, last login, nickname, email, and other current fields.
+- The Cash & Collateral panel starts collapsed. Expanding it once reveals per-account
+  totals; expanding an account a second time reveals the component breakdown.
+
+### Authentication and Shared Firestore Data
+
+Mobile uses the same Firebase Auth users and the same `users/{uid}` document as desktop.
+The login supports email/password, password reset, and Google sign-in. After login, the
+mobile app subscribes to the user document and reads the portfolio notes, categories,
+labels, cash-secured puts, watch list, profile/nickname/photo data, and encrypted API-key
+data needed for quotes.
+
+Desktop is the editing surface and performs Firestore writes. Mobile should remain
+read-only for portfolio data. A mobile feature must not silently introduce a second
+portfolio store or write a derived brokerage balance back over the desktop data.
+
+### Static Firebase Configuration
+
+Vite substitutes `VITE_*` variables while compiling; a runtime hosting environment cannot
+retroactively inject those values into already-built JavaScript. This previously caused
+the production mobile login to display “Firebase is not configured for this app.”
+
+`mobile/src/App.jsx` therefore has production Firebase web-config and reCAPTCHA fallbacks
+in addition to `import.meta.env.VITE_*`. These are public Firebase client identifiers, not
+server credentials. Keep the Google Cloud/Firebase API key restricted to the intended APIs
+and origins. Do not remove the source fallbacks unless the deployment is replaced with a
+verified build-time environment injection mechanism.
+
+### Brokerage and Ask K Services
+
+The mobile app sends the signed-in user's Firebase ID token to:
+
+- `https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/holdings` for
+  Plaid/Robinhood accounts, holdings, cost basis, transactions, YTD data, and snapshots.
+- `https://stock-stickies-askk.99redder.workers.dev/api/ask-k` for Ask K.
+
+The current URLs include a `client=mobile-build-9` query marker. That marker identifies the
+client contract; it is not the visible mobile release number and does not need to match the
+current Build label unless the API contract itself changes.
+
+Ask K must receive every account even if the user is viewing a single account. Its request
+context includes positions, account labels, percentage of the total portfolio, percentage
+of the account, account totals, strategies, cash, CSP data, and the available performance
+fields. “Cannot reach Ask K right now” generally indicates Worker/network/config trouble,
+not a Firestore sync issue.
+
+The brokerage Worker is maintained in a separate repository:
+
+```text
+/Users/chrisgorham/Websites/rentals/cloudflare
+GitHub: 99redder/stuff
+Worker: rentals-api
+Primary files:
+  src/worker.js
+  src/performance-calculations.js
+```
+
+Changes to brokerage reconciliation or YTD calculations require building/deploying that
+Worker as well as releasing the frontend that consumes the changed response.
+
+### Mobile Cash and CSP Rules
+
+Plaid's Robinhood brokerage `current` cash value can be a cash pool that already includes
+cash reserved for cash-secured puts. It does not reliably expose Robinhood's free buying
+power. In the Individual account, adding the nominal CSP obligation to that cash pool
+would double count collateral.
+
+The mobile normalization therefore follows these rules:
+
+1. `cashPool` is the brokerage cash amount returned by Plaid.
+2. When that pool includes CSP-secured cash, set/display
+   `cashIncludesCspCollateral`.
+3. CSP obligation remains visible as a separate informational component, but uses
+   `includeInCashTotal: false` and `includeInComposition: false`.
+4. `totalCashPool` is the deduplicated cash total: brokerage cash pool plus SGOV where
+   applicable. It is not `cash + CSP + SGOV`.
+5. “Total available cash” may include SGOV as a liquid cash equivalent, but must not imply
+   that the Plaid brokerage cash pool equals immediately spendable buying power.
+6. Never guess the Individual free-cash/buying-power figure by subtracting or adding CSP
+   unless the source data explicitly proves that treatment.
+
+This fixed the prior Individual display of `$20,292` (`$9,092` cash plus `$11,200` CSP)
+when `$9,092` already included that reserved collateral. Exact free buying power remains a
+separate Robinhood concept and may require transaction/export data unavailable through
+Plaid.
+
+For all accounts, the collapsed Cash & Collateral total uses deduplicated components.
+Actual cash, CSP collateral/obligation, and SGOV can each appear in the expanded detail,
+with copy that makes inclusion/exclusion from the total clear.
+
+### Cost Basis and Unrealized P&L
+
+Plaid holdings and tax lots can supply cost basis when the institution provides it.
+Mobile and desktop derive:
+
+```text
+unrealized P&L = current position value - available cost basis
+```
+
+Missing basis must remain unavailable; do not coerce it to zero. Account and portfolio
+totals must distinguish known-basis positions from holdings whose basis is missing.
+All-short tax-lot sets and option/short data must not be treated as ordinary long-position
+cost basis without explicit handling.
+
+Desktop shows Unrealized P&L on each note, per account where appropriate, and in portfolio
+totals/line items. Mobile shows it on position cards, account summaries, and portfolio
+totals where the returned data supports it.
+
+### Reconciled 2026 YTD Performance
+
+YTD performance is not ending balance minus opening balance. Withdrawals, deposits,
+contributions, and distributions must be treated as external cash flows:
+
+```text
+gain = ending value - opening value - net external cash flow
+```
+
+The backend uses Modified Dietz for the return percentage so cash flows are weighted by
+when they occurred. Dividends and trading activity are investment results, not external
+cash flows. Plaid transaction subtypes such as contribution, deposit, distribution, and
+withdrawal are recognized when supplied.
+
+Opening balances and reconciliation state are server-side, not hardcoded in either
+frontend. The Worker uses these KV namespaces:
+
+```text
+stock_stickies:plaid:robinhood:performance:config
+stock_stickies:plaid:robinhood:performance:snapshots:
+stock_stickies:plaid:robinhood:performance:transactions:
+```
+
+The Worker also writes daily account snapshots so performance can continue from observed
+values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
+the Individual account. When external cash-flow history is incomplete, the API/frontend
+uses a status such as `cash-flow-history-incomplete` and displays “Needs cash-flow
+history.” It must not show a raw balance decline as a large YTD loss. A Robinhood 2026
+transaction CSV can be used to reconcile the missing Individual cash flows; statement
+balances alone are insufficient.
+
+### PWA Versioning and Update Behavior
+
+The visible release was **Build 31** when this guide was updated. Every mobile release must
+increment and synchronize all three user-visible build markers:
+
+| File | Marker |
+|---|---|
+| `mobile/src/main.jsx` | `APP_BUILD` |
+| `mobile/public/version.json` | numeric `build` |
+| `mobile/src/App.jsx` | Build label in the Profile modal |
+
+Before release, search for the old build number and verify that no user-visible marker was
+missed. Review the cache name in `mobile/public/sw.js` when the shell/cache contract
+changes; cache names use the `stock-stickies-mobile-*` prefix.
+
+`mobile/src/main.jsx` registers `/sw.js` with `updateViaCache: 'none'`. It checks
+`/version.json` with a timestamp and no-store headers on initial load, `pageshow`, focus,
+visibility changes, and periodically. When a newer build is detected it deletes mobile
+caches and reloads the root with cache-busting query parameters.
+
+`mobile/public/sw.js` uses network-first loading for same-origin GET requests, with an
+offline cache fallback. It never caches `sw.js` or `version.json`, calls `skipWaiting()`,
+claims clients, and deletes older Stock Stickies mobile caches on activation.
+
+`mobile/public/_headers` applies no-cache/no-store/must-revalidate behavior to the app
+shell, `index.html`, `reset.html`, manifest, service worker, and version file. Preserve
+these headers so installed PWAs can discover releases without being deleted and
+reinstalled.
+
+`https://mobile.stockstickies.com/reset.html` is the recovery route for a genuinely stuck
+installation. It unregisters service workers, clears Cache Storage, then redirects to a
+fresh root URL. Normal releases should update automatically; removing and reinstalling
+the PWA should be a last resort.
+
+### Mobile Release Checklist
+
+1. Make changes only in the appropriate app/service repository.
+2. Increment the three mobile build markers together.
+3. If shell caching behavior changed, update/review the service-worker cache identifier.
+4. Run `npm run build` from `mobile/`; a root build does not validate mobile.
+5. Check that `mobile/dist/.openai/hosting.json` was copied and still contains the existing
+   project identity.
+6. Commit and push the exact source state to `main`.
+7. Use Sites to push/package that exact commit, save a version, and deploy the saved
+   version to the existing project.
+8. Confirm deployment reaches a terminal success state.
+9. Verify `https://mobile.stockstickies.com/version.json?checked=<timestamp>` returns the
+   new build.
+10. Test the custom domain in a normal browser and an installed iPhone PWA: new login
+    design, Firebase login, Profile build label, current branding/icon, cash totals,
+    position composition, Unrealized P&L, YTD status, and Ask K.
+
+### Mobile Troubleshooting Guide
+
+| Symptom | First checks |
+|---|---|
+| Build JSON is new but Profile shows an old build | Confirm all three build markers, deployed asset hash, service-worker activation, and custom-domain cache |
+| GitHub Pages 404 on a mobile path | Mobile is not hosted by GitHub Pages; use the Sites custom domain/deployment |
+| Old login/logo/icon | Confirm the Sites artifact came from current `mobile/`, manifest uses `app-icon-v2`, then clear the installed manifest/SW via `reset.html` |
+| “Firebase is not configured for this app” | Confirm the source fallback config survived and the built JS contains production config; runtime-only Sites env values are insufficient for Vite |
+| Ask K cannot be reached | Inspect Ask K Worker reachability, URL/client contract, Firebase token, CORS, and the browser network response |
+| Cash is too high by exactly the CSP amount | CSP was probably added to a Plaid cash pool that already includes reserved collateral |
+| Individual YTD shows a large loss after withdrawals | External cash-flow history is incomplete; hide/flag YTD until transactions are reconciled |
+| Installed PWA will not update | Verify `version.json`, `_headers`, SW registration, cache-name behavior, then use `/reset.html`; reinstall only if browser reset is blocked |
+
+---
+
 ## Color System
 Categories use Tailwind CSS background classes. The full palette available for custom categories:
 ```javascript
@@ -348,21 +624,44 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
 ---
 
 ## Testing Checklist
-1. Login/logout (verify data persists across sessions)
-2. Create/edit/delete notes
-3. Add/delete/recolor categories (notes must stay in assigned category)
-4. Category reassignment modal when deleting a category with notes
-5. Dark mode toggle
-6. Portfolio chart updates at scheduled times; privacy mode toggle
-7. Stock data & news fetching (requires Finnhub/MarketAux keys)
-8. Cloud sync status indicator
-9. Page refresh persistence
-10. Logout → login (categories and notes persist)
-11. Watch list: add ticker, click to expand, remove
+
+### Desktop
+
+1. Login/logout and verify data persists across sessions.
+2. Create, edit, classify, move, and delete notes.
+3. Add, delete, rename, and recolor categories; notes must stay assigned.
+4. Test the reassignment modal when deleting a category with notes.
+5. Test locked position editing, duplicate-position prevention, and account grouping.
+6. Test dark mode and portfolio privacy mode.
+7. Confirm the desktop donut/treemap, account filters, CSP totals, and cash grouping.
+8. Verify per-position/account/portfolio Unrealized P&L and missing-basis behavior.
+9. Verify scheduled stock-price updates, Finnhub data, MarketAux news, and watch list.
+10. Check cloud-sync state, refresh persistence, and logout/login reload behavior.
+
+### Mobile
+
+1. Build from `mobile/` and confirm all three release markers agree.
+2. Test the current login design with email/password, Google, reset, logout, and relogin.
+3. Confirm the Profile modal contains the build and retains all profile metadata.
+4. Confirm the new main logo and `app-icon-v2` Home Screen icon.
+5. Verify all three accounts load from brokerage data and account totals reconcile.
+6. Confirm Cash & Collateral starts collapsed, first expands to accounts, and second
+   expands to components.
+7. Confirm Individual cash does not add CSP obligation to a cash pool that already
+   includes it; SGOV and CSP labels must describe their total/composition treatment.
+8. Confirm mobile has no allocation donut and desktop still does.
+9. Verify composition percentages are neutral and distinct from red/green Unrealized P&L.
+10. Verify missing cost basis does not become `$0` basis or fabricated P&L.
+11. Verify 2026 YTD shows reconciled performance only; incomplete Individual cash flows
+    produce the explicit unavailable status.
+12. Ask K must respond and receive all accounts regardless of the selected account.
+13. Check `version.json` through the custom domain, foreground/background an installed
+    iPhone PWA, and confirm it updates without deletion/reinstallation.
+14. Test offline fallback and `/reset.html`.
 
 ---
 
-## Recent Updates (Feb 2026)
+## Recent Updates
 
 ### Migrated from single-file CDN app to Vite/React build
 - Moved all code from `index.html` CDN script to `src/App.jsx`
@@ -384,3 +683,21 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
 - **Problem:** Snapshot button threw `"Attempting to parse an unsupported color function oklch"` because html2canvas 1.4.1 can't parse modern CSS `oklch` colors used by Tailwind.
 - **Fix:** Replaced `html2canvas` with `html2canvas-pro` (v2.0.2), which supports modern CSS color functions.
 - Also fixed: `window.html2canvas` → direct import reference; App Check debug mode (`true`→`false`) which caused reCAPTCHA timeout errors.
+
+### Mobile Companion Stabilization (July 2026)
+
+- Established `mobile.stockstickies.com` as the clean production/install address.
+- Separated mobile Sites deployment from the desktop GitHub Pages workflow.
+- Added automatic release discovery, no-cache headers, service-worker cache cleanup, and
+  `/reset.html` recovery so users normally do not need to reinstall the PWA.
+- Standardized the new login design, app branding, and v2 PWA icon.
+- Moved the visible build label into the full Profile modal without removing profile data.
+- Removed the mobile allocation donut while preserving desktop portfolio visualizations.
+- Added portfolio-composition percentages separately from Unrealized P&L.
+- Added cost-basis-driven Unrealized P&L on mobile and desktop.
+- Added reconciled 2026 YTD/Modified Dietz support and daily server-side snapshots, with an
+  explicit incomplete-cash-flow state instead of a misleading balance-change loss.
+- Reworked mobile Cash & Collateral into a nested collapsed view and stopped double
+  counting CSP collateral already contained in the Plaid brokerage cash pool.
+- Preserved production Firebase client configuration in static builds and restored Ask K
+  Worker connectivity.
