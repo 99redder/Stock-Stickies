@@ -264,11 +264,8 @@ export async function createYtdShareCard({
 
   ctx.textAlign = 'right'
   ctx.fillStyle = '#9aa7b8'
-  ctx.font = '700 22px Inter, ui-sans-serif, system-ui, sans-serif'
-  ctx.fillText('stockstickies.com', 1482, 699)
-  ctx.fillStyle = '#647185'
-  ctx.font = '500 16px Inter, ui-sans-serif, system-ui, sans-serif'
-  ctx.fillText('Performance can fluctuate. Past performance is not a guarantee of future results.', 1482, 731)
+  ctx.font = '750 24px Inter, ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText('www.stockstickies.com', 1482, 716)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Unable to create the YTD image.')), 'image/png', 1)

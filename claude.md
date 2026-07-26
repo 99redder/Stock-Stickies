@@ -508,8 +508,8 @@ performance status is `ready`.
 `src/utils/ytdShareCard.js` so both experiences render the same 1600×900 (16:9) PNG. The
 card includes the current Stock Stickies mark/wordmark, profile photo or initials,
 nickname/email-prefix fallback, account scope, YTD dollar gain, available cash-flow-
-adjusted return percentage, as-of date, site address, and a short performance disclaimer.
-It deliberately omits balances, positions, and account numbers.
+adjusted return percentage, as-of date, and `www.stockstickies.com`. It deliberately omits
+balances, positions, account numbers, and disclaimer copy.
 
 The control opens a preview with **Copy image** and **Share / Save** actions. Copy image
 writes the PNG directly to the system clipboard when the browser supports image clipboard
@@ -522,7 +522,7 @@ photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-The visible release was **Build 34** when this guide was updated. Every mobile release must
+The visible release was **Build 35** when this guide was updated. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |
