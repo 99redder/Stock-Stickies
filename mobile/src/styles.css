@@ -88,6 +88,33 @@ button { -webkit-tap-highlight-color: transparent; }
 .chart-stats strong { display: block; margin-top: 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .empty-chart { height: 220px; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
 
+.cash-section { margin: 0 14px 24px; overflow: hidden; border: 1px solid rgba(57,217,138,.18); border-radius: 18px; background: linear-gradient(145deg, rgba(18,30,30,.96), rgba(13,18,26,.98)); }
+.cash-section-toggle { width: 100%; min-height: 68px; padding: 13px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 12px; border: 0; color: inherit; background: transparent; text-align: left; }
+.cash-section-toggle > span:first-child small, .cash-section-toggle > span:first-child strong { display: block; }
+.cash-section-toggle > span:first-child small { color: var(--green); font-size: 8px; font-weight: 850; letter-spacing: .12em; }
+.cash-section-toggle > span:first-child strong { margin-top: 4px; font-size: 15px; }
+.cash-section-total { text-align: right; font-variant-numeric: tabular-nums; }
+.cash-section-total small, .cash-section-total strong { display: block; }
+.cash-section-total small { color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
+.cash-section-total strong { margin-top: 3px; font-size: 14px; }
+.cash-section-toggle > svg { color: #72e6ae; transition: transform .2s ease; }
+.cash-section.expanded .cash-section-toggle > svg { transform: rotate(180deg); }
+.cash-account-totals { padding: 0 14px 13px; display: grid; gap: 6px; }
+.cash-account-totals div { min-height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: 10px; color: var(--muted); background: rgba(255,255,255,.035); font-size: 10px; }
+.cash-account-totals strong { color: #dce4ef; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cash-breakdown { padding: 0 14px 14px; display: grid; gap: 12px; border-top: 1px solid rgba(255,255,255,.06); }
+.cash-account-group { padding-top: 12px; }
+.cash-account-heading { margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #dce4ef; font-size: 11px; }
+.cash-account-heading span { color: var(--green); font-weight: 750; font-variant-numeric: tabular-nums; }
+.cash-component-row { min-height: 58px; padding: 9px 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid rgba(255,255,255,.055); }
+.cash-component-row > div { min-width: 0; }
+.cash-component-row > div strong, .cash-component-row > div span, .cash-component-row > div small { display: block; }
+.cash-component-row > div strong { font-size: 12px; }
+.cash-component-row > div span { margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
+.cash-component-row > div small { margin-top: 4px; color: #9aa7b8; font-size: 8px; font-weight: 750; }
+.cash-component-row > strong { color: #eef3f8; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cash-empty { padding: 12px 10px; color: #647185; font-size: 10px; }
+
 .positions-section { padding: 0 14px; }
 .section-heading { padding: 0 6px 13px; display: flex; align-items: flex-end; justify-content: space-between; }
 .section-heading h2 { margin: 0; font-size: 25px; letter-spacing: -.035em; }

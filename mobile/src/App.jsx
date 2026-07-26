@@ -429,6 +429,7 @@ export default function App() {
   const [brokerageError, setBrokerageError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const [chartExpanded, setChartExpanded] = useState(false)
+  const [cashSectionExpanded, setCashSectionExpanded] = useState(false)
 
   useEffect(() => {
     const onInstall = (event) => {
@@ -747,7 +748,7 @@ export default function App() {
         && cspCollateral > 0
       const actualCash = brokerMetrics?.hasAvailableBalance
         ? hasCollateralizedCash
-          ? Math.min(Math.max(0, brokerMetrics.availableBalance), cashLessCsp)
+          ? cashLessCsp
           : Math.max(0, brokerMetrics.availableBalance)
         : hasBrokerMetrics
           ? cashLessCsp
@@ -760,7 +761,7 @@ export default function App() {
         actualCash,
         actualCashSource: brokerMetrics?.hasAvailableBalance
           ? hasCollateralizedCash
-            ? 'institution-and-csp'
+            ? 'collateral-adjusted'
             : 'institution-available'
           : hasBrokerMetrics
             ? 'cash-minus-csp'
@@ -870,6 +871,7 @@ export default function App() {
       return [
         {
           id: `cash-summary-${id}`,
+          account: id,
           ticker: 'CASH',
           category: 'Actual available cash',
           accountLabel,
@@ -878,14 +880,15 @@ export default function App() {
           summaryType: 'Liquid cash',
           summaryNote: cashMetricsByAccount[id]?.actualCashSource === 'institution-available'
             ? 'Available cash reported by the linked institution.'
-            : cashMetricsByAccount[id]?.actualCashSource === 'institution-and-csp'
-              ? 'The lower of institution-reported available cash and cash holding less CSP collateral.'
+            : cashMetricsByAccount[id]?.actualCashSource === 'collateral-adjusted'
+              ? 'Cash holding less cash-secured put collateral.'
             : cashMetricsByAccount[id]?.actualCashSource === 'cash-minus-csp'
               ? 'Cash holding less cash-secured put collateral.'
               : 'Available cash from the portfolio note.',
         },
         {
           id: `csp-summary-${id}`,
+          account: id,
           ticker: 'CSP',
           category: 'Cash-secured put collateral',
           accountLabel,
@@ -895,6 +898,7 @@ export default function App() {
         },
         {
           id: `sgov-summary-${id}`,
+          account: id,
           ticker: 'SGOV',
           category: 'Treasury cash equivalent',
           accountLabel,
@@ -910,13 +914,16 @@ export default function App() {
       ]
     })
     .filter((position) => position.value > 0)
-  const cashPositionRows = allCashPositionRows
-    .filter((position) => {
-      const query = search.trim().toUpperCase()
-      return !query || `${position.ticker} ${position.category}`.toUpperCase().includes(query)
-    })
+  const cashAccountSummaries = scopedCashAccountIds.map((id) => {
+    const components = allCashPositionRows.filter((position) => position.account === id)
+    return {
+      account: id,
+      accountLabel: getAccountLabel(id),
+      total: components.reduce((sum, position) => sum + position.value, 0),
+      components,
+    }
+  })
   const displayPositionCandidates = [
-    ...cashPositionRows,
     ...sortedPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV'),
   ]
   const displayCompositionTotal = [
@@ -930,11 +937,6 @@ export default function App() {
       : 0,
   }))
   const portfolioPositionCount = filteredPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV').length
-    + scopedCashAccountIds.reduce((count, id) => count + [
-      cashMetricsByAccount[id]?.actualCash || 0,
-      putObligationByAccount[id] || 0,
-      cashMetricsByAccount[id]?.sgov || 0,
-    ].filter((value) => value > 0).length, 0)
 
   const askKPortfolio = useMemo(() => {
     const grandTotal = allPositions.reduce((sum, position) => sum + position.value, 0)
@@ -1193,6 +1195,64 @@ export default function App() {
               </div>
             </section>
 
+            <section className={`cash-section ${cashSectionExpanded ? 'expanded' : ''}`}>
+              <button
+                className="cash-section-toggle"
+                type="button"
+                onClick={() => setCashSectionExpanded((current) => !current)}
+                aria-expanded={cashSectionExpanded}
+              >
+                <span>
+                  <small>CASH &amp; COLLATERAL</small>
+                  <strong>{accountFilter === 'all' ? 'Cash by account' : `${getAccountLabel(accountFilter)} cash`}</strong>
+                </span>
+                <span className="cash-section-total">
+                  <small>Total cash</small>
+                  <strong>{money(totalCash)}</strong>
+                </span>
+                <Icon name="chevron" size={18} />
+              </button>
+
+              <div className="cash-account-totals">
+                {cashAccountSummaries.map((summary) => (
+                  <div key={summary.account}>
+                    <span>{summary.accountLabel}</span>
+                    <strong>{money(summary.total)}</strong>
+                  </div>
+                ))}
+              </div>
+
+              {cashSectionExpanded && (
+                <div className="cash-breakdown">
+                  {cashAccountSummaries.map((summary) => (
+                    <div className="cash-account-group" key={summary.account}>
+                      <div className="cash-account-heading">
+                        <strong>{summary.accountLabel}</strong>
+                        <span>{money(summary.total)}</span>
+                      </div>
+                      {summary.components.length > 0 ? summary.components.map((position) => {
+                        const allocation = displayCompositionTotal > 0
+                          ? (position.value / displayCompositionTotal) * 100
+                          : 0
+                        return (
+                          <div className="cash-component-row" key={position.id}>
+                            <div>
+                              <strong>{position.ticker}</strong>
+                              <span>{position.category}</span>
+                              <small>Allocation {allocation.toFixed(2)}%</small>
+                            </div>
+                            <strong>{money(position.value)}</strong>
+                          </div>
+                        )
+                      }) : (
+                        <div className="cash-empty">No cash or collateral in this account.</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <section className="positions-section">
               <div className="section-heading">
                 <div><p className="eyebrow">HOLDINGS</p><h2>Positions</h2></div>
@@ -1296,7 +1356,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 24</strong></div>
+              <div><span>Version</span><strong>Build 25</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
