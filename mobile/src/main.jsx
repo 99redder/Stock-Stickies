@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './styles.css'
 
-const APP_BUILD = '17'
+const APP_BUILD = '18'
 const UPDATE_CHECK_INTERVAL = 5 * 60 * 1000
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

@@ -572,6 +572,8 @@ export default function App() {
     const metrics = Object.fromEntries(ACCOUNT_IDS.map((id) => [id, {
       currentBalance: 0,
       holdingsValue: 0,
+      actualCashValue: 0,
+      sgovValue: 0,
       cashBalance: 0,
       hasBalance: false,
       hasHoldings: false,
@@ -602,7 +604,11 @@ export default function App() {
       const ticker = normalizeTicker(position?.ticker)
       metrics[id].holdingsValue += value
       metrics[id].hasHoldings = true
-      if (ticker === 'CUR:USD' || ticker === 'USD' || ticker === 'SGOV') {
+      if (ticker === 'CUR:USD' || ticker === 'USD') {
+        metrics[id].actualCashValue += value
+        metrics[id].cashBalance += value
+      } else if (ticker === 'SGOV') {
+        metrics[id].sgovValue += value
         metrics[id].cashBalance += value
       }
     }
@@ -634,8 +640,6 @@ export default function App() {
     })
   }, [filteredPositions, search, sortMode])
 
-  const total = filteredPositions.reduce((sum, position) => sum + position.value, 0)
-  const noteCashValue = filteredPositions.filter((position) => position.isCash).reduce((sum, position) => sum + position.value, 0)
   const missingPrices = filteredPositions.filter((position) => position.price <= 0).length
   const putObligationByAccount = useMemo(() => {
     const totals = {}
@@ -665,13 +669,71 @@ export default function App() {
   const hasBrokerPortfolio = accountFilter === 'all'
     ? ACCOUNT_IDS.some((id) => brokerAccountMetrics[id].hasBalance || brokerAccountMetrics[id].hasHoldings)
     : Boolean(brokerAccountMetrics[accountFilter]?.hasBalance || brokerAccountMetrics[accountFilter]?.hasHoldings)
-  const brokerCashValue = accountFilter === 'all'
-    ? ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].cashBalance, 0)
-    : (brokerAccountMetrics[accountFilter]?.cashBalance || 0)
-  const cashValue = hasBrokerPortfolio ? brokerCashValue : noteCashValue
+  const noteActualCashValue = filteredPositions
+    .filter((position) => position.ticker === 'USD')
+    .reduce((sum, position) => sum + position.value, 0)
+  const noteSgovValue = filteredPositions
+    .filter((position) => position.ticker === 'SGOV')
+    .reduce((sum, position) => sum + position.value, 0)
+  const brokerActualCashValue = accountFilter === 'all'
+    ? ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].actualCashValue, 0)
+    : (brokerAccountMetrics[accountFilter]?.actualCashValue || 0)
+  const brokerSgovValue = accountFilter === 'all'
+    ? ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].sgovValue, 0)
+    : (brokerAccountMetrics[accountFilter]?.sgovValue || 0)
+  const actualCashValue = hasBrokerPortfolio ? brokerActualCashValue : noteActualCashValue
+  const sgovValue = hasBrokerPortfolio ? brokerSgovValue : noteSgovValue
+  const totalAvailableCash = actualCashValue + sgovValue
+  const totalCash = totalAvailableCash + scopedPutObligation
+  const cashValue = totalAvailableCash
   const donutPositions = hasBrokerPortfolio
     ? filteredPositions.filter((position) => !position.isCash)
     : filteredPositions
+  const cashScopeLabel = accountFilter === 'all' ? 'All accounts' : getAccountLabel(accountFilter)
+  const cashPositionRows = [
+    {
+      id: `cash-summary-${accountFilter}`,
+      ticker: 'CASH',
+      category: 'Actual available cash',
+      accountLabel: cashScopeLabel,
+      value: actualCashValue,
+      summaryKind: 'cash',
+      summaryType: 'Liquid cash',
+    },
+    {
+      id: `csp-summary-${accountFilter}`,
+      ticker: 'CSP',
+      category: 'Cash-secured put collateral',
+      accountLabel: cashScopeLabel,
+      value: scopedPutObligation,
+      summaryKind: 'csp',
+      summaryType: 'Reserved collateral',
+    },
+    {
+      id: `sgov-summary-${accountFilter}`,
+      ticker: 'SGOV',
+      category: 'Treasury cash equivalent',
+      accountLabel: cashScopeLabel,
+      value: sgovValue,
+      summaryKind: 'sgov',
+      summaryType: 'Cash equivalent',
+    },
+  ]
+    .filter((position) => position.value > 0)
+    .map((position) => ({
+      ...position,
+      percentage: accountBalance > 0 ? (position.value / accountBalance) * 100 : 0,
+    }))
+    .filter((position) => {
+      const query = search.trim().toUpperCase()
+      return !query || `${position.ticker} ${position.category}`.toUpperCase().includes(query)
+    })
+  const displayPositions = [
+    ...cashPositionRows,
+    ...sortedPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV'),
+  ]
+  const portfolioPositionCount = filteredPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV').length
+    + [actualCashValue, scopedPutObligation, sgovValue].filter((value) => value > 0).length
 
   const askKPortfolio = useMemo(() => {
     const grandTotal = allPositions.reduce((sum, position) => sum + position.value, 0)
@@ -682,7 +744,12 @@ export default function App() {
       totals: {
         longMarketValue: Number(grandTotal.toFixed(2)),
         accountBalance: Number(grandAccountBalance.toFixed(2)),
+        actualCashBalance: Number(ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].actualCashValue, 0).toFixed(2)),
+        sgovValue: Number(ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].sgovValue, 0).toFixed(2)),
         cashBalance: Number(ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].cashBalance, 0).toFixed(2)),
+        availableCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].cashBalance, 0).toFixed(2)),
+        totalAvailableCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].cashBalance, 0).toFixed(2)),
+        totalCash: Number((ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].cashBalance, 0) + totalPutObligation).toFixed(2)),
         cspObligation: Number(totalPutObligation.toFixed(2)),
         longPlusCspExposure: Number((grandTotal + totalPutObligation).toFixed(2)),
         positionCount: allPositions.length,
@@ -696,7 +763,12 @@ export default function App() {
           strategy: account.strategy,
           marketValue: Number((accountTotals[account.id]?.value || 0).toFixed(2)),
           accountBalance: Number(accountDisplayBalances[account.id].toFixed(2)),
+          actualCashBalance: Number(brokerAccountMetrics[account.id].actualCashValue.toFixed(2)),
+          sgovValue: Number(brokerAccountMetrics[account.id].sgovValue.toFixed(2)),
           cashBalance: Number(brokerAccountMetrics[account.id].cashBalance.toFixed(2)),
+          availableCash: Number(brokerAccountMetrics[account.id].cashBalance.toFixed(2)),
+          totalAvailableCash: Number(brokerAccountMetrics[account.id].cashBalance.toFixed(2)),
+          totalCash: Number((brokerAccountMetrics[account.id].cashBalance + (putObligationByAccount[account.id] || 0)).toFixed(2)),
           positionCount: accountTotals[account.id]?.count || 0,
           percentOfTotal: grandTotal > 0 ? Number((((accountTotals[account.id]?.value || 0) / grandTotal) * 100).toFixed(2)) : 0,
           cspObligation: Number((putObligationByAccount[account.id] || 0).toFixed(2)),
@@ -864,20 +936,20 @@ export default function App() {
               </button>
               {chartExpanded && (
                 filteredPositions.length || cashValue > 0
-                  ? <PortfolioDonut positions={donutPositions} total={accountBalance} cashValue={cashValue} extraCashValue={hasBrokerPortfolio ? brokerCashValue : 0} />
+                  ? <PortfolioDonut positions={donutPositions} total={accountBalance} cashValue={cashValue} extraCashValue={hasBrokerPortfolio ? totalAvailableCash : 0} />
                   : <div className="empty-chart">No positions in this account.</div>
               )}
               <div className="chart-stats">
-                <div><span>Positions</span><strong>{filteredPositions.length}</strong></div>
-                <div><span>Available cash</span><strong>{money(cashValue)}</strong></div>
-                <div><span>CSP collateral</span><strong>{money(scopedPutObligation)}</strong></div>
+                <div><span>Positions</span><strong>{portfolioPositionCount}</strong></div>
+                <div><span>Total cash</span><strong>{money(totalCash)}</strong></div>
+                <div><span>Total available cash</span><strong>{money(totalAvailableCash)}</strong></div>
               </div>
             </section>
 
             <section className="positions-section">
               <div className="section-heading">
                 <div><p className="eyebrow">HOLDINGS</p><h2>Positions</h2></div>
-                <span>{sortedPositions.length} shown</span>
+                <span>{displayPositions.length} shown</span>
               </div>
               <div className="position-tools">
                 <label className="search-field"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a ticker" aria-label="Search positions" /></label>
@@ -896,13 +968,13 @@ export default function App() {
               </div>
 
               <div className="position-list">
-                {sortedPositions.map((position, index) => (
-                  <article className={`position-row ${expandedId === position.id ? 'expanded' : ''}`} key={position.id}>
+                {displayPositions.map((position, index) => (
+                  <article className={`position-row ${position.summaryKind ? 'cash-summary-row' : ''} ${expandedId === position.id ? 'expanded' : ''}`} key={position.id}>
                     <button type="button" onClick={() => setExpandedId(expandedId === position.id ? null : position.id)} aria-expanded={expandedId === position.id}>
                       <div className="rank">{index + 1}</div>
                       <div className="ticker-block">
                         <strong>{position.ticker}</strong>
-                        <span>{position.category} · {getAccountLabel(position.account)}</span>
+                        <span>{position.category} · {position.accountLabel || getAccountLabel(position.account)}</span>
                       </div>
                       <div className="value-block">
                         <strong>{money(position.value)}</strong>
@@ -912,16 +984,27 @@ export default function App() {
                     </button>
                     {expandedId === position.id && (
                       <div className="position-detail">
-                        <div><span>Shares</span><strong>{number(position.shares, 6)}</strong></div>
-                        <div><span>Price</span><strong>{position.price ? money(position.price, 2) : 'Unavailable'}</strong></div>
-                        <div><span>Market value</span><strong>{money(position.value, 2)}</strong></div>
-                        {position.note && <p>{position.note}</p>}
-                        <small>Read-only · Edit this position in the desktop app.</small>
+                        {position.summaryKind ? (
+                          <>
+                            <div><span>Type</span><strong>{position.summaryType}</strong></div>
+                            <div><span>Portfolio</span><strong>{position.accountLabel}</strong></div>
+                            <div><span>Amount</span><strong>{money(position.value, 2)}</strong></div>
+                            <small>Calculated for the selected portfolio.</small>
+                          </>
+                        ) : (
+                          <>
+                            <div><span>Shares</span><strong>{number(position.shares, 6)}</strong></div>
+                            <div><span>Price</span><strong>{position.price ? money(position.price, 2) : 'Unavailable'}</strong></div>
+                            <div><span>Market value</span><strong>{money(position.value, 2)}</strong></div>
+                            {position.note && <p>{position.note}</p>}
+                            <small>Read-only · Edit this position in the desktop app.</small>
+                          </>
+                        )}
                       </div>
                     )}
                   </article>
                 ))}
-                {!sortedPositions.length && <div className="empty-list">No positions match this view.</div>}
+                {!displayPositions.length && <div className="empty-list">No positions match this view.</div>}
               </div>
             </section>
           </>
@@ -947,7 +1030,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 17</strong></div>
+              <div><span>Version</span><strong>Build 18</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
