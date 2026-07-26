@@ -29,6 +29,7 @@ try {
 
 const ASKK_API_URL = import.meta.env.VITE_ASKK_API_URL
   || 'https://stock-stickies-askk.99redder.workers.dev/api/ask-k'
+const BROKERAGE_API_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/holdings'
 
 const ACCOUNTS = [
   { id: 'individual', label: 'Individual', short: 'Taxable', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.' },
@@ -110,7 +111,7 @@ function Icon({ name, size = 20 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
 
-function PortfolioDonut({ positions, total, cashValue }) {
+function PortfolioDonut({ positions, total, cashValue, extraCashValue = 0 }) {
   const canvasRef = useRef(null)
   const chartRef = useRef(null)
 
@@ -118,8 +119,9 @@ function PortfolioDonut({ positions, total, cashValue }) {
     if (!canvasRef.current || !positions.length) return undefined
     const cash = positions.filter((position) => position.isCash)
     const stocks = positions.filter((position) => !position.isCash)
+    const combinedCashValue = cash.reduce((sum, item) => sum + item.value, 0) + extraCashValue
     const slices = [
-      ...(cash.length ? [{ ticker: 'Cash', value: cash.reduce((sum, item) => sum + item.value, 0) }] : []),
+      ...(combinedCashValue > 0 ? [{ ticker: 'Cash', value: combinedCashValue }] : []),
       ...stocks,
     ]
     const ctx = canvasRef.current.getContext('2d')
@@ -160,7 +162,7 @@ function PortfolioDonut({ positions, total, cashValue }) {
       },
     })
     return () => chartRef.current?.destroy()
-  }, [positions, total])
+  }, [positions, total, extraCashValue])
 
   return (
     <div className="donut-wrap">
@@ -337,6 +339,8 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [installEvent, setInstallEvent] = useState(null)
+  const [brokerageSnapshot, setBrokerageSnapshot] = useState(null)
+  const [brokerageError, setBrokerageError] = useState('')
 
   useEffect(() => {
     const onInstall = (event) => {
@@ -407,6 +411,43 @@ export default function App() {
     })
   }, [user])
 
+  useEffect(() => {
+    if (!user) {
+      setBrokerageSnapshot(null)
+      setBrokerageError('')
+      return undefined
+    }
+
+    let active = true
+    const loadBrokerageBalances = async () => {
+      try {
+        const idToken = await user.getIdToken()
+        const response = await fetch(BROKERAGE_API_URL, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok || data?.ok === false) {
+          throw new Error(data?.error || `Brokerage balances could not be loaded (${response.status}).`)
+        }
+        if (active) {
+          setBrokerageSnapshot(data)
+          setBrokerageError('')
+        }
+      } catch (error) {
+        if (active) {
+          setBrokerageSnapshot(null)
+          setBrokerageError(error?.message || 'Brokerage balances could not be loaded.')
+        }
+      }
+    }
+
+    void loadBrokerageBalances()
+    return () => { active = false }
+  }, [user])
+
   const portfolioNotes = useMemo(
     () => notes.filter((note) => normalizeTicker(note.title) && Number(note.shares) > 0),
     [notes],
@@ -447,6 +488,42 @@ export default function App() {
     return totals
   }, [allPositions])
 
+  const brokerAccountMetrics = useMemo(() => {
+    const metrics = Object.fromEntries(ACCOUNT_IDS.map((id) => [id, {
+      currentBalance: 0,
+      holdingsValue: 0,
+      cashBalance: 0,
+      hasBalance: false,
+    }]))
+    const accountById = new Map()
+
+    for (const account of Array.isArray(brokerageSnapshot?.accounts) ? brokerageSnapshot.accounts : []) {
+      if (!ACCOUNT_IDS.includes(account?.stockStickiesAccount)) continue
+      const id = account.stockStickiesAccount
+      const currentBalance = Number(account.currentBalance)
+      if (Number.isFinite(currentBalance)) {
+        metrics[id].currentBalance += currentBalance
+        metrics[id].hasBalance = true
+      }
+      accountById.set(account.accountId, id)
+    }
+
+    for (const position of Array.isArray(brokerageSnapshot?.positions) ? brokerageSnapshot.positions : []) {
+      const id = ACCOUNT_IDS.includes(position?.stockStickiesAccount)
+        ? position.stockStickiesAccount
+        : accountById.get(position?.accountId)
+      const value = Number(position?.institutionValue)
+      if (id && Number.isFinite(value)) metrics[id].holdingsValue += value
+    }
+
+    for (const id of ACCOUNT_IDS) {
+      if (metrics[id].hasBalance) {
+        metrics[id].cashBalance = Math.max(0, metrics[id].currentBalance - metrics[id].holdingsValue)
+      }
+    }
+    return metrics
+  }, [brokerageSnapshot])
+
   const filteredPositions = useMemo(() => {
     const scoped = accountFilter === 'all'
       ? allPositions
@@ -472,7 +549,7 @@ export default function App() {
   }, [filteredPositions, search, sortMode])
 
   const total = filteredPositions.reduce((sum, position) => sum + position.value, 0)
-  const cashValue = filteredPositions.filter((position) => position.isCash).reduce((sum, position) => sum + position.value, 0)
+  const noteCashValue = filteredPositions.filter((position) => position.isCash).reduce((sum, position) => sum + position.value, 0)
   const missingPrices = filteredPositions.filter((position) => position.price <= 0).length
   const putObligationByAccount = useMemo(() => {
     const totals = {}
@@ -486,9 +563,30 @@ export default function App() {
   const scopedPutObligation = accountFilter === 'all'
     ? totalPutObligation
     : (putObligationByAccount[accountFilter] || 0)
-  // Free cash is already a position (USD in taxable, SGOV in the IRAs).
-  // Add separately held CSP collateral to arrive at the broker account balance.
-  const accountBalance = total + scopedPutObligation
+  const accountDisplayBalances = Object.fromEntries(ACCOUNT_IDS.map((id) => [
+    id,
+    brokerAccountMetrics[id].hasBalance
+      ? brokerAccountMetrics[id].currentBalance
+      : (accountTotals[id]?.value || 0) + (putObligationByAccount[id] || 0),
+  ]))
+  const grandAccountBalance = ACCOUNT_IDS.reduce((sum, id) => sum + accountDisplayBalances[id], 0)
+    + (accountTotals[UNASSIGNED]?.value || 0)
+  const accountBalance = accountFilter === 'all'
+    ? grandAccountBalance
+    : (accountDisplayBalances[accountFilter] ?? (accountTotals[accountFilter]?.value || 0))
+  const hasBrokerBalance = accountFilter === 'all'
+    ? ACCOUNT_IDS.some((id) => brokerAccountMetrics[id].hasBalance)
+    : Boolean(brokerAccountMetrics[accountFilter]?.hasBalance)
+  const brokerCashValue = accountFilter === 'all'
+    ? ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].cashBalance, 0)
+    : (brokerAccountMetrics[accountFilter]?.cashBalance || 0)
+  const cashSecurityValue = filteredPositions
+    .filter((position) => position.isCash && position.ticker !== 'USD')
+    .reduce((sum, position) => sum + position.value, 0)
+  const cashValue = hasBrokerBalance ? brokerCashValue + cashSecurityValue : noteCashValue
+  const donutPositions = hasBrokerBalance
+    ? filteredPositions.filter((position) => position.ticker !== 'USD')
+    : filteredPositions
 
   const askKPortfolio = useMemo(() => {
     const grandTotal = allPositions.reduce((sum, position) => sum + position.value, 0)
@@ -498,6 +596,8 @@ export default function App() {
       nickname: nickname || null,
       totals: {
         longMarketValue: Number(grandTotal.toFixed(2)),
+        accountBalance: Number(grandAccountBalance.toFixed(2)),
+        cashBalance: Number(ACCOUNT_IDS.reduce((sum, id) => sum + brokerAccountMetrics[id].cashBalance, 0).toFixed(2)),
         cspObligation: Number(totalPutObligation.toFixed(2)),
         longPlusCspExposure: Number((grandTotal + totalPutObligation).toFixed(2)),
         positionCount: allPositions.length,
@@ -510,6 +610,8 @@ export default function App() {
           label: account.label,
           strategy: account.strategy,
           marketValue: Number((accountTotals[account.id]?.value || 0).toFixed(2)),
+          accountBalance: Number(accountDisplayBalances[account.id].toFixed(2)),
+          cashBalance: Number(brokerAccountMetrics[account.id].cashBalance.toFixed(2)),
           positionCount: accountTotals[account.id]?.count || 0,
           percentOfTotal: grandTotal > 0 ? Number((((accountTotals[account.id]?.value || 0) / grandTotal) * 100).toFixed(2)) : 0,
           cspObligation: Number((putObligationByAccount[account.id] || 0).toFixed(2)),
@@ -553,7 +655,7 @@ export default function App() {
       watchList: watchList.slice(0, 100),
       categories: categories.map((color) => ({ color, label: colorLabels[color] || 'Category' })),
     }
-  }, [allPositions, accountTotals, cashSecuredPuts, categories, colorLabels, nickname, notes, putObligationByAccount, totalPutObligation, watchList])
+  }, [allPositions, accountDisplayBalances, accountTotals, brokerAccountMetrics, cashSecuredPuts, categories, colorLabels, grandAccountBalance, nickname, notes, putObligationByAccount, totalPutObligation, watchList])
 
   const refreshPrices = async () => {
     if (!portfolioNotes.length || refreshing) return
@@ -606,7 +708,7 @@ export default function App() {
   if (!dataReady) return <div className="splash"><div className="loader" /><p>Loading your portfolio…</p></div>
 
   const presentAccounts = [
-    ...ACCOUNT_IDS.filter((id) => accountTotals[id] || putObligationByAccount[id]),
+    ...ACCOUNT_IDS.filter((id) => accountTotals[id] || putObligationByAccount[id] || brokerAccountMetrics[id].hasBalance),
     ...(accountTotals[UNASSIGNED] ? [UNASSIGNED] : []),
   ]
 
@@ -632,7 +734,11 @@ export default function App() {
             <div>
               <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
               <h1>{money(accountBalance)}</h1>
-              <small className="balance-caption">Account balance · positions, available cash &amp; CSP collateral</small>
+              <small className="balance-caption">
+                {hasBrokerBalance
+                  ? 'Linked brokerage balance · positions, cash & CSP collateral'
+                  : 'Estimated balance · positions & CSP collateral'}
+              </small>
             </div>
             <button className="refresh-button" type="button" onClick={refreshPrices} disabled={refreshing}>
               <Icon name="refresh" />
@@ -644,24 +750,27 @@ export default function App() {
             {lastUpdated ? `Quotes updated ${lastUpdated.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Tap Update to fetch current quotes'}
           </div>
           {refreshMessage && <p className="refresh-message" role="status">{refreshMessage}</p>}
+          {brokerageError && <p className="refresh-message" role="status">Cash balance unavailable: {brokerageError}</p>}
         </section>
 
         {dataError ? <div className="error-card">{dataError}</div> : (
           <>
             <nav className="account-scroller" aria-label="Filter by account">
               <button type="button" className={accountFilter === 'all' ? 'active' : ''} onClick={() => setAccountFilter('all')}>
-                <span>All accounts</span><strong>{money(allPositions.reduce((sum, position) => sum + position.value, 0) + totalPutObligation)}</strong>
+                <span>All accounts</span><strong>{money(grandAccountBalance)}</strong>
               </button>
               {presentAccounts.map((id) => (
                 <button type="button" key={id} className={accountFilter === id ? 'active' : ''} onClick={() => setAccountFilter(id)}>
                   <span>{ACCOUNTS.find((account) => account.id === id)?.short || 'Unassigned'}</span>
-                  <strong>{money((accountTotals[id]?.value || 0) + (putObligationByAccount[id] || 0))}</strong>
+                  <strong>{money(id === UNASSIGNED ? (accountTotals[id]?.value || 0) : accountDisplayBalances[id])}</strong>
                 </button>
               ))}
             </nav>
 
             <section className="chart-card">
-              {filteredPositions.length ? <PortfolioDonut positions={filteredPositions} total={total} cashValue={cashValue} /> : <div className="empty-chart">No positions in this account.</div>}
+              {filteredPositions.length || cashValue > 0
+                ? <PortfolioDonut positions={donutPositions} total={accountBalance} cashValue={cashValue} extraCashValue={hasBrokerBalance ? brokerCashValue : 0} />
+                : <div className="empty-chart">No positions in this account.</div>}
               <div className="chart-stats">
                 <div><span>Positions</span><strong>{filteredPositions.length}</strong></div>
                 <div><span>Available cash</span><strong>{money(cashValue)}</strong></div>
@@ -723,7 +832,7 @@ export default function App() {
         )}
       </main>
 
-      <div className="readonly-pill">READ ONLY · BUILD 7</div>
+      <div className="readonly-pill">READ ONLY · BUILD 8</div>
       <AskK portfolio={askKPortfolio} />
     </div>
   )
