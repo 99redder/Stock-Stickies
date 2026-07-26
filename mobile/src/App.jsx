@@ -5,19 +5,22 @@ import 'firebase/compat/firestore'
 import 'firebase/compat/app-check'
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  // Firebase web configuration is public client metadata. Keep production
+  // fallbacks so a static Sites build can still initialize before runtime
+  // environment variables are available.
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDoS1vAgMJGV6kwnb16XVUPLxxsH0iieCI',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'red-s-stickies.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'red-s-stickies',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'red-s-stickies.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '896398882822',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:896398882822:web:dcfc3217a949601916eb87',
 }
 
 let auth = null
 let db = null
 try {
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig)
-  const appCheckKey = import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY || ''
+  const appCheckKey = import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY || '6Ld6FE4sAAAAANxjvc3zRPUlAvZ5s-0gpKNUcRpN'
   if (appCheckKey) firebase.appCheck().activate(appCheckKey, false)
   auth = firebase.auth()
   db = firebase.firestore()
@@ -1297,7 +1300,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 29</strong></div>
+              <div><span>Version</span><strong>Build 30</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
