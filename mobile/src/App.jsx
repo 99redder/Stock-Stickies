@@ -623,9 +623,30 @@ export default function App() {
   const accountTotals = useMemo(() => {
     const totals = {}
     allPositions.forEach((position) => {
-      if (!totals[position.account]) totals[position.account] = { value: 0, count: 0 }
+      if (!totals[position.account]) {
+        totals[position.account] = {
+          value: 0,
+          count: 0,
+          knownCostBasis: 0,
+          unrealizedPnL: 0,
+          pnlCount: 0,
+          missingPnlCount: 0,
+        }
+      }
       totals[position.account].value += position.value
       totals[position.account].count += 1
+      if (position.unrealizedPnL != null) {
+        totals[position.account].knownCostBasis += position.costBasis
+        totals[position.account].unrealizedPnL += position.unrealizedPnL
+        totals[position.account].pnlCount += 1
+      } else {
+        totals[position.account].missingPnlCount += 1
+      }
+    })
+    Object.values(totals).forEach((total) => {
+      total.unrealizedPnLPercent = total.knownCostBasis > 0
+        ? (total.unrealizedPnL / total.knownCostBasis) * 100
+        : null
     })
     return totals
   }, [allPositions])
@@ -730,6 +751,31 @@ export default function App() {
       percentage: scopedTotal > 0 ? (position.value / scopedTotal) * 100 : 0,
     }))
   }, [allPositions, accountFilter])
+
+  const scopedPnlTotals = useMemo(() => {
+    const covered = filteredPositions.filter((position) => position.unrealizedPnL != null)
+    const knownCostBasis = covered.reduce((sum, position) => sum + position.costBasis, 0)
+    const unrealizedPnL = covered.reduce((sum, position) => sum + position.unrealizedPnL, 0)
+    return {
+      knownCostBasis,
+      unrealizedPnL,
+      unrealizedPnLPercent: knownCostBasis > 0 ? (unrealizedPnL / knownCostBasis) * 100 : null,
+      coveredCount: covered.length,
+      missingCount: filteredPositions.length - covered.length,
+    }
+  }, [filteredPositions])
+
+  const allPnlTotals = useMemo(() => {
+    const totals = Object.values(accountTotals)
+    const knownCostBasis = totals.reduce((sum, total) => sum + total.knownCostBasis, 0)
+    const unrealizedPnL = totals.reduce((sum, total) => sum + total.unrealizedPnL, 0)
+    const coveredCount = totals.reduce((sum, total) => sum + total.pnlCount, 0)
+    return {
+      unrealizedPnL,
+      unrealizedPnLPercent: knownCostBasis > 0 ? (unrealizedPnL / knownCostBasis) * 100 : null,
+      coveredCount,
+    }
+  }, [accountTotals])
 
   const sortedPositions = useMemo(() => {
     const query = search.trim().toUpperCase()
@@ -1031,6 +1077,17 @@ export default function App() {
                 <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
               </div>
               <h1>{money(accountBalance)}</h1>
+              <div className={scopedPnlTotals.coveredCount > 0 ? (scopedPnlTotals.unrealizedPnL >= 0 ? 'hero-pnl gain' : 'hero-pnl loss') : 'hero-pnl unavailable'}>
+                <span>{scopedPnlTotals.missingCount > 0 ? 'Known unrealized P&L' : 'Unrealized P&L'}</span>
+                <strong>
+                  {scopedPnlTotals.coveredCount > 0
+                    ? `${signedMoney(scopedPnlTotals.unrealizedPnL)}${scopedPnlTotals.unrealizedPnLPercent == null ? '' : ` · ${signedPercent(scopedPnlTotals.unrealizedPnLPercent)}`}`
+                    : 'Unavailable'}
+                </strong>
+              </div>
+              {scopedPnlTotals.coveredCount > 0 && scopedPnlTotals.missingCount > 0 && (
+                <small className="pnl-coverage">Cost basis for {scopedPnlTotals.coveredCount} of {filteredPositions.length} positions</small>
+              )}
               <small className="balance-caption">
                 {hasBrokerPortfolio
                   ? 'Linked brokerage balance · positions, cash & CSP collateral'
@@ -1055,11 +1112,21 @@ export default function App() {
             <nav className="account-scroller" aria-label="Filter by account">
               <button type="button" className={accountFilter === 'all' ? 'active' : ''} onClick={() => setAccountFilter('all')}>
                 <span>All accounts</span><strong>{money(grandAccountBalance)}</strong>
+                <small className={allPnlTotals.coveredCount > 0 && allPnlTotals.unrealizedPnL < 0 ? 'loss' : 'gain'}>
+                  {allPnlTotals.coveredCount > 0
+                    ? `P&L ${signedMoney(allPnlTotals.unrealizedPnL)}`
+                    : 'P&L unavailable'}
+                </small>
               </button>
               {presentAccounts.map((id) => (
                 <button type="button" key={id} className={accountFilter === id ? 'active' : ''} onClick={() => setAccountFilter(id)}>
                   <span>{ACCOUNTS.find((account) => account.id === id)?.short || 'Unassigned'}</span>
                   <strong>{money(id === UNASSIGNED ? (accountTotals[id]?.value || 0) : accountDisplayBalances[id])}</strong>
+                  <small className={(accountTotals[id]?.unrealizedPnL || 0) >= 0 ? 'gain' : 'loss'}>
+                    {(accountTotals[id]?.pnlCount || 0) > 0
+                      ? `${accountTotals[id].missingPnlCount > 0 ? 'Known P&L' : 'P&L'} ${signedMoney(accountTotals[id].unrealizedPnL)}`
+                      : 'P&L unavailable'}
+                  </small>
                 </button>
               ))}
             </nav>
@@ -1179,7 +1246,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 20</strong></div>
+              <div><span>Version</span><strong>Build 21</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

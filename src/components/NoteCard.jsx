@@ -25,6 +25,7 @@ export default function NoteCard({
     isDuplicate,
     warnIfDuplicateTicker,
     sharesPrivacyMode,
+    hidePortfolioValues,
     setExpandedNote,
     showBrandedNotice,
 
@@ -41,6 +42,15 @@ export default function NoteCard({
 }) {
     const accountLabel = accounts.find(a => a.id === note.account)?.label;
     const sharesValue = Number(note.shares) || 0;
+    const positionDetails = positionDetailsById?.[note.id];
+    const pnlAvailable = positionDetails?.unrealizedPnL != null;
+    const formatMoney = (value) => new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 2,
+    }).format(Number(value || 0));
+    const formatSignedMoney = (value) => `${Number(value) > 0 ? '+' : ''}${formatMoney(value)}`;
+    const formatSignedPercent = (value) => `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(1)}%`;
     return (
         <div className={`${note.color} p-6 rounded-lg shadow-lg relative hover:scale-105 transition-transform`} style={{ minHeight: '200px' }}>
             {positionRankById?.[note.id] && (
@@ -176,6 +186,30 @@ export default function NoteCard({
                     {isUnlocked ? <Unlock size={16}/> : <Lock size={16}/>}
                 </button>
             </div>
+
+            {sharesValue > 0 && (
+                <div className={`mb-3 rounded-lg border border-black/10 bg-white/45 px-3 py-2 text-xs text-gray-800 ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold uppercase tracking-wider text-[10px] text-gray-600">
+                            Unrealized P&amp;L
+                        </span>
+                        {pnlAvailable ? (
+                            <strong className={`tabular-nums ${positionDetails.unrealizedPnL >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                {formatSignedMoney(positionDetails.unrealizedPnL)}
+                                {positionDetails.unrealizedPnLPercent != null && ` · ${formatSignedPercent(positionDetails.unrealizedPnLPercent)}`}
+                            </strong>
+                        ) : (
+                            <strong className="text-gray-600">Unavailable</strong>
+                        )}
+                    </div>
+                    {pnlAvailable && (
+                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-gray-600">
+                            <span>Cost basis</span>
+                            <span className="tabular-nums">{formatMoney(positionDetails.costBasis)}</span>
+                        </div>
+                    )}
+                </div>
+            )}
 
             <textarea
                 value={note.text}

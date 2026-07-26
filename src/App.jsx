@@ -631,6 +631,9 @@ const firebaseConfig = {
                 currency: 'USD',
                 maximumFractionDigits: 2,
             }).format(Number(value || 0));
+            const formatSignedUsd = (value) => `${Number(value) > 0 ? '+' : ''}${formatUsd(value)}`;
+            const formatSignedPercent = (value, digits = 1) =>
+                `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(digits)}%`;
 
             const getPutObligation = (put) => parseMoneyNumber(put?.strike) * parseMoneyNumber(put?.qty) * 100;
             // CSPs predate account attribution. Every put written before this field existed
@@ -1925,7 +1928,19 @@ const firebaseConfig = {
                         const shares = getShares(n);
                         const price = getPrice(ticker);
                         const value = shares * price;
-                        return { id: n.id, ticker, shares, price, value };
+                        const rawCostBasis = n.plaidCostBasis;
+                        const parsedCostBasis = Number(rawCostBasis);
+                        const hasCostBasis = rawCostBasis !== null
+                            && rawCostBasis !== undefined
+                            && rawCostBasis !== ''
+                            && Number.isFinite(parsedCostBasis)
+                            && parsedCostBasis >= 0;
+                        const costBasis = hasCostBasis ? parsedCostBasis : null;
+                        const unrealizedPnL = hasCostBasis && price > 0 ? value - costBasis : null;
+                        const unrealizedPnLPercent = unrealizedPnL != null && costBasis > 0
+                            ? (unrealizedPnL / costBasis) * 100
+                            : null;
+                        return { id: n.id, ticker, shares, price, value, costBasis, unrealizedPnL, unrealizedPnLPercent };
                     });
 
                 // Sort by: priced positions first, then value desc, then shares desc, then ticker
@@ -2499,9 +2514,30 @@ const firebaseConfig = {
             const accountTotals = useMemo(() => {
                 const totals = {};
                 allPortfolioData.forEach(h => {
-                    if (!totals[h.account]) totals[h.account] = { value: 0, positionCount: 0 };
+                    if (!totals[h.account]) {
+                        totals[h.account] = {
+                            value: 0,
+                            positionCount: 0,
+                            knownCostBasis: 0,
+                            unrealizedPnL: 0,
+                            pnlPositionCount: 0,
+                            missingPnlCount: 0,
+                        };
+                    }
                     totals[h.account].value += h.value;
                     totals[h.account].positionCount += 1;
+                    if (h.unrealizedPnL != null) {
+                        totals[h.account].knownCostBasis += h.costBasis;
+                        totals[h.account].unrealizedPnL += h.unrealizedPnL;
+                        totals[h.account].pnlPositionCount += 1;
+                    } else {
+                        totals[h.account].missingPnlCount += 1;
+                    }
+                });
+                Object.values(totals).forEach(total => {
+                    total.unrealizedPnLPercent = total.knownCostBasis > 0
+                        ? (total.unrealizedPnL / total.knownCostBasis) * 100
+                        : null;
                 });
                 return totals;
             }, [allPortfolioData]);
@@ -2509,6 +2545,19 @@ const firebaseConfig = {
             const grandPortfolioValue = useMemo(() =>
                 allPortfolioData.reduce((sum, h) => sum + h.value, 0),
             [allPortfolioData]);
+
+            const allPortfolioPnlTotals = useMemo(() => {
+                const covered = allPortfolioData.filter(h => h.unrealizedPnL != null);
+                const knownCostBasis = covered.reduce((sum, h) => sum + h.costBasis, 0);
+                const unrealizedPnL = covered.reduce((sum, h) => sum + h.unrealizedPnL, 0);
+                return {
+                    knownCostBasis,
+                    unrealizedPnL,
+                    unrealizedPnLPercent: knownCostBasis > 0 ? (unrealizedPnL / knownCostBasis) * 100 : null,
+                    coveredCount: covered.length,
+                    missingCount: allPortfolioData.length - covered.length,
+                };
+            }, [allPortfolioData]);
 
             // Order of the account sections in the notes grid: biggest account first, which
             // composes with the within-account size ordering from sortedClassifiedNotes.
@@ -2536,6 +2585,18 @@ const firebaseConfig = {
             const totalPortfolioValue = useMemo(() =>
                 portfolioData.reduce((sum, h) => sum + h.value, 0),
             [portfolioData]);
+            const portfolioPnlTotals = useMemo(() => {
+                const covered = portfolioData.filter(h => h.unrealizedPnL != null);
+                const knownCostBasis = covered.reduce((sum, h) => sum + h.costBasis, 0);
+                const unrealizedPnL = covered.reduce((sum, h) => sum + h.unrealizedPnL, 0);
+                return {
+                    knownCostBasis,
+                    unrealizedPnL,
+                    unrealizedPnLPercent: knownCostBasis > 0 ? (unrealizedPnL / knownCostBasis) * 100 : null,
+                    coveredCount: covered.length,
+                    missingCount: portfolioData.length - covered.length,
+                };
+            }, [portfolioData]);
             portfolioDataRef.current = portfolioData;
 
             // Don't strand the user on an account tab whose last position was just removed.
@@ -2929,6 +2990,7 @@ const firebaseConfig = {
                     isDuplicate={duplicateNoteIds.has(note.id)}
                     warnIfDuplicateTicker={warnIfDuplicateTicker}
                     sharesPrivacyMode={sharesPrivacyMode}
+                    hidePortfolioValues={hidePortfolioValues}
                     setExpandedNote={setExpandedNote}
                     showBrandedNotice={showBrandedNotice}
                     sanitizeContent={sanitizeContent}
@@ -4005,6 +4067,27 @@ const firebaseConfig = {
                                             {unlockedNotes[expandedNote.id] ? <Unlock size={20}/> : <Lock size={20}/>}
                                         </button>
                                     </div>
+                                    {(Number(expandedNote.shares) || 0) > 0 && (
+                                        <div className={`mb-4 rounded-lg border border-black/10 bg-white/50 px-4 py-3 text-gray-800 ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span className="text-xs font-bold uppercase tracking-wider text-gray-600">Unrealized P&amp;L</span>
+                                                {positionDetailsById[expandedNote.id]?.unrealizedPnL != null ? (
+                                                    <strong className={`text-lg tabular-nums ${positionDetailsById[expandedNote.id].unrealizedPnL >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                        {formatSignedUsd(positionDetailsById[expandedNote.id].unrealizedPnL)}
+                                                        {positionDetailsById[expandedNote.id].unrealizedPnLPercent != null && ` · ${formatSignedPercent(positionDetailsById[expandedNote.id].unrealizedPnLPercent)}`}
+                                                    </strong>
+                                                ) : (
+                                                    <strong className="text-gray-600">Unavailable</strong>
+                                                )}
+                                            </div>
+                                            {positionDetailsById[expandedNote.id]?.costBasis != null && (
+                                                <div className="mt-1 flex items-center justify-between text-xs text-gray-600">
+                                                    <span>Cost basis</span>
+                                                    <span className="tabular-nums">{formatUsd(positionDetailsById[expandedNote.id].costBasis)}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                     <textarea
                                         value={expandedNote.text}
                                         onChange={(e) => {
@@ -5247,7 +5330,36 @@ const firebaseConfig = {
                                 </div>
                             </div>
                         )}
-                        {notesGroupMode === 'account' ? (accountSectionOrder.map(accountId => {
+                        {notesGroupMode === 'account' ? (<>
+                            {allPortfolioData.length > 0 && (
+                                <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${darkMode ? 'border-gray-700 bg-gray-800 text-white' : 'border-gray-200 bg-white text-gray-800'}`}>
+                                    <div>
+                                        <div className="text-xs font-bold uppercase tracking-wider opacity-60">All accounts</div>
+                                        <div className={`mt-1 text-lg font-bold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                            {formatUsd(grandPortfolioValue)}
+                                        </div>
+                                    </div>
+                                    <div className={`text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                        <div className="text-xs font-bold uppercase tracking-wider opacity-60">
+                                            {allPortfolioPnlTotals.missingCount > 0 ? 'Known unrealized P&L' : 'Unrealized P&L'}
+                                        </div>
+                                        {allPortfolioPnlTotals.coveredCount > 0 ? (
+                                            <>
+                                                <div className={`mt-1 text-lg font-bold tabular-nums ${allPortfolioPnlTotals.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {formatSignedUsd(allPortfolioPnlTotals.unrealizedPnL)}
+                                                    {allPortfolioPnlTotals.unrealizedPnLPercent != null && ` · ${formatSignedPercent(allPortfolioPnlTotals.unrealizedPnLPercent)}`}
+                                                </div>
+                                                {allPortfolioPnlTotals.missingCount > 0 && (
+                                                    <div className="text-[10px] opacity-60">{allPortfolioPnlTotals.coveredCount} of {allPortfolioData.length} positions have cost basis</div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <div className="mt-1 text-sm font-semibold opacity-60">Unavailable</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                            {accountSectionOrder.map(accountId => {
                             const accountNotes = groupedNotesByAccount[accountId];
                             // Real accounts always show a header (so an empty one can still be
                             // targeted); Unassigned only appears while something is in it.
@@ -5264,11 +5376,22 @@ const firebaseConfig = {
                                         {isCollapsed ? <ChevronRight size={20}/> : <ChevronDown size={20}/>}
                                         <span className="font-semibold text-lg">{getAccountLabel(accountId)}</span>
                                         <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({accountNotes.length})</span>
-                                        {accountValue > 0 && (
-                                            <span className={`text-sm ml-auto ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
-                                                ${accountValue.toLocaleString(undefined, {maximumFractionDigits: 0})}
-                                            </span>
-                                        )}
+                                        <span className={`ml-auto text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                            {accountValue > 0 && (
+                                                <span className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                    {formatUsd(accountValue)}
+                                                </span>
+                                            )}
+                                            {(accountTotals[accountId]?.pnlPositionCount || 0) > 0 ? (
+                                                <span className={`block text-xs font-semibold ${accountTotals[accountId].unrealizedPnL >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
+                                                    {accountTotals[accountId].missingPnlCount > 0 ? 'Known P&L ' : 'P&L '}
+                                                    {formatSignedUsd(accountTotals[accountId].unrealizedPnL)}
+                                                    {accountTotals[accountId].unrealizedPnLPercent != null && ` · ${formatSignedPercent(accountTotals[accountId].unrealizedPnLPercent)}`}
+                                                </span>
+                                            ) : accountValue > 0 ? (
+                                                <span className={`block text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>P&amp;L unavailable</span>
+                                            ) : null}
+                                        </span>
                                     </button>
                                     {!isCollapsed && (
                                         accountNotes.length > 0 ? (
@@ -5283,7 +5406,8 @@ const firebaseConfig = {
                                     )}
                                 </div>
                             );
-                        })) : notesGroupMode === 'category' ? (categories.map(color => {
+                            })}
+                        </>) : notesGroupMode === 'category' ? (categories.map(color => {
                             const categoryNotes = groupedNotes[color];
                             if (!categoryNotes.length) return null;
                             return (
@@ -5329,6 +5453,20 @@ const firebaseConfig = {
                                             <p className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} ${hidePortfolioValues ? 'blur-md select-none' : ''}`}>
                                                 ${totalPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                                             </p>
+                                            <div className={`mt-2 ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                <span className={`text-sm font-bold ${portfolioPnlTotals.coveredCount > 0
+                                                    ? (portfolioPnlTotals.unrealizedPnL >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700'))
+                                                    : (darkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+                                                    {portfolioPnlTotals.coveredCount > 0
+                                                        ? `${portfolioPnlTotals.missingCount > 0 ? 'Known unrealized P&L' : 'Unrealized P&L'} ${formatSignedUsd(portfolioPnlTotals.unrealizedPnL)}${portfolioPnlTotals.unrealizedPnLPercent == null ? '' : ` · ${formatSignedPercent(portfolioPnlTotals.unrealizedPnLPercent)}`}`
+                                                        : 'Unrealized P&L unavailable'}
+                                                </span>
+                                                {portfolioPnlTotals.missingCount > 0 && portfolioPnlTotals.coveredCount > 0 && (
+                                                    <p className={`text-[10px] mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                        Cost basis available for {portfolioPnlTotals.coveredCount} of {portfolioData.length} positions
+                                                    </p>
+                                                )}
+                                            </div>
                                             {portfolioAccountFilter !== 'all' && grandPortfolioValue > 0 && (
                                                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                                     {((totalPortfolioValue / grandPortfolioValue) * 100).toFixed(1)}% of ${grandPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} across all accounts
@@ -5373,6 +5511,12 @@ const firebaseConfig = {
                                             const isActive = portfolioAccountFilter === accountId;
                                             const value = accountId === 'all' ? grandPortfolioValue : (accountTotals[accountId]?.value || 0);
                                             const count = accountId === 'all' ? allPortfolioData.length : (accountTotals[accountId]?.positionCount || 0);
+                                            const pnl = accountId === 'all' ? allPortfolioPnlTotals : {
+                                                unrealizedPnL: accountTotals[accountId]?.unrealizedPnL || 0,
+                                                unrealizedPnLPercent: accountTotals[accountId]?.unrealizedPnLPercent ?? null,
+                                                coveredCount: accountTotals[accountId]?.pnlPositionCount || 0,
+                                                missingCount: accountTotals[accountId]?.missingPnlCount || 0,
+                                            };
                                             return (
                                                 <button
                                                     key={accountId}
@@ -5387,6 +5531,15 @@ const firebaseConfig = {
                                                     </div>
                                                     <div className={`text-xs ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                                         ${value.toLocaleString(undefined, {maximumFractionDigits: 0})} · {count} position{count !== 1 ? 's' : ''}
+                                                    </div>
+                                                    <div className={`mt-0.5 text-[10px] font-semibold ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${pnl.coveredCount > 0
+                                                        ? (pnl.unrealizedPnL >= 0
+                                                            ? (isActive ? 'text-current' : (darkMode ? 'text-green-300' : 'text-green-700'))
+                                                            : (isActive ? 'text-current' : (darkMode ? 'text-red-300' : 'text-red-700')))
+                                                        : 'opacity-60'}`}>
+                                                        {pnl.coveredCount > 0
+                                                            ? `${pnl.missingCount > 0 ? 'Known P&L' : 'P&L'} ${formatSignedUsd(pnl.unrealizedPnL)}`
+                                                            : 'P&L unavailable'}
                                                     </div>
                                                 </button>
                                             );
@@ -5574,6 +5727,71 @@ const firebaseConfig = {
                                                 {' '}— held as separate collateral by the broker, not part of the cash position shown{cashPortfolioValue > 0 ? (
                                                     <>{' '}(<span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(cashPortfolioValue)}</span> free cash)</>
                                                 ) : ''}.
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className={`overflow-hidden rounded-lg shadow-lg ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                        <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                            <div>
+                                                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Portfolio positions</h3>
+                                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Market value, cost basis, and unrealized P&amp;L for each holding</p>
+                                            </div>
+                                            <div className={`text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    {portfolioPnlTotals.missingCount > 0 ? 'Known total P&L' : 'Total P&L'}
+                                                </div>
+                                                <div className={`font-bold tabular-nums ${portfolioPnlTotals.coveredCount > 0
+                                                    ? (portfolioPnlTotals.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600')
+                                                    : (darkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+                                                    {portfolioPnlTotals.coveredCount > 0
+                                                        ? `${formatSignedUsd(portfolioPnlTotals.unrealizedPnL)}${portfolioPnlTotals.unrealizedPnLPercent == null ? '' : ` · ${formatSignedPercent(portfolioPnlTotals.unrealizedPnLPercent)}`}`
+                                                        : 'Unavailable'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full min-w-[760px] border-collapse text-sm">
+                                                <thead className={darkMode ? 'bg-gray-900/60 text-gray-400' : 'bg-gray-50 text-gray-500'}>
+                                                    <tr className="text-left text-[10px] font-bold uppercase tracking-wider">
+                                                        <th className="px-5 py-3">Position</th>
+                                                        <th className="px-4 py-3">Account</th>
+                                                        <th className="px-4 py-3 text-right">Market value</th>
+                                                        <th className="px-4 py-3 text-right">Cost basis</th>
+                                                        <th className="px-4 py-3 text-right">Unrealized P&amp;L</th>
+                                                        <th className="px-5 py-3 text-right">% of shown</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className={darkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-100'}>
+                                                    {portfolioData.map(h => (
+                                                        <tr key={`${h.account}-${h.noteId}`} className={darkMode ? 'hover:bg-gray-700/40' : 'hover:bg-gray-50'}>
+                                                            <td className="px-5 py-3">
+                                                                <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{h.ticker}</div>
+                                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                    {Number(h.shares).toLocaleString()} shares · {h.price > 0 ? formatUsd(h.price) : 'Price unavailable'}
+                                                                </div>
+                                                            </td>
+                                                            <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{getAccountLabel(h.account)}</td>
+                                                            <td className={`px-4 py-3 text-right font-semibold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>{h.price > 0 ? formatUsd(h.value) : '—'}</td>
+                                                            <td className={`px-4 py-3 text-right tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.costBasis == null ? 'Unavailable' : formatUsd(h.costBasis)}</td>
+                                                            <td className={`px-4 py-3 text-right font-bold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${h.unrealizedPnL == null
+                                                                ? (darkMode ? 'text-gray-500' : 'text-gray-400')
+                                                                : (h.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600')}`}>
+                                                                {h.unrealizedPnL == null
+                                                                    ? 'Unavailable'
+                                                                    : `${formatSignedUsd(h.unrealizedPnL)}${h.unrealizedPnLPercent == null ? '' : ` · ${formatSignedPercent(h.unrealizedPnLPercent)}`}`}
+                                                            </td>
+                                                            <td className={`px-5 py-3 text-right tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.percentage.toFixed(2)}%</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        {portfolioPnlTotals.missingCount > 0 && (
+                                            <div className={`border-t px-5 py-3 text-xs ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+                                                {portfolioPnlTotals.coveredCount > 0
+                                                    ? <>Total P&amp;L includes only the {portfolioPnlTotals.coveredCount} position{portfolioPnlTotals.coveredCount !== 1 ? 's' : ''} with brokerage-provided cost basis; {portfolioPnlTotals.missingCount} position{portfolioPnlTotals.missingCount !== 1 ? 's are' : ' is'} unavailable.</>
+                                                    : <>Brokerage-provided cost basis is unavailable for these positions, so unrealized P&amp;L cannot be calculated yet.</>}
                                             </div>
                                         )}
                                     </div>
