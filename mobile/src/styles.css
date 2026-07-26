@@ -42,6 +42,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .hero-topline { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
 .eyebrow { margin: 0 0 6px; color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .16em; }
 .hero h1 { margin: 0; font-size: clamp(34px, 10vw, 48px); line-height: 1; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+.balance-caption { display: block; max-width: 270px; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.35; }
 .refresh-button { min-width: 98px; height: 42px; padding: 0 14px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(57,217,138,.35); border-radius: 13px; color: var(--green); background: rgba(57,217,138,.09); font-size: 13px; font-weight: 750; }
 .refresh-button:disabled { opacity: .65; }
 .refresh-button:disabled svg { animation: spin 1s linear infinite; }

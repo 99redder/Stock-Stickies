@@ -477,6 +477,12 @@ export default function App() {
     return totals
   }, [cashSecuredPuts])
   const totalPutObligation = Object.values(putObligationByAccount).reduce((sum, value) => sum + value, 0)
+  const scopedPutObligation = accountFilter === 'all'
+    ? totalPutObligation
+    : (putObligationByAccount[accountFilter] || 0)
+  // Free cash is already a position (USD in taxable, SGOV in the IRAs).
+  // Add separately held CSP collateral to arrive at the broker account balance.
+  const accountBalance = total + scopedPutObligation
 
   const askKPortfolio = useMemo(() => {
     const grandTotal = allPositions.reduce((sum, position) => sum + position.value, 0)
@@ -594,7 +600,7 @@ export default function App() {
   if (!dataReady) return <div className="splash"><div className="loader" /><p>Loading your portfolio…</p></div>
 
   const presentAccounts = [
-    ...ACCOUNT_IDS.filter((id) => accountTotals[id]),
+    ...ACCOUNT_IDS.filter((id) => accountTotals[id] || putObligationByAccount[id]),
     ...(accountTotals[UNASSIGNED] ? [UNASSIGNED] : []),
   ]
 
@@ -619,7 +625,8 @@ export default function App() {
           <div className="hero-topline">
             <div>
               <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
-              <h1>{money(total)}</h1>
+              <h1>{money(accountBalance)}</h1>
+              <small className="balance-caption">Account balance · positions, available cash &amp; CSP collateral</small>
             </div>
             <button className="refresh-button" type="button" onClick={refreshPrices} disabled={refreshing}>
               <Icon name="refresh" />
@@ -637,12 +644,12 @@ export default function App() {
           <>
             <nav className="account-scroller" aria-label="Filter by account">
               <button type="button" className={accountFilter === 'all' ? 'active' : ''} onClick={() => setAccountFilter('all')}>
-                <span>All accounts</span><strong>{money(allPositions.reduce((sum, position) => sum + position.value, 0))}</strong>
+                <span>All accounts</span><strong>{money(allPositions.reduce((sum, position) => sum + position.value, 0) + totalPutObligation)}</strong>
               </button>
               {presentAccounts.map((id) => (
                 <button type="button" key={id} className={accountFilter === id ? 'active' : ''} onClick={() => setAccountFilter(id)}>
                   <span>{ACCOUNTS.find((account) => account.id === id)?.short || 'Unassigned'}</span>
-                  <strong>{money(accountTotals[id]?.value)}</strong>
+                  <strong>{money((accountTotals[id]?.value || 0) + (putObligationByAccount[id] || 0))}</strong>
                 </button>
               ))}
             </nav>
@@ -651,8 +658,8 @@ export default function App() {
               {filteredPositions.length ? <PortfolioDonut positions={filteredPositions} total={total} cashValue={cashValue} /> : <div className="empty-chart">No positions in this account.</div>}
               <div className="chart-stats">
                 <div><span>Positions</span><strong>{filteredPositions.length}</strong></div>
-                <div><span>Cash</span><strong>{money(cashValue)}</strong></div>
-                <div><span>CSP obligation</span><strong>{money(accountFilter === 'all' ? totalPutObligation : putObligationByAccount[accountFilter])}</strong></div>
+                <div><span>Available cash</span><strong>{money(cashValue)}</strong></div>
+                <div><span>CSP collateral</span><strong>{money(scopedPutObligation)}</strong></div>
               </div>
             </section>
 
