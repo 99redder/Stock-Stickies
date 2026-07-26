@@ -40,7 +40,13 @@ const UNASSIGNED = 'unassigned'
 const CHART_COLORS = ['#39d98a', '#5b8cff', '#a977ff', '#ff9f43', '#ff5c75', '#34c7c7', '#f6c85f', '#8ca6db', '#ef7c8e', '#7bd389']
 
 const normalizeTicker = (value) => String(value || '').trim().toUpperCase()
-const getAccount = (note) => ACCOUNT_IDS.includes(note?.account) ? note.account : UNASSIGNED
+const getAccount = (note) => {
+  if (ACCOUNT_IDS.includes(note?.account)) return note.account
+  // Legacy cash notes predate brokerage-account attribution. Actual dollars
+  // are only held in the taxable account, so USD has an unambiguous home.
+  if (normalizeTicker(note?.title) === 'USD') return 'individual'
+  return UNASSIGNED
+}
 const getAccountLabel = (id) => ACCOUNTS.find((account) => account.id === id)?.label || 'Unassigned'
 const getPutAccount = (put) => ACCOUNT_IDS.includes(put?.account) ? put.account : 'roth'
 const money = (value, digits = 0) => new Intl.NumberFormat('en-US', {
@@ -717,7 +723,7 @@ export default function App() {
         )}
       </main>
 
-      <div className="readonly-pill">READ ONLY</div>
+      <div className="readonly-pill">READ ONLY · BUILD 7</div>
       <AskK portfolio={askKPortfolio} />
     </div>
   )

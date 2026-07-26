@@ -11,7 +11,8 @@ export default {
       .filter(Boolean);
     const allowAll = allowedOrigins.includes('*');
     const isLocalDev = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(origin);
-    const originAllowed = allowAll || !origin || allowedOrigins.includes(origin) || isLocalDev;
+    const isStockStickiesMobile = /^https:\/\/stock-stickies-mobile(?:[.-][a-z0-9-]+)*\.(?:eastern-shore-ai\.chatgpt\.site|99redder\.workers\.dev)$/i.test(origin);
+    const originAllowed = allowAll || !origin || allowedOrigins.includes(origin) || isLocalDev || isStockStickiesMobile;
 
     const corsHeaders = {
       'Access-Control-Allow-Origin': allowAll ? '*' : (originAllowed ? origin : allowedOrigins[0] || ''),
