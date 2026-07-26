@@ -830,7 +830,7 @@ export default function App() {
   const donutPositions = hasBrokerPortfolio
     ? filteredPositions.filter((position) => !position.isCash)
     : filteredPositions
-  const cashPositionRows = scopedCashAccountIds
+  const allCashPositionRows = scopedCashAccountIds
     .flatMap((id) => {
       const accountLabel = getAccountLabel(id)
       const accountSgovValue = cashMetricsByAccount[id]?.sgov || 0
@@ -872,18 +872,25 @@ export default function App() {
       ]
     })
     .filter((position) => position.value > 0)
-    .map((position) => ({
-      ...position,
-      percentage: accountBalance > 0 ? (position.value / accountBalance) * 100 : 0,
-    }))
+  const cashPositionRows = allCashPositionRows
     .filter((position) => {
       const query = search.trim().toUpperCase()
       return !query || `${position.ticker} ${position.category}`.toUpperCase().includes(query)
     })
-  const displayPositions = [
+  const displayPositionCandidates = [
     ...cashPositionRows,
     ...sortedPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV'),
   ]
+  const displayCompositionTotal = [
+    ...allCashPositionRows,
+    ...filteredPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV'),
+  ].reduce((sum, position) => sum + position.value, 0)
+  const displayPositions = displayPositionCandidates.map((position) => ({
+    ...position,
+    compositionPercentage: displayCompositionTotal > 0
+      ? (position.value / displayCompositionTotal) * 100
+      : 0,
+  }))
   const portfolioPositionCount = filteredPositions.filter((position) => position.ticker !== 'USD' && position.ticker !== 'SGOV').length
     + scopedCashAccountIds.reduce((count, id) => count + [
       cashMetricsByAccount[id]?.actualCash || 0,
@@ -1177,14 +1184,18 @@ export default function App() {
                       <div className="ticker-block">
                         <strong>{position.ticker}</strong>
                         <span>{position.category} · {position.accountLabel || getAccountLabel(position.account)}</span>
+                        <small className="allocation">Allocation {position.compositionPercentage.toFixed(2)}%</small>
                       </div>
                       <div className="value-block">
                         <strong>{money(position.value)}</strong>
-                        <span className={position.unrealizedPnL == null ? '' : (position.unrealizedPnL >= 0 ? 'gain' : 'loss')}>
-                          {position.unrealizedPnL == null
-                            ? `${position.percentage.toFixed(2)}%`
-                            : `${signedMoney(position.unrealizedPnL)} · ${position.unrealizedPnLPercent == null ? 'n/a' : signedPercent(position.unrealizedPnLPercent)}`}
-                        </span>
+                        {position.unrealizedPnL != null && (
+                          <span className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>
+                            P&amp;L {signedMoney(position.unrealizedPnL)} · {position.unrealizedPnLPercent == null ? 'n/a' : signedPercent(position.unrealizedPnLPercent)}
+                          </span>
+                        )}
+                        {!position.summaryKind && position.unrealizedPnL == null && (
+                          <span className="unavailable">P&amp;L unavailable</span>
+                        )}
                       </div>
                       <Icon name="chevron" size={16} />
                     </button>
@@ -1195,6 +1206,7 @@ export default function App() {
                             <div><span>Type</span><strong>{position.summaryType}</strong></div>
                             <div><span>Portfolio</span><strong>{position.accountLabel}</strong></div>
                             <div><span>Amount</span><strong>{money(position.value, 2)}</strong></div>
+                            <div><span>Allocation</span><strong>{position.compositionPercentage.toFixed(2)}%</strong></div>
                             {position.costBasis != null && (
                               <>
                                 <div><span>Cost basis</span><strong>{money(position.costBasis, 2)}</strong></div>
@@ -1209,7 +1221,7 @@ export default function App() {
                             <div><span>Shares</span><strong>{number(position.shares, 6)}</strong></div>
                             <div><span>Price</span><strong>{position.price ? money(position.price, 2) : 'Unavailable'}</strong></div>
                             <div><span>Market value</span><strong>{money(position.value, 2)}</strong></div>
-                            <div><span>Allocation</span><strong>{position.percentage.toFixed(2)}%</strong></div>
+                            <div><span>Allocation</span><strong>{position.compositionPercentage.toFixed(2)}%</strong></div>
                             <div><span>Cost basis</span><strong>{position.costBasis == null ? 'Unavailable' : money(position.costBasis, 2)}</strong></div>
                             <div><span>Unrealized P&amp;L</span><strong className={position.unrealizedPnL == null ? '' : (position.unrealizedPnL >= 0 ? 'gain' : 'loss')}>{position.unrealizedPnL == null ? 'Unavailable' : signedMoney(position.unrealizedPnL, 2)}</strong></div>
                             {position.note && <p>{position.note}</p>}
@@ -1246,7 +1258,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 21</strong></div>
+              <div><span>Version</span><strong>Build 22</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
