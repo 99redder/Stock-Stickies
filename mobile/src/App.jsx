@@ -300,7 +300,7 @@ function Login() {
     <main className="login-page">
       <section className="login-card">
         <div className="brand-mark"><span /><span /><span /></div>
-        <p className="eyebrow">MOBILE COMPANION</p>
+        <p className="eyebrow">MOBILE COMPANION · BUILD 13</p>
         <h1>Stock Stickies</h1>
         <p className="login-copy">Your portfolio, distilled for your phone. View-only and always dark.</p>
         <form onSubmit={signIn}>
@@ -728,7 +728,7 @@ export default function App() {
           {installEvent && <button className="icon-button" type="button" onClick={install} aria-label="Install app"><Icon name="install" /></button>}
           <button className="profile-button" type="button" onClick={() => auth.signOut()} aria-label="Sign out">
             {profilePhoto ? <img src={profilePhoto} alt="" /> : <span className="profile-avatar">{(nickname || user.email || '?').charAt(0).toUpperCase()}</span>}
-            <span className="profile-build">Build 12</span>
+            <span className="profile-build">Build 13</span>
             <Icon name="logout" size={16} />
           </button>
         </div>
@@ -738,7 +738,10 @@ export default function App() {
         <section className="hero">
           <div className="hero-topline">
             <div>
-              <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
+              <div className="hero-meta">
+                <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
+                <span className="build-badge">BUILD 13</span>
+              </div>
               <h1>{money(accountBalance)}</h1>
               <small className="balance-caption">
                 {hasBrokerPortfolio

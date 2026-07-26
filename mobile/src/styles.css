@@ -41,6 +41,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .dashboard { width: min(100%, 620px); margin: auto; }
 .hero { padding: 27px 20px 18px; }
 .hero-topline { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
+.hero-meta { margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.hero-meta .eyebrow { margin: 0; }
+.build-badge { padding: 3px 6px; border: 1px solid rgba(91,140,255,.38); border-radius: 999px; color: #9bb8ff; background: rgba(91,140,255,.12); font-size: 8px; font-weight: 850; line-height: 1; letter-spacing: .08em; white-space: nowrap; }
 .eyebrow { margin: 0 0 6px; color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .16em; }
 .hero h1 { margin: 0; font-size: clamp(34px, 10vw, 48px); line-height: 1; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
 .balance-caption { display: block; max-width: 270px; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.35; }
