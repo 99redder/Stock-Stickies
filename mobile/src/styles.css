@@ -34,8 +34,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .brand-mark.small span { width: 7px; height: 18px; border-radius: 2px; }
 .top-actions { display: flex; align-items: center; gap: 8px; }
 .icon-button { width: 40px; height: 40px; border: 0; border-radius: 12px; display: grid; place-items: center; color: #dce4ef; background: var(--surface-2); }
-.profile-button { height: 40px; padding: 4px 8px 4px 4px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); }
-.profile-button img, .profile-button > span { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: #30405a; color: #fff; font-weight: 800; }
+.profile-button { height: 40px; padding: 4px 9px 4px 4px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); }
+.profile-button img, .profile-button .profile-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: #30405a; color: #fff; font-weight: 800; }
+.profile-button .profile-build { color: #aeb9c8; font-size: 9px; font-weight: 800; line-height: 1; letter-spacing: .05em; white-space: nowrap; }
 
 .dashboard { width: min(100%, 620px); margin: auto; }
 .hero { padding: 27px 20px 18px; }
@@ -106,7 +107,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .empty-list, .error-card { padding: 30px 20px; color: var(--muted); text-align: center; font-size: 13px; }
 .error-card { margin: 20px; border: 1px solid rgba(255,107,124,.25); border-radius: 16px; color: #ff99a6; background: rgba(255,107,124,.07); }
 
-.readonly-pill { position: fixed; z-index: 15; bottom: calc(18px + env(safe-area-inset-bottom)); left: 18px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; color: #758196; background: rgba(17,22,31,.88); backdrop-filter: blur(12px); font-size: 8px; font-weight: 900; letter-spacing: .14em; }
 .ask-k-fab { position: fixed; z-index: 16; right: 18px; bottom: calc(15px + env(safe-area-inset-bottom)); height: 46px; padding: 0 16px 0 7px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(57,217,138,.42); border-radius: 999px; color: #effff7; background: #157a4a; box-shadow: 0 12px 30px rgba(0,0,0,.38); font-weight: 800; }
 .ask-k-fab span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; color: #0e5634; background: #fff; }
 .scrim { position: fixed; z-index: 30; inset: 0; border: 0; background: rgba(0,0,0,.66); backdrop-filter: blur(3px); }

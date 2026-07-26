@@ -727,7 +727,8 @@ export default function App() {
         <div className="top-actions">
           {installEvent && <button className="icon-button" type="button" onClick={install} aria-label="Install app"><Icon name="install" /></button>}
           <button className="profile-button" type="button" onClick={() => auth.signOut()} aria-label="Sign out">
-            {profilePhoto ? <img src={profilePhoto} alt="" /> : <span>{(nickname || user.email || '?').charAt(0).toUpperCase()}</span>}
+            {profilePhoto ? <img src={profilePhoto} alt="" /> : <span className="profile-avatar">{(nickname || user.email || '?').charAt(0).toUpperCase()}</span>}
+            <span className="profile-build">Build 11</span>
             <Icon name="logout" size={16} />
           </button>
         </div>
@@ -837,7 +838,6 @@ export default function App() {
         )}
       </main>
 
-      <div className="readonly-pill">READ ONLY · BUILD 10</div>
       <AskK portfolio={askKPortfolio} />
     </div>
   )
