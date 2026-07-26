@@ -494,7 +494,7 @@ export default function RobinhoodSync({
                       <div>
                         <div className="font-bold">{holdings.performance?.year || new Date().getFullYear()} YTD performance</div>
                         <p className={`mt-1 text-xs ${muted}`}>
-                          Enter each account’s December 31 closing value. Plaid activity adjusts for contributions and withdrawals; daily closing snapshots continue automatically.
+                          December 31 closing values establish the baseline. YTD is shown only when deposits and withdrawals can also be reconciled; daily closing snapshots continue automatically.
                         </p>
                       </div>
                       {holdings.performance?.total?.status === 'ready' && (
@@ -552,6 +552,11 @@ export default function RobinhoodSync({
                                   {' · '}{performance.externalFlowCount} recognized flow{performance.externalFlowCount === 1 ? '' : 's'}
                                 </span>
                               </>
+                            )}
+                            {performance?.status === 'cash-flow-history-incomplete' && (
+                              <span className="mt-1 block text-xs font-bold text-amber-500">
+                                YTD unavailable · cash-flow history is incomplete
+                              </span>
                             )}
                           </label>
                         )

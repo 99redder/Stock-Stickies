@@ -3335,7 +3335,7 @@ const firebaseConfig = {
                                             }
                                             const pnl = h.unrealizedPnL == null
                                                 ? ''
-                                                : ` | P&L ${h.unrealizedPnL >= 0 ? '+' : ''}${formatUsd(h.unrealizedPnL)}${h.unrealizedPnLPercent == null ? '' : ` (${h.unrealizedPnLPercent >= 0 ? '+' : ''}${h.unrealizedPnLPercent.toFixed(1)}%)`}`;
+                                                : ` | Unrealized P&L ${h.unrealizedPnL >= 0 ? '+' : ''}${formatUsd(h.unrealizedPnL)}${h.unrealizedPnLPercent == null ? '' : ` (${h.unrealizedPnLPercent >= 0 ? '+' : ''}${h.unrealizedPnLPercent.toFixed(1)}%)`}`;
                                             return `${h.ticker}: ${h.shares} shares @ $${h.price.toFixed(2)} = $${h.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${h.percentage.toFixed(1)}%)${pnl}`;
                                         }
                                     }
@@ -5398,12 +5398,12 @@ const firebaseConfig = {
                                             )}
                                             {(accountTotals[accountId]?.pnlPositionCount || 0) > 0 ? (
                                                 <span className={`block text-xs font-semibold ${accountTotals[accountId].unrealizedPnL >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
-                                                    {accountTotals[accountId].missingPnlCount > 0 ? 'Known P&L ' : 'P&L '}
+                                                    {accountTotals[accountId].missingPnlCount > 0 ? 'Known unrealized P&L ' : 'Unrealized P&L '}
                                                     {formatSignedUsd(accountTotals[accountId].unrealizedPnL)}
                                                     {accountTotals[accountId].unrealizedPnLPercent != null && ` · ${formatSignedPercent(accountTotals[accountId].unrealizedPnLPercent)}`}
                                                 </span>
                                             ) : accountValue > 0 ? (
-                                                <span className={`block text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>P&amp;L unavailable</span>
+                                                <span className={`block text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Unrealized P&amp;L unavailable</span>
                                             ) : null}
                                             {robinhoodPerformance?.accounts?.[accountId]?.status === 'ready' && (
                                                 <span className={`block text-xs font-semibold ${
@@ -5501,9 +5501,11 @@ const firebaseConfig = {
                                             }`}>
                                                 {shownYtdPerformance?.status === 'ready'
                                                     ? `${robinhoodPerformance.year} YTD ${formatSignedUsd(shownYtdPerformance.gain)}${shownYtdPerformance.returnPercent == null ? '' : ` · ${formatSignedPercent(shownYtdPerformance.returnPercent)}`}`
-                                                    : robinhoodPerformance
-                                                        ? `${robinhoodPerformance.year} YTD needs opening values`
-                                                        : 'YTD performance loading…'}
+                                                    : shownYtdPerformance?.status === 'cash-flow-history-incomplete'
+                                                        ? `${robinhoodPerformance.year} YTD needs cash-flow history`
+                                                        : robinhoodPerformance
+                                                            ? `${robinhoodPerformance.year} YTD needs opening values`
+                                                            : 'YTD performance loading…'}
                                             </div>
                                             {portfolioAccountFilter !== 'all' && grandPortfolioValue > 0 && (
                                                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
@@ -5579,8 +5581,8 @@ const firebaseConfig = {
                                                             : (isActive ? 'text-current' : (darkMode ? 'text-red-300' : 'text-red-700')))
                                                         : 'opacity-60'}`}>
                                                         {pnl.coveredCount > 0
-                                                            ? `${pnl.missingCount > 0 ? 'Known P&L' : 'P&L'} ${formatSignedUsd(pnl.unrealizedPnL)}`
-                                                            : 'P&L unavailable'}
+                                                            ? `${pnl.missingCount > 0 ? 'Known unrealized P&L' : 'Unrealized P&L'} ${formatSignedUsd(pnl.unrealizedPnL)}`
+                                                            : 'Unrealized P&L unavailable'}
                                                     </div>
                                                     {ytd?.status === 'ready' && (
                                                         <div className={`mt-0.5 text-[10px] font-semibold ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${
@@ -5790,7 +5792,7 @@ const firebaseConfig = {
                                             </div>
                                             <div className={`text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                                 <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {portfolioPnlTotals.missingCount > 0 ? 'Known total P&L' : 'Total P&L'}
+                                                    {portfolioPnlTotals.missingCount > 0 ? 'Known total unrealized P&L' : 'Total unrealized P&L'}
                                                 </div>
                                                 <div className={`font-bold tabular-nums ${portfolioPnlTotals.coveredCount > 0
                                                     ? (portfolioPnlTotals.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600')
@@ -5841,7 +5843,7 @@ const firebaseConfig = {
                                         {portfolioPnlTotals.missingCount > 0 && (
                                             <div className={`border-t px-5 py-3 text-xs ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
                                                 {portfolioPnlTotals.coveredCount > 0
-                                                    ? <>Total P&amp;L includes only the {portfolioPnlTotals.coveredCount} position{portfolioPnlTotals.coveredCount !== 1 ? 's' : ''} with brokerage-provided cost basis; {portfolioPnlTotals.missingCount} position{portfolioPnlTotals.missingCount !== 1 ? 's are' : ' is'} unavailable.</>
+                                                    ? <>Total unrealized P&amp;L includes only the {portfolioPnlTotals.coveredCount} position{portfolioPnlTotals.coveredCount !== 1 ? 's' : ''} with brokerage-provided cost basis; {portfolioPnlTotals.missingCount} position{portfolioPnlTotals.missingCount !== 1 ? 's are' : ' is'} unavailable.</>
                                                     : <>Brokerage-provided cost basis is unavailable for these positions, so unrealized P&amp;L cannot be calculated yet.</>}
                                             </div>
                                         )}

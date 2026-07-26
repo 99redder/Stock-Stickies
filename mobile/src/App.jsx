@@ -1070,9 +1070,11 @@ export default function App() {
                 <strong>
                   {scopedYtdPerformance?.status === 'ready'
                     ? `${signedMoney(scopedYtdPerformance.gain)}${scopedYtdPerformance.returnPercent == null ? '' : ` · ${signedPercent(scopedYtdPerformance.returnPercent)}`}`
-                    : ytdPerformance
-                      ? 'Needs opening values'
-                      : 'Loading…'}
+                    : scopedYtdPerformance?.status === 'cash-flow-history-incomplete'
+                      ? 'Needs cash-flow history'
+                      : ytdPerformance
+                        ? 'Needs opening values'
+                        : 'Loading…'}
                 </strong>
               </div>
               <small className="balance-caption">
@@ -1101,8 +1103,8 @@ export default function App() {
                 <span>All accounts</span><strong>{money(grandAccountBalance)}</strong>
                 <small className={allPnlTotals.coveredCount > 0 && allPnlTotals.unrealizedPnL < 0 ? 'loss' : 'gain'}>
                   {allPnlTotals.coveredCount > 0
-                    ? `P&L ${signedMoney(allPnlTotals.unrealizedPnL)}`
-                    : 'P&L unavailable'}
+                    ? `Unrealized P&L ${signedMoney(allPnlTotals.unrealizedPnL)}`
+                    : 'Unrealized P&L unavailable'}
                 </small>
                 {ytdPerformance?.total?.status === 'ready' && (
                   <small className={ytdPerformance.total.gain >= 0 ? 'gain' : 'loss'}>
@@ -1117,8 +1119,8 @@ export default function App() {
                   <strong>{money(id === UNASSIGNED ? (accountTotals[id]?.value || 0) : accountDisplayBalances[id])}</strong>
                   <small className={(accountTotals[id]?.unrealizedPnL || 0) >= 0 ? 'gain' : 'loss'}>
                     {(accountTotals[id]?.pnlCount || 0) > 0
-                      ? `${accountTotals[id].missingPnlCount > 0 ? 'Known P&L' : 'P&L'} ${signedMoney(accountTotals[id].unrealizedPnL)}`
-                      : 'P&L unavailable'}
+                      ? `${accountTotals[id].missingPnlCount > 0 ? 'Known unrealized P&L' : 'Unrealized P&L'} ${signedMoney(accountTotals[id].unrealizedPnL)}`
+                      : 'Unrealized P&L unavailable'}
                   </small>
                   {ytdPerformance?.accounts?.[id]?.status === 'ready' && (
                     <small className={ytdPerformance.accounts[id].gain >= 0 ? 'gain' : 'loss'}>
@@ -1227,11 +1229,11 @@ export default function App() {
                         <strong>{money(position.value)}</strong>
                         {position.unrealizedPnL != null && (
                           <span className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>
-                            P&amp;L {signedMoney(position.unrealizedPnL)} · {position.unrealizedPnLPercent == null ? 'n/a' : signedPercent(position.unrealizedPnLPercent)}
+                            Unrealized P&amp;L {signedMoney(position.unrealizedPnL)} · {position.unrealizedPnLPercent == null ? 'n/a' : signedPercent(position.unrealizedPnLPercent)}
                           </span>
                         )}
                         {!position.summaryKind && position.unrealizedPnL == null && (
-                          <span className="unavailable">P&amp;L unavailable</span>
+                          <span className="unavailable">Unrealized P&amp;L unavailable</span>
                         )}
                       </div>
                       <Icon name="chevron" size={16} />
@@ -1248,7 +1250,7 @@ export default function App() {
                               <>
                                 <div><span>Cost basis</span><strong>{money(position.costBasis, 2)}</strong></div>
                                 <div><span>Unrealized P&amp;L</span><strong className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>{signedMoney(position.unrealizedPnL, 2)}</strong></div>
-                                <div><span>P&amp;L return</span><strong className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>{position.unrealizedPnLPercent == null ? 'Unavailable' : signedPercent(position.unrealizedPnLPercent, 2)}</strong></div>
+                                <div><span>Unrealized return</span><strong className={position.unrealizedPnL >= 0 ? 'gain' : 'loss'}>{position.unrealizedPnLPercent == null ? 'Unavailable' : signedPercent(position.unrealizedPnLPercent, 2)}</strong></div>
                               </>
                             )}
                             <small>{position.costBasis != null ? 'Estimated using the latest displayed price and Plaid cost basis.' : (position.summaryNote || 'Calculated for the selected portfolio.')}</small>
@@ -1295,7 +1297,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 28</strong></div>
+              <div><span>Version</span><strong>Build 29</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>
