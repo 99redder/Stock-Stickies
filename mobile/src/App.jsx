@@ -728,7 +728,7 @@ export default function App() {
           {installEvent && <button className="icon-button" type="button" onClick={install} aria-label="Install app"><Icon name="install" /></button>}
           <button className="profile-button" type="button" onClick={() => auth.signOut()} aria-label="Sign out">
             {profilePhoto ? <img src={profilePhoto} alt="" /> : <span className="profile-avatar">{(nickname || user.email || '?').charAt(0).toUpperCase()}</span>}
-            <span className="profile-build">Build 11</span>
+            <span className="profile-build">Build 12</span>
             <Icon name="logout" size={16} />
           </button>
         </div>

@@ -12,3 +12,6 @@
 
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
+
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
