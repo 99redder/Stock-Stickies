@@ -5184,7 +5184,6 @@ const firebaseConfig = {
                                             notes={notes}
                                             ready={userDataReady}
                                             darkMode={darkMode}
-                                            onCreateBackup={createCurrentAccountBackup}
                                             onApply={applyRobinhoodReconciliation}
                                             onPerformanceChange={setRobinhoodPerformance}
                                         />

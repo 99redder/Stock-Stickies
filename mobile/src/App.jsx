@@ -465,7 +465,7 @@ export default function App() {
   }, [user])
 
   const portfolioNotes = useMemo(
-    () => notes.filter((note) => normalizeTicker(note.title) && Number(note.shares) > 0),
+    () => notes.filter((note) => normalizeTicker(note.title)),
     [notes],
   )
 
@@ -501,7 +501,12 @@ export default function App() {
       const price = ticker === 'USD'
         ? 1
         : Number(prices[ticker] || (Number.isFinite(brokerPrice) && brokerPrice > 0 ? brokerPrice : 0) || plaidPrice(note) || 0)
-      const shares = Number(note.shares) || 0
+      const brokerQuantity = Number(brokerHolding?.quantity)
+      // Mobile is intentionally read-only, but position size should reflect the
+      // live brokerage holding whenever Plaid can match the saved note.
+      const shares = Number.isFinite(brokerQuantity)
+        ? brokerQuantity
+        : (Number(note.shares) || 0)
       const category = colorLabels[note.color] || 'Unclassified'
       const rawCostBasis = brokerHolding?.costBasis ?? note.plaidCostBasis
       const parsedCostBasis = Number(rawCostBasis)
@@ -540,7 +545,7 @@ export default function App() {
         note: String(note.text || '').trim(),
         isCash: category.trim().toLowerCase() === 'cash' || ticker === 'USD' || ticker === 'SGOV',
       }
-    })
+    }).filter((position) => position.shares > 0)
     const total = raw.reduce((sum, position) => sum + position.value, 0)
     return raw.map((position) => ({
       ...position,
@@ -1477,7 +1482,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 36</strong></div>
+              <div><span>Version</span><strong>Build 37</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

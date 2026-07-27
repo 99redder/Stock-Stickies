@@ -159,7 +159,6 @@ export default function RobinhoodSync({
   notes,
   ready,
   darkMode,
-  onCreateBackup,
   onApply,
   onPerformanceChange,
 }) {
@@ -281,19 +280,15 @@ export default function RobinhoodSync({
     setError('')
     setResult(null)
     try {
-      const [backupResult, statusResult] = await Promise.allSettled([
-        onCreateBackup('pre-plaid-connection'),
-        apiFetch('/api/stock-stickies/plaid/status'),
-      ])
-      if (backupResult.status !== 'fulfilled') throw backupResult.reason
-      setBackup(backupResult.value)
-      if (statusResult.status === 'fulfilled') {
-        setStatus(statusResult.value)
-      } else {
-        setError(statusResult.reason?.message || 'The Robinhood connection could not be checked.')
+      const connection = await apiFetch('/api/stock-stickies/plaid/status')
+      setStatus(connection)
+      if (!connection.investmentsEnabled) {
+        setAutoSyncState('needs-consent')
+        return
       }
+      await loadHoldings()
     } catch (openError) {
-      setError(openError?.message || 'Robinhood sync could not be prepared.')
+      setError(openError?.message || 'Robinhood positions could not be updated.')
     } finally {
       setLoading(false)
     }
@@ -308,12 +303,27 @@ export default function RobinhoodSync({
       setHoldings(data)
       applyPerformance(data.performance)
       setStatus(previous => ({ ...(previous || {}), investmentsEnabled: true }))
+      const latestReconciliation = buildRobinhoodReconciliation(
+        notesRef.current,
+        data.positions || []
+      )
+      if (latestReconciliation.updates.length || latestReconciliation.additions.length) {
+        setApplying(true)
+        const applied = await onApplyRef.current(latestReconciliation)
+        setResult(applied)
+        setBackup(applied.backup)
+        setAutoSyncState('applied')
+      } else {
+        setAutoSyncState('current')
+      }
     } catch (holdingsError) {
       setError(holdingsError?.message || 'Robinhood positions could not be loaded.')
+      setAutoSyncState(holdingsError?.needsConsent ? 'needs-consent' : 'failed')
       if (holdingsError?.needsConsent) {
         setStatus(previous => ({ ...(previous || {}), investmentsEnabled: false }))
       }
     } finally {
+      setApplying(false)
       setLoading(false)
     }
   }
@@ -347,21 +357,6 @@ export default function RobinhoodSync({
     } catch (connectError) {
       setLoading(false)
       setError(connectError?.message || 'Robinhood permission could not be started.')
-    }
-  }
-
-  const applyChanges = async () => {
-    if (!holdings || (!reconciliation.updates.length && !reconciliation.additions.length)) return
-    setApplying(true)
-    setError('')
-    try {
-      const applied = await onApply(reconciliation)
-      setResult(applied)
-      setBackup(applied.backup)
-    } catch (applyError) {
-      setError(applyError?.message || 'No Stock Stickies changes were applied.')
-    } finally {
-      setApplying(false)
     }
   }
 
@@ -407,8 +402,9 @@ export default function RobinhoodSync({
     <>
       <button
         type="button"
-        onClick={openSync}
-        className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[#00c805]/50 bg-black text-[#00c805] shadow-lg transition-colors hover:bg-gray-900"
+        onClick={() => void openSync()}
+        disabled={loading || applying || autoSyncState === 'syncing'}
+        className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#00c805]/50 bg-black px-3 text-sm font-bold text-[#00c805] shadow-lg transition-colors hover:bg-gray-900 disabled:cursor-wait disabled:opacity-60"
         title={
           autoSyncState === 'syncing'
             ? 'Automatically syncing Robinhood positions'
@@ -427,6 +423,11 @@ export default function RobinhoodSync({
         <span className={autoSyncState === 'syncing' ? 'animate-pulse' : ''}>
           <RobinhoodLogo />
         </span>
+        <span>
+          {loading || applying || autoSyncState === 'syncing'
+            ? 'Updating…'
+            : 'Update positions'}
+        </span>
       </button>
 
       {open && (
@@ -435,7 +436,7 @@ export default function RobinhoodSync({
             <div className={`sticky top-0 z-10 flex items-center justify-between border-b p-5 ${panel}`}>
               <div>
                 <h2 className="text-xl font-black">Robinhood Position Sync</h2>
-                <p className={`mt-1 text-xs ${muted}`}>Preview first. Existing notes and research are never deleted.</p>
+                <p className={`mt-1 text-xs ${muted}`}>One click refreshes and safely applies current position sizes.</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className={`rounded-lg px-3 py-2 ${muted}`}>✕</button>
             </div>
@@ -448,9 +449,9 @@ export default function RobinhoodSync({
                     Protected {backup.noteCount} notes before this session. Backup ID: <span className="font-mono">{backup.id}</span>
                   </p>
                 ) : (
-                  <p className={`mt-1 text-sm ${muted}`}>Creating a full Firestore backup before Robinhood can be used…</p>
+                  <p className={`mt-1 text-sm ${muted}`}>A full backup is created automatically only when position changes need to be saved.</p>
                 )}
-                <p className={`mt-2 text-xs ${muted}`}>Applying a preview creates another backup. Possible closed positions are reported but left unchanged.</p>
+                <p className={`mt-2 text-xs ${muted}`}>Possible closed positions are reported but left unchanged.</p>
               </div>
 
               {error && <div className="rounded-xl border border-red-500/50 bg-red-950/30 p-3 text-sm text-red-400">{error}</div>}
@@ -475,13 +476,13 @@ export default function RobinhoodSync({
                         ? 'Robinhood Investments access is enabled.'
                         : 'One-time Robinhood permission is required before positions can be read.'}
                   </p>
-                  {!loading && backup && (
+                  {!loading && (
                     <button
                       type="button"
-                      onClick={status?.investmentsEnabled ? loadHoldings : connectInvestments}
+                      onClick={status?.investmentsEnabled ? openSync : connectInvestments}
                       className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500"
                     >
-                      {status?.investmentsEnabled ? 'Load Position Preview' : 'Connect Robinhood Positions'}
+                      {status?.investmentsEnabled ? 'Update positions' : 'Connect Robinhood Positions'}
                     </button>
                   )}
                 </div>
@@ -636,16 +637,13 @@ export default function RobinhoodSync({
                   )}
 
                   <div className="flex flex-wrap justify-end gap-3">
-                    <button type="button" onClick={loadHoldings} disabled={loading || applying} className={`rounded-lg border px-4 py-2 text-sm font-bold ${muted}`}>
-                      {loading ? 'Refreshing…' : 'Refresh Preview'}
-                    </button>
                     <button
                       type="button"
-                      onClick={applyChanges}
-                      disabled={applying || (!reconciliation.updates.length && !reconciliation.additions.length)}
+                      onClick={() => void openSync()}
+                      disabled={loading || applying}
                       className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {applying ? 'Backing up & applying…' : 'Back Up & Apply Preview'}
+                      {loading || applying ? 'Updating positions…' : 'Update positions'}
                     </button>
                   </div>
                 </>

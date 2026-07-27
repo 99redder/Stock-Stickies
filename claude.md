@@ -351,6 +351,18 @@ Desktop is the editing surface and performs Firestore writes. Mobile should rema
 read-only for portfolio data. A mobile feature must not silently introduce a second
 portfolio store or write a derived brokerage balance back over the desktop data.
 
+For position size, mobile matches each saved note to the live Plaid holding by
+account/security identifiers, then by account/ticker as a fallback. When matched,
+the displayed share quantity comes directly from `holding.quantity`; `note.shares`
+is only the fallback when no live holding can be matched. Mobile never writes that
+quantity back to Firestore.
+
+Desktop exposes one `Update positions` action. It checks the Plaid permission,
+loads current holdings, compares them with the saved notes, creates one Firestore
+backup only when changes exist, and applies share/account/metadata updates in that
+same action. The detailed sync modal remains available for results and exceptions;
+positions absent from Plaid are still review-only and are not automatically deleted.
+
 ### Static Firebase Configuration
 
 Vite substitutes `VITE_*` variables while compiling; a runtime hosting environment cannot
