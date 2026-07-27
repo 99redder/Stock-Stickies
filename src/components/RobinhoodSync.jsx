@@ -170,6 +170,7 @@ export default function RobinhoodSync({
   const [holdings, setHoldings] = useState(null)
   const [backup, setBackup] = useState(null)
   const [result, setResult] = useState(null)
+  const [syncSummary, setSyncSummary] = useState(null)
   const [autoSyncState, setAutoSyncState] = useState('idle')
   const [openingValues, setOpeningValues] = useState({
     individual: '',
@@ -275,20 +276,25 @@ export default function RobinhoodSync({
   }, [apiFetch, applyPerformance, authUser, ready])
 
   const openSync = async () => {
-    setOpen(true)
+    setOpen(false)
+    setSyncSummary(null)
     setLoading(true)
     setError('')
     setResult(null)
+    setBackup(null)
     try {
       const connection = await apiFetch('/api/stock-stickies/plaid/status')
       setStatus(connection)
       if (!connection.investmentsEnabled) {
         setAutoSyncState('needs-consent')
+        setOpen(true)
         return
       }
       await loadHoldings()
     } catch (openError) {
-      setError(openError?.message || 'Robinhood positions could not be updated.')
+      const message = openError?.message || 'Robinhood positions could not be updated.'
+      setError(message)
+      setSyncSummary({ ok: false, message })
     } finally {
       setLoading(false)
     }
@@ -307,20 +313,44 @@ export default function RobinhoodSync({
         notesRef.current,
         data.positions || []
       )
+      let applied = null
       if (latestReconciliation.updates.length || latestReconciliation.additions.length) {
         setApplying(true)
-        const applied = await onApplyRef.current(latestReconciliation)
+        applied = await onApplyRef.current(latestReconciliation)
         setResult(applied)
         setBackup(applied.backup)
         setAutoSyncState('applied')
       } else {
         setAutoSyncState('current')
       }
+      setOpen(false)
+      setSyncSummary({
+        ok: true,
+        checkedCount: Array.isArray(data.positions) ? data.positions.length : 0,
+        updatedCount: applied?.updatedCount || 0,
+        addedCount: applied?.addedCount || 0,
+        possibleClosed: latestReconciliation.possibleClosed.map(note =>
+          `${note.title} (${note.account})`
+        ),
+        needsReview: latestReconciliation.unsupported.map(position =>
+          position.ticker || position.name || 'Unknown security'
+        ),
+        warnings: Array.isArray(data.performance?.warnings)
+          ? data.performance.warnings
+          : [],
+        backupId: applied?.backup?.id || null,
+        fetchedAt: data.fetchedAt || null,
+      })
     } catch (holdingsError) {
-      setError(holdingsError?.message || 'Robinhood positions could not be loaded.')
+      const message = holdingsError?.message || 'Robinhood positions could not be loaded.'
+      setError(message)
       setAutoSyncState(holdingsError?.needsConsent ? 'needs-consent' : 'failed')
       if (holdingsError?.needsConsent) {
         setStatus(previous => ({ ...(previous || {}), investmentsEnabled: false }))
+        setOpen(true)
+      } else {
+        setOpen(false)
+        setSyncSummary({ ok: false, message })
       }
     } finally {
       setApplying(false)
@@ -345,6 +375,7 @@ export default function RobinhoodSync({
         token: linkToken,
         onSuccess: async () => {
           handler.destroy()
+          setOpen(false)
           await loadHoldings()
         },
         onExit: (exitError) => {
@@ -429,6 +460,134 @@ export default function RobinhoodSync({
             : 'Update positions'}
         </span>
       </button>
+
+      {syncSummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className={`w-full max-w-2xl overflow-hidden rounded-2xl border shadow-2xl ${panel}`}>
+            <div className={`flex items-center justify-between border-b p-5 ${panel}`}>
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-black text-[#00c805]">
+                  <RobinhoodLogo />
+                </span>
+                <div>
+                  <h2 className="text-xl font-black">
+                    {!syncSummary.ok
+                      ? 'Position update incomplete'
+                      : syncSummary.updatedCount || syncSummary.addedCount
+                        ? 'Positions updated'
+                        : 'Positions are current'}
+                  </h2>
+                  <p className={`mt-1 text-xs ${muted}`}>
+                    {syncSummary.ok
+                      ? `${syncSummary.checkedCount} Robinhood position${syncSummary.checkedCount === 1 ? '' : 's'} checked`
+                      : 'Stock Stickies did not make any position changes.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSyncSummary(null)}
+                className={`rounded-lg px-3 py-2 ${muted}`}
+                aria-label="Close position update summary"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              {!syncSummary.ok ? (
+                <div className="rounded-xl border border-red-500/50 bg-red-950/30 p-4 text-sm text-red-400">
+                  {syncSummary.message}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      ['Updated', syncSummary.updatedCount],
+                      ['Added', syncSummary.addedCount],
+                      ['Possible closed', syncSummary.possibleClosed.length],
+                      ['Needs review', syncSummary.needsReview.length],
+                    ].map(([label, value]) => (
+                      <div key={label} className={`rounded-xl border p-3 ${card}`}>
+                        <div className={`text-xs ${muted}`}>{label}</div>
+                        <div className="mt-1 text-2xl font-black tabular-nums">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {!syncSummary.updatedCount && !syncSummary.addedCount && (
+                    <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 text-sm text-emerald-400">
+                      Saved position sizes already match the latest values returned by Robinhood.
+                    </div>
+                  )}
+
+                  {(syncSummary.possibleClosed.length > 0 || syncSummary.needsReview.length > 0) && (
+                    <div className={`rounded-xl border border-amber-500/40 p-4 ${card}`}>
+                      <div className="font-bold text-amber-500">Review recommended</div>
+                      {syncSummary.possibleClosed.length > 0 && (
+                        <p className={`mt-2 text-sm ${muted}`}>
+                          Not returned by Plaid and left unchanged: {syncSummary.possibleClosed.join(', ')}.
+                        </p>
+                      )}
+                      {syncSummary.needsReview.length > 0 && (
+                        <p className={`mt-2 text-sm ${muted}`}>
+                          Could not be matched automatically: {syncSummary.needsReview.join(', ')}.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {syncSummary.warnings.length > 0 && (
+                    <div className={`rounded-xl border p-4 ${card}`}>
+                      <div className="font-bold">Data notes</div>
+                      {syncSummary.warnings.map(warning => (
+                        <p key={warning} className={`mt-2 text-xs ${muted}`}>{warning}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {syncSummary.backupId && (
+                    <p className={`text-xs ${muted}`}>
+                      A rollback backup was created before applying changes.
+                    </p>
+                  )}
+                </>
+              )}
+
+              <div className="flex flex-wrap justify-end gap-3">
+                {syncSummary.ok && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSyncSummary(null)
+                      setOpen(true)
+                    }}
+                    className={`rounded-lg border px-4 py-2 text-sm font-bold ${muted}`}
+                  >
+                    View details
+                  </button>
+                )}
+                {!syncSummary.ok && (
+                  <button
+                    type="button"
+                    onClick={() => void openSync()}
+                    className={`rounded-lg border px-4 py-2 text-sm font-bold ${muted}`}
+                  >
+                    Try again
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSyncSummary(null)}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -636,16 +795,6 @@ export default function RobinhoodSync({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => void openSync()}
-                      disabled={loading || applying}
-                      className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {loading || applying ? 'Updating positions…' : 'Update positions'}
-                    </button>
-                  </div>
                 </>
               )}
             </div>

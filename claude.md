@@ -360,8 +360,11 @@ quantity back to Firestore.
 Desktop exposes one `Update positions` action. It checks the Plaid permission,
 loads current holdings, compares them with the saved notes, creates one Firestore
 backup only when changes exist, and applies share/account/metadata updates in that
-same action. The detailed sync modal remains available for results and exceptions;
-positions absent from Plaid are still review-only and are not automatically deleted.
+same action without opening an intermediate confirmation modal. When the operation
+finishes, a branded summary reports the number checked, updated, added, possibly
+closed, and needing review, plus any warnings or errors. The detailed sync modal is
+optional from that summary; positions absent from Plaid remain review-only and are
+not automatically deleted.
 
 ### Static Firebase Configuration
 
