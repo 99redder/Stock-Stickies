@@ -366,6 +366,13 @@ closed, and needing review, plus any warnings or errors. The detailed sync modal
 optional from that summary; positions absent from Plaid remain review-only and are
 not automatically deleted.
 
+Never describe a zero-change sync as “Robinhood positions are current.” The Worker
+can only compare against Plaid's latest available Investments snapshot, which is not
+real-time and commonly updates after market hours. The completion summary must say
+that the latest Plaid snapshot matched, display `fetchedAt`, explain that recent
+overnight/premarket trades may still be absent, and prominently warn when
+`source === 'nightly-cache'` or `stale === true`.
+
 ### Static Firebase Configuration
 
 Vite substitutes `VITE_*` variables while compiling; a runtime hosting environment cannot
