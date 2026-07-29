@@ -1774,8 +1774,18 @@ const firebaseConfig = {
                 const currentData = current.data() || {};
                 const currentNotes = Array.isArray(currentData.notes) ? currentData.notes : notes;
                 const updatesById = new Map((reconciliation?.updates || []).map(change => [change.noteId, change]));
+                const closedNoteIds = new Set(
+                    reconciliation?.removeClosedPositions
+                        ? (reconciliation?.possibleClosed || []).map(note => note.id)
+                        : []
+                );
+                const removedPositions = currentNotes
+                    .filter(note => closedNoteIds.has(note.id))
+                    .map(note => `${note.title} (${note.account})`);
                 const syncedAt = new Date().toISOString();
-                const updatedNotes = currentNotes.map(note => {
+                const updatedNotes = currentNotes.filter(note =>
+                    !closedNoteIds.has(note.id)
+                ).map(note => {
                     const change = updatesById.get(note.id);
                     if (!change) return note;
                     return {
@@ -1860,6 +1870,8 @@ const firebaseConfig = {
                     backup,
                     updatedCount: reconciliation?.updates?.length || 0,
                     addedCount: reconciliation?.additions?.length || 0,
+                    removedCount: removedPositions.length,
+                    removedPositions,
                     priceRefresh
                 };
             };

@@ -128,6 +128,13 @@ function buildRobinhoodReconciliation(notes, positions) {
   const possibleClosed = notes.filter(note =>
     Number(note.shares) > 0 &&
     ['individual', 'traditional', 'roth'].includes(note.account) &&
+    (
+      note.plaidSource === 'robinhood' ||
+      note.plaidAccountId ||
+      note.plaidSecurityId
+    ) &&
+    normalizeTicker(note.title) !== 'USD' &&
+    note.plaidSecurityType !== 'cash' &&
     !liveKeys.has(positionKey(note.account, note.title))
   )
 
@@ -322,10 +329,25 @@ export default function RobinhoodSync({
         notesRef.current,
         data.positions || []
       )
+      const canConfirmClosures =
+        requestFreshData &&
+        data.refresh?.requested === true &&
+        Boolean(data.refresh?.completedAt) &&
+        data.stale !== true &&
+        data.source !== 'nightly-cache'
+      const actionableReconciliation = {
+        ...latestReconciliation,
+        removeClosedPositions: canConfirmClosures,
+      }
       let applied = null
-      if (latestReconciliation.updates.length || latestReconciliation.additions.length) {
+      if (
+        actionableReconciliation.updates.length ||
+        actionableReconciliation.additions.length ||
+        (actionableReconciliation.removeClosedPositions &&
+          actionableReconciliation.possibleClosed.length)
+      ) {
         setApplying(true)
-        applied = await onApplyRef.current(latestReconciliation)
+        applied = await onApplyRef.current(actionableReconciliation)
         setResult(applied)
         setBackup(applied.backup)
         setAutoSyncState('applied')
@@ -338,10 +360,14 @@ export default function RobinhoodSync({
         checkedCount: Array.isArray(data.positions) ? data.positions.length : 0,
         updatedCount: applied?.updatedCount || 0,
         addedCount: applied?.addedCount || 0,
+        removedCount: applied?.removedCount || 0,
+        removedPositions: applied?.removedPositions || [],
         priceRefresh: applied?.priceRefresh || null,
-        possibleClosed: latestReconciliation.possibleClosed.map(note =>
-          `${note.title} (${note.account})`
-        ),
+        possibleClosed: canConfirmClosures
+          ? []
+          : latestReconciliation.possibleClosed.map(note =>
+              `${note.title} (${note.account})`
+            ),
         needsReview: latestReconciliation.unsupported.map(position =>
           position.ticker || position.name || 'Unknown security'
         ),
@@ -490,7 +516,7 @@ export default function RobinhoodSync({
                   <h2 className="text-xl font-black">
                     {!syncSummary.ok
                       ? 'Position update incomplete'
-                      : syncSummary.updatedCount || syncSummary.addedCount
+                      : syncSummary.updatedCount || syncSummary.addedCount || syncSummary.removedCount
                         ? 'Positions updated'
                         : syncSummary.refreshRequested
                           ? 'Robinhood refresh completed'
@@ -528,7 +554,7 @@ export default function RobinhoodSync({
                     {[
                       ['Updated', syncSummary.updatedCount],
                       ['Added', syncSummary.addedCount],
-                      ['Possible closed', syncSummary.possibleClosed.length],
+                      ['Removed', syncSummary.removedCount],
                       ['Needs review', syncSummary.needsReview.length],
                     ].map(([label, value]) => (
                       <div key={label} className={`rounded-xl border p-3 ${card}`}>
@@ -538,7 +564,7 @@ export default function RobinhoodSync({
                     ))}
                   </div>
 
-                  {!syncSummary.updatedCount && !syncSummary.addedCount && (
+                  {!syncSummary.updatedCount && !syncSummary.addedCount && !syncSummary.removedCount && (
                     <div className={`rounded-xl border p-4 text-sm ${
                       syncSummary.refreshRequested && !syncSummary.positionsChangedAtSource
                         ? 'border-amber-500/50 bg-amber-950/30 text-amber-400'
@@ -549,6 +575,16 @@ export default function RobinhoodSync({
                           ? 'Plaid received changed Robinhood quantities, but the corresponding saved Stock Stickies positions already matched them.'
                           : 'Plaid completed a fresh Robinhood extraction but returned the same position quantities. If recent trades are still missing, Robinhood did not include them in this extraction.'
                         : 'Saved position sizes match the latest snapshot Plaid currently has available. This does not necessarily mean Plaid has received today’s newest Robinhood trades.'}
+                    </div>
+                  )}
+
+                  {syncSummary.removedCount > 0 && (
+                    <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 text-sm text-emerald-400">
+                      <div className="font-bold">Closed positions removed</div>
+                      <p className="mt-1">
+                        Plaid confirmed these Robinhood positions were no longer present, so their
+                        sticky notes were removed: {syncSummary.removedPositions.join(', ')}.
+                      </p>
                     </div>
                   )}
 
@@ -695,7 +731,7 @@ export default function RobinhoodSync({
                 ) : (
                   <p className={`mt-1 text-sm ${muted}`}>A full backup is created automatically only when position changes need to be saved.</p>
                 )}
-                <p className={`mt-2 text-xs ${muted}`}>Possible closed positions are reported but left unchanged.</p>
+                <p className={`mt-2 text-xs ${muted}`}>A completed fresh Robinhood extraction removes positions that are no longer held. The full pre-update backup can restore them if needed.</p>
               </div>
 
               {error && <div className="rounded-xl border border-red-500/50 bg-red-950/30 p-3 text-sm text-red-400">{error}</div>}
