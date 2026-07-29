@@ -216,6 +216,8 @@ export default function RobinhoodSync({
       const requestError = new Error(data.error || `Robinhood request failed (${response.status}).`)
       requestError.code = data.code || ''
       requestError.needsConsent = data.needsConsent === true
+      requestError.requestId = data.requestId || ''
+      requestError.retryAfterSeconds = Number(data.retryAfterSeconds) || 0
       throw requestError
     }
     return data
@@ -290,7 +292,7 @@ export default function RobinhoodSync({
         setOpen(true)
         return
       }
-      await loadHoldings()
+      await loadHoldings({ requestFreshData: true })
     } catch (openError) {
       const message = openError?.message || 'Robinhood positions could not be updated.'
       setError(message)
@@ -300,12 +302,19 @@ export default function RobinhoodSync({
     }
   }
 
-  const loadHoldings = async () => {
+  const loadHoldings = async ({ requestFreshData = false } = {}) => {
     setLoading(true)
     setError('')
     setResult(null)
     try {
-      const data = await apiFetch('/api/stock-stickies/plaid/holdings')
+      const data = await apiFetch(
+        requestFreshData
+          ? '/api/stock-stickies/plaid/refresh'
+          : '/api/stock-stickies/plaid/holdings',
+        requestFreshData
+          ? { method: 'POST', body: JSON.stringify({}) }
+          : {}
+      )
       setHoldings(data)
       applyPerformance(data.performance)
       setStatus(previous => ({ ...(previous || {}), investmentsEnabled: true }))
@@ -340,6 +349,11 @@ export default function RobinhoodSync({
           : [],
         backupId: applied?.backup?.id || null,
         snapshotFetchedAt: data.fetchedAt || null,
+        refreshRequested: data.refresh?.requested === true,
+        refreshStartedAt: data.refresh?.startedAt || null,
+        refreshCompletedAt: data.refresh?.completedAt || null,
+        positionsChangedAtSource: data.refresh?.positionsChanged === true,
+        institutionDataAsOf: data.refresh?.institutionDataAsOf || null,
         source: data.source || 'live',
         stale: data.stale === true || data.source === 'nightly-cache',
       })
@@ -449,7 +463,7 @@ export default function RobinhoodSync({
                   ? 'Open to grant one-time Robinhood Investments permission'
                   : autoSyncState === 'failed'
                     ? 'Automatic sync failed; open to retry'
-                    : 'Preview share quantities from Robinhood'
+                  : 'Request fresh share quantities from Robinhood through Plaid'
         }
         aria-label="Sync Robinhood positions"
       >
@@ -477,11 +491,17 @@ export default function RobinhoodSync({
                       ? 'Position update incomplete'
                       : syncSummary.updatedCount || syncSummary.addedCount
                         ? 'Positions updated'
+                        : syncSummary.refreshRequested
+                          ? 'Robinhood refresh completed'
                         : 'Latest Plaid snapshot matched'}
                   </h2>
                   <p className={`mt-1 text-xs ${muted}`}>
                     {syncSummary.ok
-                      ? `${syncSummary.checkedCount} position${syncSummary.checkedCount === 1 ? '' : 's'} in Plaid’s latest available snapshot checked`
+                      ? `${syncSummary.checkedCount} position${syncSummary.checkedCount === 1 ? '' : 's'} ${
+                          syncSummary.refreshRequested
+                            ? 'returned by a fresh Plaid extraction'
+                            : 'in Plaid’s latest available snapshot'
+                        } checked`
                       : 'Stock Stickies did not make any position changes.'}
                   </p>
                 </div>
@@ -518,9 +538,16 @@ export default function RobinhoodSync({
                   </div>
 
                   {!syncSummary.updatedCount && !syncSummary.addedCount && (
-                    <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 text-sm text-emerald-400">
-                      Saved position sizes match the latest snapshot Plaid currently has available.
-                      This does not necessarily mean Plaid has received today’s newest Robinhood trades.
+                    <div className={`rounded-xl border p-4 text-sm ${
+                      syncSummary.refreshRequested && !syncSummary.positionsChangedAtSource
+                        ? 'border-amber-500/50 bg-amber-950/30 text-amber-400'
+                        : 'border-emerald-500/50 bg-emerald-950/30 text-emerald-400'
+                    }`}>
+                      {syncSummary.refreshRequested
+                        ? syncSummary.positionsChangedAtSource
+                          ? 'Plaid received changed Robinhood quantities, but the corresponding saved Stock Stickies positions already matched them.'
+                          : 'Plaid completed a fresh Robinhood extraction but returned the same position quantities. If recent trades are still missing, Robinhood did not include them in this extraction.'
+                        : 'Saved position sizes match the latest snapshot Plaid currently has available. This does not necessarily mean Plaid has received today’s newest Robinhood trades.'}
                     </div>
                   )}
 
@@ -533,15 +560,23 @@ export default function RobinhoodSync({
                       Data freshness
                     </div>
                     <p className={`mt-2 text-sm ${muted}`}>
-                      Plaid snapshot retrieved{' '}
+                      {syncSummary.refreshRequested
+                        ? 'On-demand Robinhood extraction completed '
+                        : 'Plaid request completed '}
                       {syncSummary.snapshotFetchedAt
                         ? new Date(syncSummary.snapshotFetchedAt).toLocaleString()
                         : 'at an unavailable time'}.
                     </p>
+                    {syncSummary.institutionDataAsOf && (
+                      <p className={`mt-2 text-xs ${muted}`}>
+                        Newest institution position timestamp:{' '}
+                        {new Date(syncSummary.institutionDataAsOf).toLocaleString()}.
+                      </p>
+                    )}
                     <p className={`mt-2 text-xs ${muted}`}>
-                      Plaid investment holdings are not real-time and are generally refreshed after
-                      market hours. Overnight, premarket, and newly executed trades may not appear
-                      until Robinhood’s next update reaches Plaid.
+                      {syncSummary.refreshRequested
+                        ? 'This button requested a new extraction instead of merely rereading Plaid’s saved snapshot. Plaid may still return unchanged data when Robinhood has not made newer holdings available.'
+                        : 'Plaid investment holdings are not real-time and are generally refreshed after market hours. Overnight, premarket, and newly executed trades may not appear until Robinhood’s next update reaches Plaid.'}
                     </p>
                     {syncSummary.stale && (
                       <p className="mt-2 text-xs font-bold text-amber-500">
@@ -625,7 +660,7 @@ export default function RobinhoodSync({
             <div className={`sticky top-0 z-10 flex items-center justify-between border-b p-5 ${panel}`}>
               <div>
                 <h2 className="text-xl font-black">Robinhood Position Sync</h2>
-                <p className={`mt-1 text-xs ${muted}`}>One click refreshes and safely applies current position sizes.</p>
+                <p className={`mt-1 text-xs ${muted}`}>One click requests a fresh Robinhood extraction and safely applies current position sizes.</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className={`rounded-lg px-3 py-2 ${muted}`}>✕</button>
             </div>
