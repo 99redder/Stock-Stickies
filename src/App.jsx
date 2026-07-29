@@ -1753,13 +1753,22 @@ const firebaseConfig = {
                     Number(nextId) || 1,
                     ...updatedNotes.map(note => (Number(note.id) || 0) + 1)
                 );
+                const importedPositionDefaultColor =
+                    categories.find(color =>
+                        String(colorLabels[color] || '').trim().toLowerCase() === 'core thesis'
+                    ) ||
+                    categories.find(color =>
+                        String(colorLabels[color] || '').trim().toLowerCase() === 'core holding'
+                    ) ||
+                    categories[0] ||
+                    UNCLASSIFIED_COLOR;
                 for (const position of reconciliation?.additions || []) {
                     updatedNotes.unshift({
                         id: importedNextId,
                         title: position.ticker,
                         text: '',
-                        color: UNCLASSIFIED_COLOR,
-                        classified: false,
+                        color: importedPositionDefaultColor,
+                        classified: importedPositionDefaultColor !== UNCLASSIFIED_COLOR,
                         shares: position.quantity,
                         account: position.stockStickiesAccount,
                         plaidAccountId: position.accountId,
@@ -1981,6 +1990,51 @@ const firebaseConfig = {
             // Compute derived state - must be before early return to follow Rules of Hooks
             const unclassifiedNotes = useMemo(() => notes.filter(n => !n.classified), [notes]);
             const classifiedNotes = useMemo(() => notes.filter(n => n.classified), [notes]);
+            const importedPositionDefaultColor = useMemo(() =>
+                categories.find(color =>
+                    String(colorLabels[color] || '').trim().toLowerCase() === 'core thesis'
+                ) ||
+                categories.find(color =>
+                    String(colorLabels[color] || '').trim().toLowerCase() === 'core holding'
+                ) ||
+                categories[0] ||
+                null,
+            [categories, colorLabels]);
+
+            // Robinhood supplies the position identity, shares, and account, so imported
+            // positions should enter the normal portfolio immediately. Existing imports
+            // created by older builds are migrated once categories finish loading.
+            useEffect(() => {
+                if (!userDataReady || !importedPositionDefaultColor) return undefined;
+                const migrateImportedPositions = () => {
+                    if (isLoadingRef.current) return;
+                    setNotes(currentNotes => {
+                        if (!currentNotes.some(note =>
+                            !note.classified &&
+                            note.plaidSource === 'robinhood' &&
+                            note.plaidSecurityId &&
+                            note.title
+                        )) return currentNotes;
+                        return currentNotes.map(note =>
+                            !note.classified &&
+                            note.plaidSource === 'robinhood' &&
+                            note.plaidSecurityId &&
+                            note.title
+                                ? {
+                                    ...note,
+                                    color: importedPositionDefaultColor,
+                                    classified: true,
+                                }
+                                : note
+                        );
+                    });
+                };
+                const timer = window.setTimeout(
+                    migrateImportedPositions,
+                    isLoadingRef.current ? 250 : 0
+                );
+                return () => window.clearTimeout(timer);
+            }, [notes, userDataReady, importedPositionDefaultColor]);
 
             // Notes display ordering: always by position market value (shares * latest price).
             // Positions rank above non-positions, and priced positions above unpriced ones,
