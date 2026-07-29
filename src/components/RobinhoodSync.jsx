@@ -218,7 +218,20 @@ export default function RobinhoodSync({
       })
       if (response.status !== 401 || attempt === 1) break
     }
-    const data = await response.json().catch(() => ({}))
+    const responseText = await response.text()
+    let data = {}
+    if (responseText) {
+      try {
+        data = JSON.parse(responseText)
+      } catch {
+        data = {
+          error: response.status === 524
+            ? 'Plaid took too long to answer. No positions were changed. Wait a few minutes, then try the update again.'
+            : `Robinhood returned an unreadable response (${response.status}). Please try again.`,
+          code: response.status === 524 ? 'PLAID_UPSTREAM_TIMEOUT' : 'INVALID_API_RESPONSE',
+        }
+      }
+    }
     if (!response.ok || data.ok === false) {
       const requestError = new Error(data.error || `Robinhood request failed (${response.status}).`)
       requestError.code = data.code || ''
@@ -506,31 +519,21 @@ export default function RobinhoodSync({
 
       {syncSummary && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className={`w-full max-w-2xl overflow-hidden rounded-2xl border shadow-2xl ${panel}`}>
-            <div className={`flex items-center justify-between border-b p-5 ${panel}`}>
+          <div className={`w-full max-w-lg overflow-hidden rounded-2xl border shadow-2xl ${panel}`}>
+            <div className={`flex items-center justify-between border-b p-4 ${panel}`}>
               <div className="flex items-center gap-3">
-                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-black text-[#00c805]">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-black text-[#00c805]">
                   <RobinhoodLogo />
                 </span>
                 <div>
-                  <h2 className="text-xl font-black">
+                  <h2 className="text-lg font-black">
                     {!syncSummary.ok
-                      ? 'Position update incomplete'
+                      ? 'Update didn’t finish'
                       : syncSummary.updatedCount || syncSummary.addedCount || syncSummary.removedCount
-                        ? 'Positions updated'
-                        : syncSummary.refreshRequested
-                          ? 'Robinhood refresh completed'
-                        : 'Latest Plaid snapshot matched'}
+                        ? 'Update complete'
+                        : 'Everything is current'}
                   </h2>
-                  <p className={`mt-1 text-xs ${muted}`}>
-                    {syncSummary.ok
-                      ? `${syncSummary.checkedCount} position${syncSummary.checkedCount === 1 ? '' : 's'} ${
-                          syncSummary.refreshRequested
-                            ? 'returned by a fresh Plaid extraction'
-                            : 'in Plaid’s latest available snapshot'
-                        } checked`
-                      : 'Stock Stickies did not make any position changes.'}
-                  </p>
+                  <p className={`mt-0.5 text-xs ${muted}`}>Robinhood position sync</p>
                 </div>
               </div>
               <button
@@ -543,151 +546,83 @@ export default function RobinhoodSync({
               </button>
             </div>
 
-            <div className="space-y-4 p-5">
+            <div className="space-y-3 p-4">
               {!syncSummary.ok ? (
                 <div className="rounded-xl border border-red-500/50 bg-red-950/30 p-4 text-sm text-red-400">
                   {syncSummary.message}
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {[
-                      ['Updated', syncSummary.updatedCount],
-                      ['Added', syncSummary.addedCount],
-                      ['Removed', syncSummary.removedCount],
-                      ['Needs review', syncSummary.needsReview.length],
-                    ].map(([label, value]) => (
-                      <div key={label} className={`rounded-xl border p-3 ${card}`}>
-                        <div className={`text-xs ${muted}`}>{label}</div>
-                        <div className="mt-1 text-2xl font-black tabular-nums">{value}</div>
+                  <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 text-emerald-400">
+                    {syncSummary.updatedCount || syncSummary.addedCount || syncSummary.removedCount ? (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold">
+                        {syncSummary.updatedCount > 0 && <span>{syncSummary.updatedCount} updated</span>}
+                        {syncSummary.addedCount > 0 && <span>{syncSummary.addedCount} added</span>}
+                        {syncSummary.removedCount > 0 && <span>{syncSummary.removedCount} removed</span>}
                       </div>
-                    ))}
-                  </div>
-
-                  {!syncSummary.updatedCount && !syncSummary.addedCount && !syncSummary.removedCount && (
-                    <div className={`rounded-xl border p-4 text-sm ${
-                      syncSummary.refreshRequested && !syncSummary.positionsChangedAtSource
-                        ? 'border-amber-500/50 bg-amber-950/30 text-amber-400'
-                        : 'border-emerald-500/50 bg-emerald-950/30 text-emerald-400'
-                    }`}>
-                      {syncSummary.refreshRequested
-                        ? syncSummary.positionsChangedAtSource
-                          ? 'Plaid received changed Robinhood quantities, but the corresponding saved Stock Stickies positions already matched them.'
-                          : 'Plaid completed a fresh Robinhood extraction but returned the same position quantities. If recent trades are still missing, Robinhood did not include them in this extraction.'
-                        : 'Saved position sizes match the latest snapshot Plaid currently has available. This does not necessarily mean Plaid has received today’s newest Robinhood trades.'}
-                    </div>
-                  )}
-
-                  {syncSummary.removedCount > 0 && (
-                    <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 text-sm text-emerald-400">
-                      <div className="font-bold">Closed positions removed</div>
-                      <p className="mt-1">
-                        Plaid confirmed these Robinhood positions were no longer present, so their
-                        sticky notes were removed: {syncSummary.removedPositions.join(', ')}.
-                      </p>
-                    </div>
-                  )}
-
-                  {syncSummary.addedCount > 0 && syncSummary.priceRefresh && (
-                    <div className={`rounded-xl border p-4 text-sm ${
-                      syncSummary.priceRefresh.failedTickers?.length
-                        ? 'border-amber-500/50 bg-amber-950/30 text-amber-400'
-                        : 'border-emerald-500/50 bg-emerald-950/30 text-emerald-400'
-                    }`}>
-                      <div className="font-bold">New-position prices initialized</div>
-                      <p className="mt-1">
-                        Refreshed {syncSummary.priceRefresh.refreshedCount} live price{syncSummary.priceRefresh.refreshedCount === 1 ? '' : 's'}
-                        {syncSummary.priceRefresh.fallbackCount > 0
-                          ? ` and used ${syncSummary.priceRefresh.fallbackCount} Robinhood starting price${syncSummary.priceRefresh.fallbackCount === 1 ? '' : 's'}`
-                          : ''}.
-                        {syncSummary.priceRefresh.failedTickers?.length
-                          ? ` No starting price was available for: ${syncSummary.priceRefresh.failedTickers.join(', ')}.`
-                          : ''}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className={`rounded-xl border p-4 ${
-                    syncSummary.stale
-                      ? 'border-amber-500/40 bg-amber-950/20'
-                      : card
-                  }`}>
-                    <div className={syncSummary.stale ? 'font-bold text-amber-500' : 'font-bold'}>
-                      Data freshness
-                    </div>
-                    <p className={`mt-2 text-sm ${muted}`}>
-                      {syncSummary.refreshRequested
-                        ? 'On-demand Robinhood extraction completed '
-                        : 'Plaid request completed '}
-                      {syncSummary.snapshotFetchedAt
-                        ? new Date(syncSummary.snapshotFetchedAt).toLocaleString()
-                        : 'at an unavailable time'}.
-                    </p>
-                    {syncSummary.institutionDataAsOf && (
-                      <p className={`mt-2 text-xs ${muted}`}>
-                        Newest institution position timestamp:{' '}
-                        {new Date(syncSummary.institutionDataAsOf).toLocaleString()}.
-                      </p>
+                    ) : (
+                      <p className="text-sm font-bold">No position changes were needed.</p>
                     )}
-                    <p className={`mt-2 text-xs ${muted}`}>
-                      {syncSummary.refreshRequested
-                        ? 'This button requested a new extraction instead of merely rereading Plaid’s saved snapshot. Plaid may still return unchanged data when Robinhood has not made newer holdings available.'
-                        : 'Plaid investment holdings are not real-time and are generally refreshed after market hours. Overnight, premarket, and newly executed trades may not appear until Robinhood’s next update reaches Plaid.'}
-                    </p>
-                    {syncSummary.stale && (
-                      <p className="mt-2 text-xs font-bold text-amber-500">
-                        The live Plaid request did not complete, so Stock Stickies used its saved
-                        nightly brokerage snapshot.
+                    {syncSummary.removedCount > 0 && (
+                      <p className="mt-2 text-xs">Removed: {syncSummary.removedPositions.join(', ')}</p>
+                    )}
+                    {syncSummary.addedCount > 0 && syncSummary.priceRefresh && (
+                      <p className="mt-2 text-xs">
+                        Starting prices set for{' '}
+                        {syncSummary.priceRefresh.refreshedCount + syncSummary.priceRefresh.fallbackCount}
+                        {' '}of {syncSummary.priceRefresh.requestedCount} new ticker
+                        {syncSummary.priceRefresh.requestedCount === 1 ? '' : 's'}.
                       </p>
                     )}
                   </div>
 
-                  {(syncSummary.possibleClosed.length > 0 || syncSummary.needsReview.length > 0) && (
-                    <div className={`rounded-xl border border-amber-500/40 p-4 ${card}`}>
-                      <div className="font-bold text-amber-500">Review recommended</div>
+                  {(syncSummary.needsReview.length > 0 ||
+                    syncSummary.possibleClosed.length > 0 ||
+                    syncSummary.priceRefresh?.failedTickers?.length > 0) && (
+                    <div className="rounded-xl border border-amber-500/50 bg-amber-950/20 p-3 text-sm text-amber-400">
+                      {syncSummary.needsReview.length > 0 && (
+                        <p>{syncSummary.needsReview.length} item{syncSummary.needsReview.length === 1 ? '' : 's'} need review.</p>
+                      )}
                       {syncSummary.possibleClosed.length > 0 && (
-                        <p className={`mt-2 text-sm ${muted}`}>
-                          Not returned by Plaid and left unchanged: {syncSummary.possibleClosed.join(', ')}.
-                        </p>
+                        <p>{syncSummary.possibleClosed.length} possible closed position{syncSummary.possibleClosed.length === 1 ? '' : 's'} left unchanged.</p>
+                      )}
+                      {syncSummary.priceRefresh?.failedTickers?.length > 0 && (
+                        <p>Missing starting price: {syncSummary.priceRefresh.failedTickers.join(', ')}.</p>
+                      )}
+                    </div>
+                  )}
+
+                  <details className={`rounded-xl border px-3 py-2 text-xs ${card}`}>
+                    <summary className={`cursor-pointer font-semibold ${muted}`}>Details</summary>
+                    <div className={`mt-2 space-y-1.5 ${muted}`}>
+                      <p>Checked {syncSummary.checkedCount} position{syncSummary.checkedCount === 1 ? '' : 's'}.</p>
+                      {syncSummary.snapshotFetchedAt && (
+                        <p>Snapshot: {new Date(syncSummary.snapshotFetchedAt).toLocaleString()}.</p>
+                      )}
+                      {syncSummary.institutionDataAsOf && (
+                        <p>Institution data: {new Date(syncSummary.institutionDataAsOf).toLocaleString()}.</p>
                       )}
                       {syncSummary.needsReview.length > 0 && (
-                        <p className={`mt-2 text-sm ${muted}`}>
-                          Could not be matched automatically: {syncSummary.needsReview.join(', ')}.
+                        <p>Needs review: {syncSummary.needsReview.join(', ')}.</p>
+                      )}
+                      {syncSummary.possibleClosed.length > 0 && (
+                        <p>Left unchanged: {syncSummary.possibleClosed.join(', ')}.</p>
+                      )}
+                      {syncSummary.warnings.map(warning => (
+                        <p key={warning}>{warning}</p>
+                      ))}
+                      {syncSummary.backupId && <p>A rollback backup was created.</p>}
+                      {syncSummary.stale && (
+                        <p className="font-bold text-amber-500">
+                          A saved snapshot was used because the live request did not finish.
                         </p>
                       )}
                     </div>
-                  )}
-
-                  {syncSummary.warnings.length > 0 && (
-                    <div className={`rounded-xl border p-4 ${card}`}>
-                      <div className="font-bold">Data notes</div>
-                      {syncSummary.warnings.map(warning => (
-                        <p key={warning} className={`mt-2 text-xs ${muted}`}>{warning}</p>
-                      ))}
-                    </div>
-                  )}
-
-                  {syncSummary.backupId && (
-                    <p className={`text-xs ${muted}`}>
-                      A rollback backup was created before applying changes.
-                    </p>
-                  )}
+                  </details>
                 </>
               )}
 
               <div className="flex flex-wrap justify-end gap-3">
-                {syncSummary.ok && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSyncSummary(null)
-                      setOpen(true)
-                    }}
-                    className={`rounded-lg border px-4 py-2 text-sm font-bold ${muted}`}
-                  >
-                    View details
-                  </button>
-                )}
                 {!syncSummary.ok && (
                   <button
                     type="button"
