@@ -5411,15 +5411,55 @@ const firebaseConfig = {
                         {unclassifiedNotes.length > 0 && (
                             <div className="mb-6">
                                 <div className={`p-4 rounded-lg mb-3 ${darkMode ? 'bg-yellow-900 border-2 border-yellow-600' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
-                                    <h2 className={`font-bold text-lg ${darkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>⚠️ Unclassified Notes - Please Categorize First</h2>
-                                    <p className={`text-sm mt-1 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>Select a category below before adding content to your note</p>
+                                    <h2 className={`font-bold text-lg ${darkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>
+                                        ⚠️ {unclassifiedNotes.some(note => note.plaidSecurityId)
+                                            ? 'New Robinhood Positions — Choose Categories'
+                                            : 'Unclassified Notes — Please Categorize First'}
+                                    </h2>
+                                    <p className={`text-sm mt-1 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                                        {unclassifiedNotes.some(note => note.plaidSecurityId)
+                                            ? 'Imported positions are saved safely, but Stock Stickies needs you to choose where each one belongs.'
+                                            : 'Select a category below before adding content to your note.'}
+                                    </p>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                     {unclassifiedNotes.map(note => (
-                                        <div key={note.id} className={`${UNCLASSIFIED_COLOR} p-6 rounded-lg shadow-lg relative border-4 border-yellow-500 animate-pulse`} style={{minHeight: '200px'}}>
+                                        <div key={note.id} className={`${UNCLASSIFIED_COLOR} p-5 rounded-lg shadow-lg relative border-2 border-yellow-500`} style={{minHeight: '200px'}}>
                                             <div className="absolute top-2 right-2">
                                                 <button onClick={() => deleteNote(note.id)} className="text-gray-600 hover:text-gray-800"><X size={18}/></button>
                                             </div>
+                                            {(note.title || note.plaidSecurityId) && (
+                                                <div className="mb-4 pr-7">
+                                                    {note.plaidSecurityId && (
+                                                        <span className="inline-flex rounded-full border border-emerald-700/30 bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                                                            Imported from Robinhood
+                                                        </span>
+                                                    )}
+                                                    <div className="mt-2 text-2xl font-black uppercase tracking-wide text-gray-900">
+                                                        {note.title || 'Unknown ticker'}
+                                                    </div>
+                                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-gray-700">
+                                                        <span>
+                                                            {sharesPrivacyMode === 'hide'
+                                                                ? 'Shares hidden'
+                                                                : `${Number(note.shares || 0).toLocaleString()} ${Number(note.shares) === 1 ? 'share' : 'shares'}`}
+                                                        </span>
+                                                        <span aria-hidden="true">·</span>
+                                                        <span>{getAccountLabel(note.account)}</span>
+                                                        {Number.isFinite(Number(note.plaidInstitutionValue)) && (
+                                                            <>
+                                                                <span aria-hidden="true">·</span>
+                                                                <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>
+                                                                    {Number(note.plaidInstitutionValue).toLocaleString(undefined, {
+                                                                        style: 'currency',
+                                                                        currency: 'USD',
+                                                                    })}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div className="mb-4">
                                                 <p className="text-sm font-bold text-gray-700 mb-2">Select Category:</p>
                                                 <div className="grid grid-cols-2 gap-2">
@@ -5435,7 +5475,9 @@ const firebaseConfig = {
                                                 </div>
                                             </div>
                                             <div className="text-center text-gray-500 text-sm mt-4">
-                                                Choose a category to start editing
+                                                {note.title
+                                                    ? `Choose where ${note.title} belongs`
+                                                    : 'Choose a category to start editing'}
                                             </div>
                                         </div>
                                     ))}
