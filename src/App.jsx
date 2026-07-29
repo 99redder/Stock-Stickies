@@ -3203,7 +3203,7 @@ const firebaseConfig = {
             // card under three different groupings (account, category, size).
             const renderNoteCard = (note) => (
                 <NoteCard
-                    key={note.id}
+                    key={`${note.id}:${note.plaidImportedAt || ''}`}
                     note={note}
                     darkMode={darkMode}
                     positionRankById={positionRankById}
