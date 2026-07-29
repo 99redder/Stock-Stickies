@@ -2056,7 +2056,7 @@ const firebaseConfig = {
                             .doc(auth.currentUser.uid)
                             .collection('snapshots')
                             .orderBy('backupCreatedAt', 'desc')
-                            .limit(5)
+                            .limit(20)
                             .get();
                         const cutoff = Date.now() - (48 * 60 * 60 * 1000);
                         const recentBackup = backupQuery.docs
@@ -2068,33 +2068,29 @@ const firebaseConfig = {
                             );
                         if (!recentBackup || cancelled) return;
                         const backupAtMs = recentBackup.backupCreatedAt.toMillis();
-                        const priorPositionKeys = new Set(
+                        const priorNoteIds = new Set(
                             (Array.isArray(recentBackup.notes) ? recentBackup.notes : [])
-                                .filter(note => note.title)
-                                .map(note =>
-                                    `${getNoteAccount(note)}:${String(note.title).trim().toUpperCase()}`
-                                )
+                                .map(note => note.id)
                         );
                         setNotes(currentNotes => {
                             let changed = false;
                             const backfilled = currentNotes.map(note => {
                                 const syncedAtMs = Date.parse(String(note.plaidLastSyncedAt || ''));
+                                const importedAtMs =
+                                    Number.isFinite(syncedAtMs) && syncedAtMs >= cutoff
+                                        ? syncedAtMs
+                                        : backupAtMs;
                                 const wasImportedByRecentRefresh =
                                     !note.plaidImportedAt &&
                                     note.plaidSource === 'robinhood' &&
                                     note.plaidSecurityId &&
                                     note.title &&
-                                    Number.isFinite(syncedAtMs) &&
-                                    syncedAtMs >= backupAtMs &&
-                                    syncedAtMs - backupAtMs <= 60 * 60 * 1000 &&
-                                    !priorPositionKeys.has(
-                                        `${getNoteAccount(note)}:${String(note.title).trim().toUpperCase()}`
-                                    );
+                                    !priorNoteIds.has(note.id);
                                 if (!wasImportedByRecentRefresh) return note;
                                 changed = true;
                                 return {
                                     ...note,
-                                    plaidImportedAt: new Date(syncedAtMs).toISOString(),
+                                    plaidImportedAt: new Date(importedAtMs).toISOString(),
                                 };
                             });
                             return changed ? backfilled : currentNotes;
