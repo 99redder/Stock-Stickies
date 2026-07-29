@@ -1361,57 +1361,104 @@ const firebaseConfig = {
                 setWatchList(watchList.filter(t => t !== ticker));
             };
 
-            const handleRefreshPortfolioPrices = async () => {
-                if (portfolioNotes.length === 0) {
-                    showBrandedNotice('No portfolio positions to refresh.');
-                    return;
+            const refreshPortfolioPrices = async (
+                targetNotes,
+                { showNotices = false, cacheReason = 'manual' } = {}
+            ) => {
+                const uniqueNotes = Array.from(new Map(
+                    (Array.isArray(targetNotes) ? targetNotes : [])
+                        .map(note => [normalizeTicker(note.title), note])
+                        .filter(([ticker]) => ticker)
+                ).values());
+                if (uniqueNotes.length === 0) {
+                    if (showNotices) showBrandedNotice('No portfolio positions to refresh.');
+                    return { requestedCount: 0, refreshedCount: 0, fallbackCount: 0, failedTickers: [] };
                 }
 
-                const nonUsdPortfolioNotes = portfolioNotes.filter(note =>
+                const requiresFinnhub = uniqueNotes.some(note =>
                     !isUsdTicker(note.title) && !isPlaidCryptoNote(note)
                 );
-                if (!finnhubApiKey && nonUsdPortfolioNotes.length > 0) {
+                if (!finnhubApiKey && requiresFinnhub && showNotices) {
                     showBrandedNotice('Please add your Finnhub API key first.');
-                    return;
+                    return { requestedCount: uniqueNotes.length, refreshedCount: 0, fallbackCount: 0, failedTickers: [] };
                 }
 
                 setPortfolioLoading(true);
                 const prices = { ...normalizePriceMap(portfolioPrices) };
-                for (const note of portfolioNotes) {
-                    try {
+                let refreshedCount = 0;
+                let fallbackCount = 0;
+                const failedTickers = [];
+
+                try {
+                    for (const note of uniqueNotes) {
                         const ticker = normalizeTicker(note.title);
-                        if (isUsdTicker(ticker)) {
-                            prices[ticker] = 1;
-                            continue;
+                        try {
+                            if (isUsdTicker(ticker)) {
+                                prices[ticker] = 1;
+                                refreshedCount += 1;
+                                continue;
+                            }
+                            const plaidCryptoPrice = getPlaidCryptoPrice(note);
+                            if (plaidCryptoPrice > 0) {
+                                prices[ticker] = plaidCryptoPrice;
+                                refreshedCount += 1;
+                                continue;
+                            }
+                            if (finnhubApiKey) {
+                                const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
+                                    symbol: ticker,
+                                    token: finnhubApiKey
+                                });
+                                const response = await fetch(portfolioQuoteUrl);
+                                const data = await response.json();
+                                const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
+                                if (Number.isFinite(currentPrice) && currentPrice > 0) {
+                                    prices[ticker] = currentPrice;
+                                    refreshedCount += 1;
+                                    continue;
+                                }
+                            }
+
+                            const institutionPrice = getPlaidPositionPrice(note);
+                            if (institutionPrice > 0) {
+                                prices[ticker] = institutionPrice;
+                                fallbackCount += 1;
+                            } else {
+                                failedTickers.push(ticker);
+                            }
+                        } catch (error) {
+                            const institutionPrice = getPlaidPositionPrice(note);
+                            if (institutionPrice > 0) {
+                                prices[ticker] = institutionPrice;
+                                fallbackCount += 1;
+                            } else {
+                                failedTickers.push(ticker);
+                            }
+                            console.error(`Failed to fetch ${note.title}`, error);
                         }
-                        const plaidCryptoPrice = getPlaidCryptoPrice(note);
-                        if (plaidCryptoPrice > 0) {
-                            prices[ticker] = plaidCryptoPrice;
-                            continue;
-                        }
-                        const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                            symbol: ticker,
-                            token: finnhubApiKey
-                        });
-                        const response = await fetch(portfolioQuoteUrl);
-                        const data = await response.json();
-                        const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
-                        if (ticker && Number.isFinite(currentPrice) && currentPrice > 0) {
-                            prices[ticker] = currentPrice;
-                        }
-                    } catch (e) {
-                        console.error(`Failed to fetch ${note.title}`);
                     }
+
+                    const normalizedPrices = normalizePriceMap(prices);
+                    setPortfolioPrices(normalizedPrices);
+                    localStorage.setItem('portfolio_prices_cache', JSON.stringify({
+                        prices: normalizedPrices,
+                        timestamp: Date.now(),
+                        fetchedWindow: `${cacheReason}-${Date.now()}`
+                    }));
+                } finally {
+                    setPortfolioLoading(false);
                 }
 
-                const normalizedPrices = normalizePriceMap(prices);
-                setPortfolioPrices(normalizedPrices);
-                setPortfolioLoading(false);
-                localStorage.setItem('portfolio_prices_cache', JSON.stringify({
-                    prices: normalizedPrices,
-                    timestamp: Date.now(),
-                    fetchedWindow: `manual-${Date.now()}`
-                }));
+                return {
+                    requestedCount: uniqueNotes.length,
+                    refreshedCount,
+                    fallbackCount,
+                    failedTickers
+                };
+            };
+
+            const handleRefreshPortfolioPrices = async () => {
+                await refreshPortfolioPrices(portfolioNotes, { showNotices: true, cacheReason: 'manual' });
             };
 
             const handleDownloadPortfolioSnapshot = async () => {
@@ -1763,8 +1810,9 @@ const firebaseConfig = {
                     ) ||
                     categories[0] ||
                     UNCLASSIFIED_COLOR;
+                const importedNotes = [];
                 for (const position of reconciliation?.additions || []) {
-                    updatedNotes.unshift({
+                    const importedNote = {
                         id: importedNextId,
                         title: position.ticker,
                         text: '',
@@ -1786,7 +1834,9 @@ const firebaseConfig = {
                         plaidSource: 'robinhood',
                         plaidImportedAt: syncedAt,
                         plaidLastSyncedAt: syncedAt
-                    });
+                    };
+                    importedNotes.push(importedNote);
+                    updatedNotes.unshift(importedNote);
                     importedNextId += 1;
                 }
 
@@ -1800,10 +1850,17 @@ const firebaseConfig = {
                 setNotes(updatedNotes);
                 setNextId(importedNextId);
                 setUnlockedNotes({});
+                const priceRefresh = importedNotes.length > 0
+                    ? await refreshPortfolioPrices(importedNotes, {
+                        showNotices: false,
+                        cacheReason: 'position-import'
+                    })
+                    : null;
                 return {
                     backup,
                     updatedCount: reconciliation?.updates?.length || 0,
-                    addedCount: reconciliation?.additions?.length || 0
+                    addedCount: reconciliation?.additions?.length || 0,
+                    priceRefresh
                 };
             };
 

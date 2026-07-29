@@ -338,6 +338,7 @@ export default function RobinhoodSync({
         checkedCount: Array.isArray(data.positions) ? data.positions.length : 0,
         updatedCount: applied?.updatedCount || 0,
         addedCount: applied?.addedCount || 0,
+        priceRefresh: applied?.priceRefresh || null,
         possibleClosed: latestReconciliation.possibleClosed.map(note =>
           `${note.title} (${note.account})`
         ),
@@ -548,6 +549,25 @@ export default function RobinhoodSync({
                           ? 'Plaid received changed Robinhood quantities, but the corresponding saved Stock Stickies positions already matched them.'
                           : 'Plaid completed a fresh Robinhood extraction but returned the same position quantities. If recent trades are still missing, Robinhood did not include them in this extraction.'
                         : 'Saved position sizes match the latest snapshot Plaid currently has available. This does not necessarily mean Plaid has received today’s newest Robinhood trades.'}
+                    </div>
+                  )}
+
+                  {syncSummary.addedCount > 0 && syncSummary.priceRefresh && (
+                    <div className={`rounded-xl border p-4 text-sm ${
+                      syncSummary.priceRefresh.failedTickers?.length
+                        ? 'border-amber-500/50 bg-amber-950/30 text-amber-400'
+                        : 'border-emerald-500/50 bg-emerald-950/30 text-emerald-400'
+                    }`}>
+                      <div className="font-bold">New-position prices initialized</div>
+                      <p className="mt-1">
+                        Refreshed {syncSummary.priceRefresh.refreshedCount} live price{syncSummary.priceRefresh.refreshedCount === 1 ? '' : 's'}
+                        {syncSummary.priceRefresh.fallbackCount > 0
+                          ? ` and used ${syncSummary.priceRefresh.fallbackCount} Robinhood starting price${syncSummary.priceRefresh.fallbackCount === 1 ? '' : 's'}`
+                          : ''}.
+                        {syncSummary.priceRefresh.failedTickers?.length
+                          ? ` No starting price was available for: ${syncSummary.priceRefresh.failedTickers.join(', ')}.`
+                          : ''}
+                      </p>
                     </div>
                   )}
 
