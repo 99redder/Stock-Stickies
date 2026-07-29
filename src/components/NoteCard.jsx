@@ -1,3 +1,14 @@
+import { useEffect, useState } from 'react'
+
+const NEW_POSITION_BADGE_MS = 48 * 60 * 60 * 1000
+
+function importedAtMilliseconds(value) {
+    if (typeof value === 'string') return Date.parse(value)
+    if (typeof value?.toMillis === 'function') return value.toMillis()
+    if (Number.isFinite(Number(value?.seconds))) return Number(value.seconds) * 1000
+    return Number.NaN
+}
+
 export default function NoteCard({
     note,
     darkMode,
@@ -44,6 +55,22 @@ export default function NoteCard({
     const sharesValue = Number(note.shares) || 0;
     const positionDetails = positionDetailsById?.[note.id];
     const pnlAvailable = positionDetails?.unrealizedPnL != null;
+    const [newPositionBadgeExpiresAt] = useState(() => {
+        const importedAt = importedAtMilliseconds(note.plaidImportedAt)
+        return Number.isFinite(importedAt) ? importedAt + NEW_POSITION_BADGE_MS : Number.NaN
+    });
+    const [newPositionBadgeExpired, setNewPositionBadgeExpired] = useState(() =>
+        !Number.isFinite(newPositionBadgeExpiresAt) || Date.now() >= newPositionBadgeExpiresAt
+    );
+    const showNewPositionBadge = !newPositionBadgeExpired;
+    useEffect(() => {
+        const remaining = Number.isFinite(newPositionBadgeExpiresAt)
+            ? newPositionBadgeExpiresAt - Date.now()
+            : 0
+        if (remaining <= 0) return undefined
+        const timer = window.setTimeout(() => setNewPositionBadgeExpired(true), remaining)
+        return () => window.clearTimeout(timer)
+    }, [newPositionBadgeExpiresAt]);
     const formatMoney = (value) => new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
@@ -53,6 +80,15 @@ export default function NoteCard({
     const formatSignedPercent = (value) => `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(1)}%`;
     return (
         <div className={`${note.color} p-6 rounded-lg shadow-lg relative hover:scale-105 transition-transform`} style={{ minHeight: '200px' }}>
+            {showNewPositionBadge && (
+                <div
+                    className="absolute -left-3 -top-3 z-30 -rotate-6 rounded-md border-2 border-white bg-red-600 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-white shadow-lg"
+                    aria-label="New Robinhood position imported within the last 48 hours"
+                    title="New position imported from Robinhood — this sticker disappears after 48 hours"
+                >
+                    New
+                </div>
+            )}
             {positionRankById?.[note.id] && (
                 <div className="absolute top-1 left-1 group">
                     <div

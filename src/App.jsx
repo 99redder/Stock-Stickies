@@ -542,6 +542,7 @@ const firebaseConfig = {
             const lastAppliedSnapshotRef = useRef(null);
             const lastBackupSignatureRef = useRef('');
             const lastBackupAtRef = useRef(0);
+            const importedPositionBadgeBackfillRef = useRef(false);
             const [notes, setNotes] = useState([]);
             const [nextId, setNextId] = useState(1);
             const [colorLabels, setColorLabels] = useState(DEFAULT_COLOR_LABELS);
@@ -1783,6 +1784,7 @@ const firebaseConfig = {
                             : (Array.isArray(position.taxLots) ? position.taxLots.length : 0),
                         plaidPriceAsOf: position.priceAsOf || null,
                         plaidSource: 'robinhood',
+                        plaidImportedAt: syncedAt,
                         plaidLastSyncedAt: syncedAt
                     });
                     importedNextId += 1;
@@ -2035,6 +2037,76 @@ const firebaseConfig = {
                 );
                 return () => window.clearTimeout(timer);
             }, [notes, userDataReady, importedPositionDefaultColor]);
+
+            // The refresh feature predates plaidImportedAt by one deployment. Compare the
+            // latest recent pre-refresh backup with the current notes once so positions
+            // imported during that rollout receive the same 48-hour NEW sticker.
+            useEffect(() => {
+                if (
+                    !userDataReady ||
+                    importedPositionBadgeBackfillRef.current ||
+                    !db ||
+                    !auth?.currentUser
+                ) return undefined;
+                importedPositionBadgeBackfillRef.current = true;
+                let cancelled = false;
+                void (async () => {
+                    try {
+                        const backupQuery = await db.collection('users')
+                            .doc(auth.currentUser.uid)
+                            .collection('snapshots')
+                            .orderBy('backupCreatedAt', 'desc')
+                            .limit(5)
+                            .get();
+                        const cutoff = Date.now() - (48 * 60 * 60 * 1000);
+                        const recentBackup = backupQuery.docs
+                            .map(docSnap => docSnap.data() || {})
+                            .find(data =>
+                                data.backupReason === 'pre-plaid-apply' &&
+                                typeof data.backupCreatedAt?.toMillis === 'function' &&
+                                data.backupCreatedAt.toMillis() >= cutoff
+                            );
+                        if (!recentBackup || cancelled) return;
+                        const backupAtMs = recentBackup.backupCreatedAt.toMillis();
+                        const priorPositionKeys = new Set(
+                            (Array.isArray(recentBackup.notes) ? recentBackup.notes : [])
+                                .filter(note => note.title)
+                                .map(note =>
+                                    `${getNoteAccount(note)}:${String(note.title).trim().toUpperCase()}`
+                                )
+                        );
+                        setNotes(currentNotes => {
+                            let changed = false;
+                            const backfilled = currentNotes.map(note => {
+                                const syncedAtMs = Date.parse(String(note.plaidLastSyncedAt || ''));
+                                const wasImportedByRecentRefresh =
+                                    !note.plaidImportedAt &&
+                                    note.plaidSource === 'robinhood' &&
+                                    note.plaidSecurityId &&
+                                    note.title &&
+                                    Number.isFinite(syncedAtMs) &&
+                                    syncedAtMs >= backupAtMs &&
+                                    syncedAtMs - backupAtMs <= 60 * 60 * 1000 &&
+                                    !priorPositionKeys.has(
+                                        `${getNoteAccount(note)}:${String(note.title).trim().toUpperCase()}`
+                                    );
+                                if (!wasImportedByRecentRefresh) return note;
+                                changed = true;
+                                return {
+                                    ...note,
+                                    plaidImportedAt: new Date(syncedAtMs).toISOString(),
+                                };
+                            });
+                            return changed ? backfilled : currentNotes;
+                        });
+                    } catch (error) {
+                        console.warn('Could not backfill recent Robinhood import badges:', error);
+                    }
+                })();
+                return () => {
+                    cancelled = true;
+                };
+            }, [userDataReady]);
 
             // Notes display ordering: always by position market value (shares * latest price).
             // Positions rank above non-positions, and priced positions above unpriced ones,
