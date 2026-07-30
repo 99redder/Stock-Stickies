@@ -31,10 +31,64 @@ function positionKey(account, ticker) {
   return `${account}:${normalizeTicker(ticker)}`
 }
 
-function buildRobinhoodReconciliation(notes, positions) {
+function cspPositionKey(account, ticker, strike, expiry) {
+  const normalizedStrike = Number(strike)
+  return [
+    account,
+    normalizeTicker(ticker),
+    Number.isFinite(normalizedStrike) ? normalizedStrike.toFixed(4) : '',
+    String(expiry || '').slice(0, 10),
+  ].join(':')
+}
+
+function normalizePlaidCsp(position) {
+  const contract = position?.optionContract
+  if (!contract || typeof contract !== 'object') return null
+  const contractType = String(contract.contract_type || contract.contractType || '').toLowerCase()
+  const ticker = normalizeTicker(
+    contract.underlying_security_ticker ||
+    contract.underlyingSecurityTicker
+  )
+  const strike = Number(contract.strike_price ?? contract.strikePrice)
+  const expiry = String(contract.expiration_date || contract.expirationDate || '').slice(0, 10)
+  const rawQuantity = Number(position.quantity)
+  if (
+    contractType !== 'put' ||
+    rawQuantity >= 0 ||
+    !Number.isFinite(rawQuantity) ||
+    !isSupportedTicker(ticker) ||
+    !Number.isFinite(strike) ||
+    strike <= 0 ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(expiry) ||
+    !position.stockStickiesAccount
+  ) return null
+  return {
+    accountId: position.accountId,
+    securityId: position.securityId,
+    optionTicker: normalizeTicker(position.ticker),
+    stockStickiesAccount: position.stockStickiesAccount,
+    ticker,
+    strike,
+    qty: Math.abs(rawQuantity),
+    expiry,
+  }
+}
+
+function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
   const usable = []
   const unsupported = []
+  const plaidCsps = []
   for (const position of Array.isArray(positions) ? positions : []) {
+    const normalizedCsp = normalizePlaidCsp(position)
+    if (normalizedCsp) {
+      plaidCsps.push(normalizedCsp)
+      continue
+    }
+    // Options that are not short puts (for example covered calls) are outside
+    // the CSP panel and should not be reported as malformed stock positions.
+    if (position?.optionContract || String(position?.subtype || '').toLowerCase() === 'option') {
+      continue
+    }
     const cryptoHasPrice = !position.isCrypto ||
       (Number.isFinite(position.institutionPrice) && position.institutionPrice > 0)
     if (
@@ -138,7 +192,82 @@ function buildRobinhoodReconciliation(notes, positions) {
     !liveKeys.has(positionKey(note.account, note.title))
   )
 
-  return { updates, additions, possibleClosed, unsupported, usable }
+  const usedPutIds = new Set()
+  const cspUpdates = []
+  const cspAdditions = []
+  for (const position of plaidCsps) {
+    let put = cashSecuredPuts.find(candidate =>
+      !usedPutIds.has(candidate.id) &&
+      candidate.plaidAccountId === position.accountId &&
+      candidate.plaidSecurityId === position.securityId
+    )
+    if (!put) {
+      const incomingKey = cspPositionKey(
+        position.stockStickiesAccount,
+        position.ticker,
+        position.strike,
+        position.expiry
+      )
+      put = cashSecuredPuts.find(candidate =>
+        !usedPutIds.has(candidate.id) &&
+        cspPositionKey(
+          candidate.account || 'roth',
+          candidate.ticker,
+          candidate.strike,
+          candidate.expiry
+        ) === incomingKey
+      )
+    }
+    if (!put) {
+      // If the friendly contract itself is unique, allow Plaid to repair an
+      // outdated manually selected account instead of creating a duplicate.
+      const contractMatches = cashSecuredPuts.filter(candidate =>
+        !usedPutIds.has(candidate.id) &&
+        normalizeTicker(candidate.ticker) === position.ticker &&
+        Math.abs(Number(candidate.strike) - position.strike) <= 1e-8 &&
+        String(candidate.expiry || '').slice(0, 10) === position.expiry
+      )
+      if (contractMatches.length === 1) put = contractMatches[0]
+    }
+    if (!put) {
+      cspAdditions.push(position)
+      continue
+    }
+
+    usedPutIds.add(put.id)
+    const changed =
+      normalizeTicker(put.ticker) !== position.ticker ||
+      Math.abs(Number(put.strike) - position.strike) > 1e-8 ||
+      Math.abs(Number(put.qty) - position.qty) > 1e-8 ||
+      String(put.expiry || '').slice(0, 10) !== position.expiry ||
+      (put.account || 'roth') !== position.stockStickiesAccount ||
+      put.plaidAccountId !== position.accountId ||
+      put.plaidSecurityId !== position.securityId ||
+      put.plaidOptionTicker !== position.optionTicker
+    if (changed) {
+      cspUpdates.push({
+        putId: put.id,
+        ...position,
+      })
+    }
+  }
+
+  const possibleClosedCsps = cashSecuredPuts.filter(put =>
+    (put.plaidSource === 'robinhood' || put.plaidAccountId || put.plaidSecurityId) &&
+    !usedPutIds.has(put.id)
+  )
+
+  return {
+    updates,
+    additions,
+    possibleClosed,
+    unsupported,
+    usable,
+    cspUpdates,
+    cspAdditions,
+    possibleClosedCsps,
+    plaidCsps,
+  }
 }
 
 function loadPlaidScript() {
@@ -164,6 +293,7 @@ function loadPlaidScript() {
 export default function RobinhoodSync({
   authUser,
   notes,
+  cashSecuredPuts = [],
   ready,
   darkMode,
   onApply,
@@ -188,18 +318,24 @@ export default function RobinhoodSync({
   const [performanceMessage, setPerformanceMessage] = useState('')
   const autoSyncStartedRef = useRef(false)
   const notesRef = useRef(notes)
+  const cashSecuredPutsRef = useRef(cashSecuredPuts)
   const onApplyRef = useRef(onApply)
   const onPerformanceChangeRef = useRef(onPerformanceChange)
 
   useEffect(() => {
     notesRef.current = notes
+    cashSecuredPutsRef.current = cashSecuredPuts
     onApplyRef.current = onApply
     onPerformanceChangeRef.current = onPerformanceChange
-  }, [notes, onApply, onPerformanceChange])
+  }, [cashSecuredPuts, notes, onApply, onPerformanceChange])
 
   const reconciliation = useMemo(
-    () => buildRobinhoodReconciliation(notes, holdings?.positions || []),
-    [notes, holdings]
+    () => buildRobinhoodReconciliation(
+      notes,
+      holdings?.positions || [],
+      cashSecuredPuts
+    ),
+    [cashSecuredPuts, notes, holdings]
   )
 
   const apiFetch = useCallback(async (path, options = {}) => {
@@ -277,9 +413,15 @@ export default function RobinhoodSync({
           applyPerformance(data.performance)
           const automaticReconciliation = buildRobinhoodReconciliation(
             notesRef.current,
-            data.positions || []
+            data.positions || [],
+            cashSecuredPutsRef.current
           )
-          if (automaticReconciliation.updates.length || automaticReconciliation.additions.length) {
+          if (
+            automaticReconciliation.updates.length ||
+            automaticReconciliation.additions.length ||
+            automaticReconciliation.cspUpdates.length ||
+            automaticReconciliation.cspAdditions.length
+          ) {
             const applied = await onApplyRef.current(automaticReconciliation)
             setResult(applied)
             setBackup(applied.backup)
@@ -340,7 +482,8 @@ export default function RobinhoodSync({
       setStatus(previous => ({ ...(previous || {}), investmentsEnabled: true }))
       const latestReconciliation = buildRobinhoodReconciliation(
         notesRef.current,
-        data.positions || []
+        data.positions || [],
+        cashSecuredPutsRef.current
       )
       const canConfirmClosures =
         requestFreshData &&
@@ -356,8 +499,13 @@ export default function RobinhoodSync({
       if (
         actionableReconciliation.updates.length ||
         actionableReconciliation.additions.length ||
+        actionableReconciliation.cspUpdates.length ||
+        actionableReconciliation.cspAdditions.length ||
         (actionableReconciliation.removeClosedPositions &&
-          actionableReconciliation.possibleClosed.length)
+          (
+            actionableReconciliation.possibleClosed.length ||
+            actionableReconciliation.possibleClosedCsps.length
+          ))
       ) {
         setApplying(true)
         applied = await onApplyRef.current(actionableReconciliation)
@@ -375,6 +523,10 @@ export default function RobinhoodSync({
         addedCount: applied?.addedCount || 0,
         removedCount: applied?.removedCount || 0,
         removedPositions: applied?.removedPositions || [],
+        cspUpdatedCount: applied?.cspUpdatedCount || 0,
+        cspAddedCount: applied?.cspAddedCount || 0,
+        cspRemovedCount: applied?.cspRemovedCount || 0,
+        removedCsps: applied?.removedCsps || [],
         priceRefresh: applied?.priceRefresh || null,
         possibleClosed: canConfirmClosures
           ? []
@@ -529,7 +681,12 @@ export default function RobinhoodSync({
                   <h2 className="text-lg font-black">
                     {!syncSummary.ok
                       ? 'Update didn’t finish'
-                      : syncSummary.updatedCount || syncSummary.addedCount || syncSummary.removedCount
+                      : syncSummary.updatedCount ||
+                          syncSummary.addedCount ||
+                          syncSummary.removedCount ||
+                          syncSummary.cspUpdatedCount ||
+                          syncSummary.cspAddedCount ||
+                          syncSummary.cspRemovedCount
                         ? 'Update complete'
                         : 'Everything is current'}
                   </h2>
@@ -554,17 +711,28 @@ export default function RobinhoodSync({
               ) : (
                 <>
                   <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 text-emerald-400">
-                    {syncSummary.updatedCount || syncSummary.addedCount || syncSummary.removedCount ? (
+                    {syncSummary.updatedCount ||
+                    syncSummary.addedCount ||
+                    syncSummary.removedCount ||
+                    syncSummary.cspUpdatedCount ||
+                    syncSummary.cspAddedCount ||
+                    syncSummary.cspRemovedCount ? (
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold">
                         {syncSummary.updatedCount > 0 && <span>{syncSummary.updatedCount} updated</span>}
                         {syncSummary.addedCount > 0 && <span>{syncSummary.addedCount} added</span>}
                         {syncSummary.removedCount > 0 && <span>{syncSummary.removedCount} removed</span>}
+                        {syncSummary.cspUpdatedCount > 0 && <span>{syncSummary.cspUpdatedCount} CSP{syncSummary.cspUpdatedCount === 1 ? '' : 's'} updated</span>}
+                        {syncSummary.cspAddedCount > 0 && <span>{syncSummary.cspAddedCount} CSP{syncSummary.cspAddedCount === 1 ? '' : 's'} added</span>}
+                        {syncSummary.cspRemovedCount > 0 && <span>{syncSummary.cspRemovedCount} CSP{syncSummary.cspRemovedCount === 1 ? '' : 's'} removed</span>}
                       </div>
                     ) : (
                       <p className="text-sm font-bold">No position changes were needed.</p>
                     )}
                     {syncSummary.removedCount > 0 && (
                       <p className="mt-2 text-xs">Removed: {syncSummary.removedPositions.join(', ')}</p>
+                    )}
+                    {syncSummary.cspRemovedCount > 0 && (
+                      <p className="mt-2 text-xs">Removed CSPs: {syncSummary.removedCsps.join(', ')}</p>
                     )}
                     {syncSummary.addedCount > 0 && syncSummary.priceRefresh && (
                       <p className="mt-2 text-xs">
@@ -672,7 +840,7 @@ export default function RobinhoodSync({
               {error && <div className="rounded-xl border border-red-500/50 bg-red-950/30 p-3 text-sm text-red-400">{error}</div>}
               {result && (
                 <div className="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-3 text-sm text-emerald-400">
-                  Applied {result.updatedCount} share update{result.updatedCount === 1 ? '' : 's'} and added {result.addedCount} new position note{result.addedCount === 1 ? '' : 's'}. Rollback backup: {result.backup.id}.
+                  Applied {result.updatedCount} share update{result.updatedCount === 1 ? '' : 's'}, added {result.addedCount} position note{result.addedCount === 1 ? '' : 's'}, updated {result.cspUpdatedCount || 0} CSP{result.cspUpdatedCount === 1 ? '' : 's'}, and added {result.cspAddedCount || 0} CSP{result.cspAddedCount === 1 ? '' : 's'}. Rollback backup: {result.backup.id}.
                 </div>
               )}
               {performanceMessage && (
@@ -801,7 +969,7 @@ export default function RobinhoodSync({
                     {[
                       ['Share updates', reconciliation.updates.length],
                       ['New positions', reconciliation.additions.length],
-                      ['Possible closed', reconciliation.possibleClosed.length],
+                      ['CSP changes', reconciliation.cspUpdates.length + reconciliation.cspAdditions.length],
                       ['Needs review', reconciliation.unsupported.length],
                     ].map(([label, value]) => (
                       <div key={label} className={`rounded-xl border p-3 ${card}`}>
@@ -814,7 +982,10 @@ export default function RobinhoodSync({
                   <div className={`rounded-xl border ${card}`}>
                     <div className="border-b border-inherit px-4 py-3 font-bold">Changes that will be applied</div>
                     <div className="max-h-64 overflow-y-auto">
-                      {!reconciliation.updates.length && !reconciliation.additions.length ? (
+                      {!reconciliation.updates.length &&
+                      !reconciliation.additions.length &&
+                      !reconciliation.cspUpdates.length &&
+                      !reconciliation.cspAdditions.length ? (
                         <div className={`p-4 text-sm ${muted}`}>
                           Stock Stickies matches Plaid’s latest available position snapshot.
                         </div>
@@ -829,7 +1000,19 @@ export default function RobinhoodSync({
                           {reconciliation.additions.map(position => (
                             <div key={`add-${position.accountId}-${position.securityId}`} className="flex items-center justify-between gap-4 border-b border-inherit px-4 py-3 text-sm">
                               <div><span className="font-bold">{position.ticker}</span> · {position.stockStickiesAccount}</div>
-                              <div className={muted}>New unclassified note · <span className="font-bold text-emerald-500">{position.quantity}</span> shares</div>
+                              <div className={muted}>New Core Thesis note · <span className="font-bold text-emerald-500">{position.quantity}</span> shares</div>
+                            </div>
+                          ))}
+                          {reconciliation.cspUpdates.map(change => (
+                            <div key={`csp-update-${change.putId}`} className="flex items-center justify-between gap-4 border-b border-inherit px-4 py-3 text-sm">
+                              <div><span className="font-bold">{change.ticker} CSP</span> · {change.stockStickiesAccount}</div>
+                              <div className={muted}>${change.strike} · {change.qty} contract{change.qty === 1 ? '' : 's'} · {change.expiry}</div>
+                            </div>
+                          ))}
+                          {reconciliation.cspAdditions.map(position => (
+                            <div key={`csp-add-${position.accountId}-${position.securityId}`} className="flex items-center justify-between gap-4 border-b border-inherit px-4 py-3 text-sm">
+                              <div><span className="font-bold">{position.ticker} CSP</span> · {position.stockStickiesAccount}</div>
+                              <div className={muted}>New · ${position.strike} · {position.qty} contract{position.qty === 1 ? '' : 's'} · {position.expiry}</div>
                             </div>
                           ))}
                         </>
@@ -837,12 +1020,19 @@ export default function RobinhoodSync({
                     </div>
                   </div>
 
-                  {(reconciliation.possibleClosed.length > 0 || reconciliation.unsupported.length > 0) && (
+                  {(reconciliation.possibleClosed.length > 0 ||
+                    reconciliation.possibleClosedCsps.length > 0 ||
+                    reconciliation.unsupported.length > 0) && (
                     <div className={`rounded-xl border border-amber-500/40 p-4 ${card}`}>
                       <div className="font-bold text-amber-500">Review only — no automatic changes</div>
                       {reconciliation.possibleClosed.length > 0 && (
                         <p className={`mt-2 text-sm ${muted}`}>
                           Not returned by Plaid: {reconciliation.possibleClosed.map(note => `${note.title} (${note.account})`).join(', ')}. Their shares will stay unchanged.
+                        </p>
+                      )}
+                      {reconciliation.possibleClosedCsps.length > 0 && (
+                        <p className={`mt-2 text-sm ${muted}`}>
+                          CSPs not returned by Plaid: {reconciliation.possibleClosedCsps.map(put => `${put.ticker} $${put.strike} ${put.expiry}`).join(', ')}. They stay unchanged unless a fresh extraction confirms they are closed.
                         </p>
                       )}
                       {reconciliation.unsupported.length > 0 && (
