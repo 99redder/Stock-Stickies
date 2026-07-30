@@ -1810,21 +1810,21 @@ const firebaseConfig = {
                 ).map(note => {
                     const change = updatesById.get(note.id);
                     const coveredCallChange = coveredCallUpdatesByNoteId.get(note.id);
-                    const coveredCalls = closedCoveredCallNoteIds.has(note.id)
-                        ? []
+                    const coveredCallFields = closedCoveredCallNoteIds.has(note.id)
+                        ? { coveredCalls: [] }
                         : coveredCallChange
-                            ? coveredCallChange.calls.map(call => ({
+                            ? { coveredCalls: coveredCallChange.calls.map(call => ({
                                 ticker: call.ticker,
                                 strike: call.strike,
                                 qty: call.qty,
                                 expiry: call.expiry,
-                                accountId: call.accountId,
-                                securityId: call.securityId,
-                                optionTicker: call.optionTicker,
+                                accountId: call.accountId || null,
+                                securityId: call.securityId || null,
+                                optionTicker: call.optionTicker || '',
                                 plaidSource: 'robinhood',
                                 plaidLastSyncedAt: syncedAt
-                            }))
-                            : note.coveredCalls;
+                            })) }
+                            : {};
                     if (!change && !coveredCallChange && !closedCoveredCallNoteIds.has(note.id)) return note;
                     return {
                         ...note,
@@ -1843,7 +1843,7 @@ const firebaseConfig = {
                             plaidSource: 'robinhood',
                             plaidLastSyncedAt: syncedAt
                         } : {}),
-                        coveredCalls
+                        ...coveredCallFields
                     };
                 });
                 const updatedPuts = currentPuts.filter(put =>
@@ -1908,9 +1908,9 @@ const firebaseConfig = {
                             strike: call.strike,
                             qty: call.qty,
                             expiry: call.expiry,
-                            accountId: call.accountId,
-                            securityId: call.securityId,
-                            optionTicker: call.optionTicker,
+                            accountId: call.accountId || null,
+                            securityId: call.securityId || null,
+                            optionTicker: call.optionTicker || '',
                             plaidSource: 'robinhood',
                             plaidLastSyncedAt: syncedAt
                         }));
