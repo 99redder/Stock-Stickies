@@ -55,6 +55,9 @@ export default function NoteCard({
     const sharesValue = Number(note.shares) || 0;
     const positionDetails = positionDetailsById?.[note.id];
     const pnlAvailable = positionDetails?.unrealizedPnL != null;
+    const averageCostPerShare = pnlAvailable && sharesValue > 0
+        ? Number(positionDetails.costBasis) / sharesValue
+        : null;
     const [newPositionBadgeExpiresAt] = useState(() => {
         const importedAt = importedAtMilliseconds(note.plaidImportedAt)
         return Number.isFinite(importedAt) ? importedAt + NEW_POSITION_BADGE_MS : Number.NaN
@@ -269,9 +272,15 @@ export default function NoteCard({
                         )}
                     </div>
                     {pnlAvailable && (
-                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-gray-600">
-                            <span>Cost basis</span>
-                            <span className="tabular-nums">{formatMoney(positionDetails.costBasis)}</span>
+                        <div className="mt-1 space-y-0.5 text-[10px] text-gray-600">
+                            <div className="flex items-center justify-between gap-2">
+                                <span>Cost basis</span>
+                                <span className="tabular-nums">{formatMoney(positionDetails.costBasis)}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                                <span>Average cost / share</span>
+                                <span className="tabular-nums">{formatMoney(averageCostPerShare)}</span>
+                            </div>
                         </div>
                     )}
                 </div>
