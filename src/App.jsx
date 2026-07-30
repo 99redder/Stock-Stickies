@@ -1788,6 +1788,14 @@ const firebaseConfig = {
                 const cspUpdatesById = new Map(
                     (reconciliation?.cspUpdates || []).map(change => [change.putId, change])
                 );
+                const coveredCallUpdatesByNoteId = new Map(
+                    (reconciliation?.coveredCallUpdates || []).map(change => [change.noteId, change])
+                );
+                const closedCoveredCallNoteIds = new Set(
+                    reconciliation?.removeClosedPositions
+                        ? (reconciliation?.possibleClosedCoveredCalls || []).map(change => change.noteId)
+                        : []
+                );
                 const closedPutIds = new Set(
                     reconciliation?.removeClosedPositions
                         ? (reconciliation?.possibleClosedCsps || []).map(put => put.id)
@@ -1801,22 +1809,41 @@ const firebaseConfig = {
                     !closedNoteIds.has(note.id)
                 ).map(note => {
                     const change = updatesById.get(note.id);
-                    if (!change) return note;
+                    const coveredCallChange = coveredCallUpdatesByNoteId.get(note.id);
+                    const coveredCalls = closedCoveredCallNoteIds.has(note.id)
+                        ? []
+                        : coveredCallChange
+                            ? coveredCallChange.calls.map(call => ({
+                                ticker: call.ticker,
+                                strike: call.strike,
+                                qty: call.qty,
+                                expiry: call.expiry,
+                                accountId: call.accountId,
+                                securityId: call.securityId,
+                                optionTicker: call.optionTicker,
+                                plaidSource: 'robinhood',
+                                plaidLastSyncedAt: syncedAt
+                            }))
+                            : note.coveredCalls;
+                    if (!change && !coveredCallChange && !closedCoveredCallNoteIds.has(note.id)) return note;
                     return {
                         ...note,
-                        shares: change.newShares,
-                        account: change.newAccount,
-                        plaidAccountId: change.plaidAccountId,
-                        plaidSecurityId: change.plaidSecurityId,
-                        plaidSecurityType: change.plaidSecurityType || '',
-                        plaidIsCrypto: !!change.plaidIsCrypto,
-                        plaidInstitutionPrice: change.plaidInstitutionPrice ?? null,
-                        plaidInstitutionValue: change.plaidInstitutionValue ?? null,
-                        plaidCostBasis: change.plaidCostBasis ?? null,
-                        plaidTaxLotCount: Number(change.plaidTaxLotCount) || 0,
-                        plaidPriceAsOf: change.plaidPriceAsOf || null,
-                        plaidSource: 'robinhood',
-                        plaidLastSyncedAt: syncedAt
+                        ...(change ? {
+                            shares: change.newShares,
+                            account: change.newAccount,
+                            plaidAccountId: change.plaidAccountId,
+                            plaidSecurityId: change.plaidSecurityId,
+                            plaidSecurityType: change.plaidSecurityType || '',
+                            plaidIsCrypto: !!change.plaidIsCrypto,
+                            plaidInstitutionPrice: change.plaidInstitutionPrice ?? null,
+                            plaidInstitutionValue: change.plaidInstitutionValue ?? null,
+                            plaidCostBasis: change.plaidCostBasis ?? null,
+                            plaidTaxLotCount: Number(change.plaidTaxLotCount) || 0,
+                            plaidPriceAsOf: change.plaidPriceAsOf || null,
+                            plaidSource: 'robinhood',
+                            plaidLastSyncedAt: syncedAt
+                        } : {}),
+                        coveredCalls
                     };
                 });
                 const updatedPuts = currentPuts.filter(put =>
@@ -1871,6 +1898,22 @@ const firebaseConfig = {
                     UNCLASSIFIED_COLOR;
                 const importedNotes = [];
                 for (const position of reconciliation?.additions || []) {
+                    const coveredCalls = (reconciliation?.plaidCoveredCalls || [])
+                        .filter(call =>
+                            normalizeTicker(call.ticker) === normalizeTicker(position.ticker) &&
+                            call.stockStickiesAccount === position.stockStickiesAccount
+                        )
+                        .map(call => ({
+                            ticker: call.ticker,
+                            strike: call.strike,
+                            qty: call.qty,
+                            expiry: call.expiry,
+                            accountId: call.accountId,
+                            securityId: call.securityId,
+                            optionTicker: call.optionTicker,
+                            plaidSource: 'robinhood',
+                            plaidLastSyncedAt: syncedAt
+                        }));
                     const importedNote = {
                         id: importedNextId,
                         title: position.ticker,
@@ -1892,7 +1935,8 @@ const firebaseConfig = {
                         plaidPriceAsOf: position.priceAsOf || null,
                         plaidSource: 'robinhood',
                         plaidImportedAt: syncedAt,
-                        plaidLastSyncedAt: syncedAt
+                        plaidLastSyncedAt: syncedAt,
+                        coveredCalls
                     };
                     importedNotes.push(importedNote);
                     updatedNotes.unshift(importedNote);
@@ -1927,6 +1971,8 @@ const firebaseConfig = {
                     cspAddedCount: reconciliation?.cspAdditions?.length || 0,
                     cspRemovedCount: removedCsps.length,
                     removedCsps,
+                    coveredCallUpdatedCount: reconciliation?.coveredCallUpdates?.length || 0,
+                    coveredCallRemovedCount: closedCoveredCallNoteIds.size,
                     priceRefresh
                 };
             };

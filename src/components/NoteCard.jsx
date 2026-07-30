@@ -63,6 +63,7 @@ export default function NoteCard({
         !Number.isFinite(newPositionBadgeExpiresAt) || Date.now() >= newPositionBadgeExpiresAt
     );
     const showNewPositionBadge = !newPositionBadgeExpired;
+    const coveredCalls = Array.isArray(note.coveredCalls) ? note.coveredCalls : [];
     useEffect(() => {
         const remaining = Number.isFinite(newPositionBadgeExpiresAt)
             ? newPositionBadgeExpiresAt - Date.now()
@@ -151,6 +152,35 @@ export default function NoteCard({
             {isDuplicate && (
                 <div className="mb-2 rounded border border-red-500 bg-red-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-red-800">
                     Duplicate in {accountLabel || 'Unassigned'}
+                </div>
+            )}
+
+            {coveredCalls.length > 0 && (
+                <div
+                    className="mb-2 rounded border border-violet-700/40 bg-violet-100/90 px-2.5 py-2 text-violet-950 shadow-sm"
+                    aria-label={`${coveredCalls.length} covered call contract${coveredCalls.length === 1 ? '' : 's'} on this position`}
+                >
+                    <div className="text-[10px] font-black uppercase tracking-[0.14em]">
+                        Covered Call{coveredCalls.length === 1 ? '' : 's'}
+                    </div>
+                    {coveredCalls.map((call, index) => (
+                        <div
+                            key={call.securityId || `${call.optionTicker || note.title}-${call.strike}-${call.expiry}-${index}`}
+                            className="mt-0.5 text-[11px] font-semibold tabular-nums"
+                        >
+                            ${Number(call.strike).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            {' · '}
+                            {Number(call.qty).toLocaleString()} contract{Number(call.qty) === 1 ? '' : 's'}
+                            {' · '}
+                            {call.expiry
+                                ? new Date(`${String(call.expiry).slice(0, 10)}T12:00:00`).toLocaleDateString(undefined, {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                })
+                                : 'No expiry'}
+                        </div>
+                    ))}
                 </div>
             )}
 

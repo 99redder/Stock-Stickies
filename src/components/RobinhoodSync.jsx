@@ -74,14 +74,64 @@ function normalizePlaidCsp(position) {
   }
 }
 
+function normalizePlaidCoveredCall(position) {
+  const contract = position?.optionContract
+  if (!contract || typeof contract !== 'object') return null
+  const contractType = String(contract.contract_type || contract.contractType || '').toLowerCase()
+  const ticker = normalizeTicker(
+    contract.underlying_security_ticker ||
+    contract.underlyingSecurityTicker
+  )
+  const strike = Number(contract.strike_price ?? contract.strikePrice)
+  const expiry = String(contract.expiration_date || contract.expirationDate || '').slice(0, 10)
+  const rawQuantity = Number(position.quantity)
+  if (
+    contractType !== 'call' ||
+    rawQuantity >= 0 ||
+    !Number.isFinite(rawQuantity) ||
+    !isSupportedTicker(ticker) ||
+    !Number.isFinite(strike) ||
+    strike <= 0 ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(expiry) ||
+    !position.stockStickiesAccount
+  ) return null
+  return {
+    accountId: position.accountId,
+    securityId: position.securityId,
+    optionTicker: normalizeTicker(position.ticker),
+    stockStickiesAccount: position.stockStickiesAccount,
+    ticker,
+    strike,
+    qty: Math.abs(rawQuantity),
+    expiry,
+  }
+}
+
+function coveredCallKey(call) {
+  return [
+    call?.securityId || '',
+    normalizeTicker(call?.optionTicker),
+    normalizeTicker(call?.ticker),
+    Number(call?.strike).toFixed(4),
+    Number(call?.qty).toFixed(8),
+    String(call?.expiry || '').slice(0, 10),
+  ].join(':')
+}
+
 function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
   const usable = []
   const unsupported = []
   const plaidCsps = []
+  const plaidCoveredCalls = []
   for (const position of Array.isArray(positions) ? positions : []) {
     const normalizedCsp = normalizePlaidCsp(position)
     if (normalizedCsp) {
       plaidCsps.push(normalizedCsp)
+      continue
+    }
+    const normalizedCoveredCall = normalizePlaidCoveredCall(position)
+    if (normalizedCoveredCall) {
+      plaidCoveredCalls.push(normalizedCoveredCall)
       continue
     }
     // Options that are not short puts (for example covered calls) are outside
@@ -260,6 +310,40 @@ function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
     !usedPutIds.has(put.id)
   )
 
+  const coveredCallsByPosition = new Map()
+  for (const call of plaidCoveredCalls) {
+    const key = positionKey(call.stockStickiesAccount, call.ticker)
+    const calls = coveredCallsByPosition.get(key) || []
+    calls.push(call)
+    coveredCallsByPosition.set(key, calls)
+  }
+  const coveredCallUpdates = []
+  const possibleClosedCoveredCalls = []
+  for (const note of notes) {
+    const incomingCalls = coveredCallsByPosition.get(positionKey(note.account, note.title)) || []
+    const savedCalls = Array.isArray(note.coveredCalls) ? note.coveredCalls : []
+    const incomingKeys = incomingCalls.map(coveredCallKey).sort()
+    const savedKeys = savedCalls.map(coveredCallKey).sort()
+    const callsChanged =
+      incomingKeys.length !== savedKeys.length ||
+      incomingKeys.some((key, index) => key !== savedKeys[index])
+    if (incomingCalls.length > 0 && callsChanged) {
+      coveredCallUpdates.push({
+        noteId: note.id,
+        ticker: normalizeTicker(note.title),
+        account: note.account,
+        calls: incomingCalls,
+      })
+    } else if (incomingCalls.length === 0 && savedCalls.length > 0) {
+      possibleClosedCoveredCalls.push({
+        noteId: note.id,
+        ticker: normalizeTicker(note.title),
+        account: note.account,
+        calls: savedCalls,
+      })
+    }
+  }
+
   return {
     updates,
     additions,
@@ -270,6 +354,9 @@ function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
     cspAdditions,
     possibleClosedCsps,
     plaidCsps,
+    coveredCallUpdates,
+    possibleClosedCoveredCalls,
+    plaidCoveredCalls,
   }
 }
 
@@ -423,7 +510,8 @@ export default function RobinhoodSync({
             automaticReconciliation.updates.length ||
             automaticReconciliation.additions.length ||
             automaticReconciliation.cspUpdates.length ||
-            automaticReconciliation.cspAdditions.length
+            automaticReconciliation.cspAdditions.length ||
+            automaticReconciliation.coveredCallUpdates.length
           ) {
             const applied = await onApplyRef.current(automaticReconciliation)
             setResult(applied)
@@ -504,10 +592,12 @@ export default function RobinhoodSync({
         actionableReconciliation.additions.length ||
         actionableReconciliation.cspUpdates.length ||
         actionableReconciliation.cspAdditions.length ||
+        actionableReconciliation.coveredCallUpdates.length ||
         (actionableReconciliation.removeClosedPositions &&
           (
             actionableReconciliation.possibleClosed.length ||
-            actionableReconciliation.possibleClosedCsps.length
+            actionableReconciliation.possibleClosedCsps.length ||
+            actionableReconciliation.possibleClosedCoveredCalls.length
           ))
       ) {
         setApplying(true)
@@ -530,6 +620,8 @@ export default function RobinhoodSync({
         cspAddedCount: applied?.cspAddedCount || 0,
         cspRemovedCount: applied?.cspRemovedCount || 0,
         removedCsps: applied?.removedCsps || [],
+        coveredCallUpdatedCount: applied?.coveredCallUpdatedCount || 0,
+        coveredCallRemovedCount: applied?.coveredCallRemovedCount || 0,
         priceRefresh: applied?.priceRefresh || null,
         possibleClosed: canConfirmClosures
           ? []
@@ -689,7 +781,9 @@ export default function RobinhoodSync({
                           syncSummary.removedCount ||
                           syncSummary.cspUpdatedCount ||
                           syncSummary.cspAddedCount ||
-                          syncSummary.cspRemovedCount
+                          syncSummary.cspRemovedCount ||
+                          syncSummary.coveredCallUpdatedCount ||
+                          syncSummary.coveredCallRemovedCount
                         ? 'Update complete'
                         : 'Everything is current'}
                   </h2>
@@ -719,7 +813,9 @@ export default function RobinhoodSync({
                     syncSummary.removedCount ||
                     syncSummary.cspUpdatedCount ||
                     syncSummary.cspAddedCount ||
-                    syncSummary.cspRemovedCount ? (
+                    syncSummary.cspRemovedCount ||
+                    syncSummary.coveredCallUpdatedCount ||
+                    syncSummary.coveredCallRemovedCount ? (
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold">
                         {syncSummary.updatedCount > 0 && <span>{syncSummary.updatedCount} updated</span>}
                         {syncSummary.addedCount > 0 && <span>{syncSummary.addedCount} added</span>}
@@ -727,6 +823,8 @@ export default function RobinhoodSync({
                         {syncSummary.cspUpdatedCount > 0 && <span>{syncSummary.cspUpdatedCount} CSP{syncSummary.cspUpdatedCount === 1 ? '' : 's'} updated</span>}
                         {syncSummary.cspAddedCount > 0 && <span>{syncSummary.cspAddedCount} CSP{syncSummary.cspAddedCount === 1 ? '' : 's'} added</span>}
                         {syncSummary.cspRemovedCount > 0 && <span>{syncSummary.cspRemovedCount} CSP{syncSummary.cspRemovedCount === 1 ? '' : 's'} removed</span>}
+                        {syncSummary.coveredCallUpdatedCount > 0 && <span>{syncSummary.coveredCallUpdatedCount} covered-call annotation{syncSummary.coveredCallUpdatedCount === 1 ? '' : 's'} updated</span>}
+                        {syncSummary.coveredCallRemovedCount > 0 && <span>{syncSummary.coveredCallRemovedCount} covered-call annotation{syncSummary.coveredCallRemovedCount === 1 ? '' : 's'} removed</span>}
                       </div>
                     ) : (
                       <p className="text-sm font-bold">No position changes were needed.</p>
@@ -968,11 +1066,12 @@ export default function RobinhoodSync({
                     ))}
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-4">
+                  <div className="grid gap-3 sm:grid-cols-5">
                     {[
                       ['Share updates', reconciliation.updates.length],
                       ['New positions', reconciliation.additions.length],
                       ['CSP changes', reconciliation.cspUpdates.length + reconciliation.cspAdditions.length],
+                      ['Covered calls', reconciliation.coveredCallUpdates.length],
                       ['Needs review', reconciliation.unsupported.length],
                     ].map(([label, value]) => (
                       <div key={label} className={`rounded-xl border p-3 ${card}`}>
@@ -988,7 +1087,8 @@ export default function RobinhoodSync({
                       {!reconciliation.updates.length &&
                       !reconciliation.additions.length &&
                       !reconciliation.cspUpdates.length &&
-                      !reconciliation.cspAdditions.length ? (
+                      !reconciliation.cspAdditions.length &&
+                      !reconciliation.coveredCallUpdates.length ? (
                         <div className={`p-4 text-sm ${muted}`}>
                           Stock Stickies matches Plaid’s latest available position snapshot.
                         </div>
@@ -1016,6 +1116,12 @@ export default function RobinhoodSync({
                             <div key={`csp-add-${position.accountId}-${position.securityId}`} className="flex items-center justify-between gap-4 border-b border-inherit px-4 py-3 text-sm">
                               <div><span className="font-bold">{position.ticker} CSP</span> · {position.stockStickiesAccount}</div>
                               <div className={muted}>New · ${position.strike} · {position.qty} contract{position.qty === 1 ? '' : 's'} · {position.expiry}</div>
+                            </div>
+                          ))}
+                          {reconciliation.coveredCallUpdates.map(change => (
+                            <div key={`cc-update-${change.noteId}`} className="flex items-center justify-between gap-4 border-b border-inherit px-4 py-3 text-sm">
+                              <div><span className="font-bold">{change.ticker}</span> · {change.account}</div>
+                              <div className={muted}>{change.calls.length} covered call{change.calls.length === 1 ? '' : 's'} annotated</div>
                             </div>
                           ))}
                         </>

@@ -305,6 +305,13 @@ footnote under the chart use `shownPutObligation`, which follows the account fil
 single-account view must not report the whole book's obligation. The CSP sidebar panel
 still totals every put, since it lists them all.
 
+Robinhood short calls are treated as covered calls rather than CSPs. Position sync matches
+each short call to the underlying sticky note by brokerage account and ticker, then persists
+the friendly contract details in `note.coveredCalls`. The note card shows a Covered Call
+annotation with strike, contract count, and expiration. A completed fresh Plaid extraction
+removes annotations for calls that are no longer open; stale or cached snapshots never
+remove them.
+
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
 payload includes an `accounts` array with per-account totals and strategy text. The account
