@@ -950,23 +950,38 @@ export default function RobinhoodSync({
                 </div>
               )}
 
-              {!holdings && (
-                <div className={`rounded-xl border p-4 ${card}`}>
-                  <div className="font-bold">Connection</div>
+              {(!holdings || status?.investmentsEnabled === false) && (
+                <div className={`rounded-xl border p-4 ${
+                  status?.investmentsEnabled === false
+                    ? 'border-amber-500/50 bg-amber-950/20'
+                    : card
+                }`}>
+                  <div className={`font-bold ${
+                    status?.investmentsEnabled === false ? 'text-amber-400' : ''
+                  }`}>
+                    {status?.investmentsEnabled === false ? 'Reconnect Robinhood' : 'Connection'}
+                  </div>
                   <p className={`mt-1 text-sm ${muted}`}>
                     {loading
                       ? 'Checking the existing Plaid connection…'
                       : status?.investmentsEnabled
                         ? 'Robinhood Investments access is enabled.'
-                        : 'One-time Robinhood permission is required before positions can be read.'}
+                        : holdings
+                          ? 'Robinhood authorization has expired. Reconnect it to refresh positions; your currently saved Stock Stickies data will remain unchanged until reconnection succeeds.'
+                          : 'One-time Robinhood permission is required before positions can be read.'}
                   </p>
                   {!loading && (
                     <button
                       type="button"
                       onClick={status?.investmentsEnabled ? openSync : connectInvestments}
-                      className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500"
+                      className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60"
+                      disabled={loading}
                     >
-                      {status?.investmentsEnabled ? 'Update positions' : 'Connect Robinhood Positions'}
+                      {status?.investmentsEnabled
+                        ? 'Update positions'
+                        : holdings
+                          ? 'Reconnect Robinhood'
+                          : 'Connect Robinhood Positions'}
                     </button>
                   )}
                 </div>
