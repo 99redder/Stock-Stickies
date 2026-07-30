@@ -252,8 +252,11 @@ function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
     }
   }
 
+  // All CSP cards represent Robinhood short puts. Once a completed fresh
+  // extraction has matched the live contracts, any remaining card is closed
+  // or expired—even legacy cards created before Plaid identifiers were stored.
+  // The caller only removes this list for a confirmed non-stale refresh.
   const possibleClosedCsps = cashSecuredPuts.filter(put =>
-    (put.plaidSource === 'robinhood' || put.plaidAccountId || put.plaidSecurityId) &&
     !usedPutIds.has(put.id)
   )
 
