@@ -265,6 +265,11 @@ annotation with strike, contract count, and expiration. A completed fresh Plaid 
 removes annotations for calls that are no longer open; stale or cached snapshots never
 remove them.
 
+Every successful manual **Update positions** run also refreshes prices for the complete
+post-reconciliation position list. `RobinhoodSync` calls the price-refresh callback even
+when share quantities already match, so position and price updates remain one action.
+Newly imported positions are included in that same refresh.
+
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
 payload includes an `accounts` array with per-account totals and strategy text. The account

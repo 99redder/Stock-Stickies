@@ -387,6 +387,7 @@ export default function RobinhoodSync({
   ready,
   darkMode,
   onApply,
+  onRefreshPrices,
   onPerformanceChange,
 }) {
   const [open, setOpen] = useState(false)
@@ -410,14 +411,16 @@ export default function RobinhoodSync({
   const notesRef = useRef(notes)
   const cashSecuredPutsRef = useRef(cashSecuredPuts)
   const onApplyRef = useRef(onApply)
+  const onRefreshPricesRef = useRef(onRefreshPrices)
   const onPerformanceChangeRef = useRef(onPerformanceChange)
 
   useEffect(() => {
     notesRef.current = notes
     cashSecuredPutsRef.current = cashSecuredPuts
     onApplyRef.current = onApply
+    onRefreshPricesRef.current = onRefreshPrices
     onPerformanceChangeRef.current = onPerformanceChange
-  }, [cashSecuredPuts, notes, onApply, onPerformanceChange])
+  }, [cashSecuredPuts, notes, onApply, onPerformanceChange, onRefreshPrices])
 
   const reconciliation = useMemo(
     () => buildRobinhoodReconciliation(
@@ -514,7 +517,10 @@ export default function RobinhoodSync({
             automaticReconciliation.coveredCallUpdates.length
           ) {
             const applied = await onApplyRef.current(automaticReconciliation)
-            setResult(applied)
+            const priceRefresh = await onRefreshPricesRef.current?.(
+              applied.priceRefreshNotes || notesRef.current
+            )
+            setResult({ ...applied, priceRefresh })
             setBackup(applied.backup)
             setAutoSyncState('applied')
           } else {
@@ -608,6 +614,12 @@ export default function RobinhoodSync({
       } else {
         setAutoSyncState('current')
       }
+      const priceRefresh = (requestFreshData || applied)
+        ? await onRefreshPricesRef.current?.(
+            applied?.priceRefreshNotes || notesRef.current
+          )
+        : null
+      if (applied) setResult({ ...applied, priceRefresh })
       setOpen(false)
       setSyncSummary({
         ok: true,
@@ -622,7 +634,7 @@ export default function RobinhoodSync({
         removedCsps: applied?.removedCsps || [],
         coveredCallUpdatedCount: applied?.coveredCallUpdatedCount || 0,
         coveredCallRemovedCount: applied?.coveredCallRemovedCount || 0,
-        priceRefresh: applied?.priceRefresh || null,
+        priceRefresh: priceRefresh || null,
         possibleClosed: canConfirmClosures
           ? []
           : latestReconciliation.possibleClosed.map(note =>
@@ -835,11 +847,11 @@ export default function RobinhoodSync({
                     {syncSummary.cspRemovedCount > 0 && (
                       <p className="mt-2 text-xs">Removed CSPs: {syncSummary.removedCsps.join(', ')}</p>
                     )}
-                    {syncSummary.addedCount > 0 && syncSummary.priceRefresh && (
+                    {syncSummary.priceRefresh?.requestedCount > 0 && (
                       <p className="mt-2 text-xs">
-                        Starting prices set for{' '}
+                        Prices updated for{' '}
                         {syncSummary.priceRefresh.refreshedCount + syncSummary.priceRefresh.fallbackCount}
-                        {' '}of {syncSummary.priceRefresh.requestedCount} new ticker
+                        {' '}of {syncSummary.priceRefresh.requestedCount} ticker
                         {syncSummary.priceRefresh.requestedCount === 1 ? '' : 's'}.
                       </p>
                     )}
@@ -856,7 +868,7 @@ export default function RobinhoodSync({
                         <p>{syncSummary.possibleClosed.length} possible closed position{syncSummary.possibleClosed.length === 1 ? '' : 's'} left unchanged.</p>
                       )}
                       {syncSummary.priceRefresh?.failedTickers?.length > 0 && (
-                        <p>Missing starting price: {syncSummary.priceRefresh.failedTickers.join(', ')}.</p>
+                        <p>Missing updated price: {syncSummary.priceRefresh.failedTickers.join(', ')}.</p>
                       )}
                     </div>
                   )}

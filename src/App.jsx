@@ -1896,7 +1896,6 @@ const firebaseConfig = {
                     ) ||
                     categories[0] ||
                     UNCLASSIFIED_COLOR;
-                const importedNotes = [];
                 for (const position of reconciliation?.additions || []) {
                     const coveredCalls = (reconciliation?.plaidCoveredCalls || [])
                         .filter(call =>
@@ -1938,7 +1937,6 @@ const firebaseConfig = {
                         plaidLastSyncedAt: syncedAt,
                         coveredCalls
                     };
-                    importedNotes.push(importedNote);
                     updatedNotes.unshift(importedNote);
                     importedNextId += 1;
                 }
@@ -1955,12 +1953,6 @@ const firebaseConfig = {
                 setCashSecuredPuts(updatedPuts);
                 setNextId(importedNextId);
                 setUnlockedNotes({});
-                const priceRefresh = importedNotes.length > 0
-                    ? await refreshPortfolioPrices(importedNotes, {
-                        showNotices: false,
-                        cacheReason: 'position-import'
-                    })
-                    : null;
                 return {
                     backup,
                     updatedCount: reconciliation?.updates?.length || 0,
@@ -1973,7 +1965,7 @@ const firebaseConfig = {
                     removedCsps,
                     coveredCallUpdatedCount: reconciliation?.coveredCallUpdates?.length || 0,
                     coveredCallRemovedCount: closedCoveredCallNoteIds.size,
-                    priceRefresh
+                    priceRefreshNotes: updatedNotes
                 };
             };
 
@@ -5493,6 +5485,10 @@ const firebaseConfig = {
                                             ready={userDataReady}
                                             darkMode={darkMode}
                                             onApply={applyRobinhoodReconciliation}
+                                            onRefreshPrices={(targetNotes) => refreshPortfolioPrices(
+                                                targetNotes,
+                                                { showNotices: false, cacheReason: 'position-sync' }
+                                            )}
                                             onPerformanceChange={setRobinhoodPerformance}
                                         />
                                     )}

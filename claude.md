@@ -373,6 +373,11 @@ closed, and needing review, plus any warnings or errors. The detailed sync modal
 optional from that summary; positions absent from Plaid remain review-only and are
 not automatically deleted.
 
+Every successful manual `Update positions` run also refreshes prices for the complete
+post-reconciliation position list, even when share quantities already match. Newly
+imported positions are included in the same refresh, and the completion summary reports
+how many ticker prices were refreshed or filled from brokerage data.
+
 Never describe a zero-change sync as “Robinhood positions are current.” The Worker
 can only compare against Plaid's latest available Investments snapshot, which is not
 real-time and commonly updates after market hours. The completion summary must say
