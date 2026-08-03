@@ -3018,6 +3018,49 @@ const firebaseConfig = {
                 ? (cashPortfolioValue / totalPortfolioValue) * 100
                 : 0;
             const nonCashPortfolioValue = Math.max(0, totalPortfolioValue - cashPortfolioValue);
+            const portfolioPositionsTableData = useMemo(() => {
+                const cashPositions = portfolioData.filter(isCashHolding);
+                if (cashPositions.length === 0) return portfolioData;
+
+                // USD is already its own cost basis at $1. SGOV (and any other
+                // Cash-category security) keeps its brokerage-provided cost basis.
+                const cashCostBases = cashPositions.map(h =>
+                    isUsdTicker(h.ticker) ? h.value : h.costBasis
+                );
+                const hasCompleteCashCostBasis = cashCostBases.every(value => value != null);
+                const cashCostBasis = hasCompleteCashCostBasis
+                    ? cashCostBases.reduce((sum, value) => sum + value, 0)
+                    : null;
+                const cashValue = cashPositions.reduce((sum, h) => sum + h.value, 0);
+                const cashPnl = cashCostBasis == null ? null : cashValue - cashCostBasis;
+                const cashTickers = [...new Set(cashPositions.map(h => h.ticker))];
+                const cashAccounts = [...new Set(cashPositions.map(h => h.account))];
+                const combinedCash = {
+                    ticker: 'Cash',
+                    noteId: 'combined-cash',
+                    account: portfolioAccountFilter === 'all' ? 'all' : portfolioAccountFilter,
+                    accountLabel: portfolioAccountFilter === 'all'
+                        ? `All accounts (${cashAccounts.length})`
+                        : getAccountLabel(portfolioAccountFilter),
+                    price: 1,
+                    value: cashValue,
+                    costBasis: cashCostBasis,
+                    unrealizedPnL: cashPnl,
+                    unrealizedPnLPercent: cashPnl != null && cashCostBasis > 0
+                        ? (cashPnl / cashCostBasis) * 100
+                        : null,
+                    percentage: cashPositions.reduce((sum, h) => sum + h.percentage, 0),
+                    isCombinedCash: true,
+                    cashSummary: `${cashTickers.join(' + ')} · ${cashPositions.length} holding${cashPositions.length === 1 ? '' : 's'} combined`,
+                };
+
+                return [
+                    combinedCash,
+                    ...portfolioData.filter(h => !isCashHolding(h))
+                ].sort((a, b) => b.value - a.value);
+            // isCashHolding closes over colorLabels, which is already declared here.
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [portfolioData, portfolioAccountFilter, colorLabels]);
             const portfolioMapTiles = useMemo(() => {
                 const cashPositions = portfolioData.filter(isCashHolding);
                 const stockPositions = portfolioData.filter(h => !isCashHolding(h));
@@ -3474,14 +3517,23 @@ const firebaseConfig = {
 
                 // Small delay to ensure canvas is mounted in DOM
                 const timeoutId = setTimeout(() => {
-                    if (!chartRef.current) return;
+                    if (!chartRef.current) {
+                        if (chartInstance.current) {
+                            chartInstance.current.destroy();
+                            chartInstance.current = null;
+                        }
+                        return;
+                    }
+
+                    // A conditional empty-state can replace the canvas without leaving
+                    // donut mode. Never carry an instance across two different canvases.
+                    if (chartInstance.current?.canvas !== chartRef.current) {
+                        chartInstance.current.destroy();
+                        chartInstance.current = null;
+                    }
 
                     const currentPortfolioData = portfolioDataRef.current;
                     if (currentPortfolioData.length === 0) return;
-
-                    if (chartInstance.current) {
-                        chartInstance.current.destroy();
-                    }
 
                     // Group every position whose category label is "Cash" into one dedicated
                     // chart slice. Keep that Cash slice visible even if it is under the normal
@@ -3678,7 +3730,7 @@ const firebaseConfig = {
                         }
                     };
 
-                    chartInstance.current = new Chart(chartRef.current, {
+                    const chartConfig = {
                         type: 'doughnut',
                         data: {
                             labels: chartLabels,
@@ -3755,16 +3807,40 @@ const firebaseConfig = {
                                 }
                             }
                         }
-                    });
+                    };
+
+                    if (chartInstance.current) {
+                        // Preserve the canvas and Chart.js instance when Firestore or price
+                        // synchronization produces a new render. Rebuilding the chart made
+                        // background updates replay the entrance animation every few seconds.
+                        chartInstance.current.data = chartConfig.data;
+                        chartInstance.current.options = chartConfig.options;
+                        chartInstance.current.config.plugins.splice(
+                            0,
+                            chartInstance.current.config.plugins.length,
+                            ...chartConfig.plugins
+                        );
+                        chartInstance.current.update('none');
+                    } else {
+                        chartInstance.current = new Chart(chartRef.current, chartConfig);
+                    }
                 }, 50);
 
                 return () => {
                     clearTimeout(timeoutId);
-                    if (chartInstance.current) chartInstance.current.destroy();
                 };
                 // colorLabelsKey (not colorLabels) — depend on content, not object identity.
                 // eslint-disable-next-line react-hooks/exhaustive-deps
             }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, colorLabelsKey, shownPutObligation, totalPortfolioValue, nickname, currentUser]);
+
+            // Dependency changes update the existing chart above. Destroy it only when the
+            // application component itself unmounts; tab/view changes are handled explicitly.
+            useEffect(() => () => {
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                    chartInstance.current = null;
+                }
+            }, []);
 
             if (!currentUser) {
                 return (
@@ -6282,16 +6358,23 @@ const firebaseConfig = {
                                                     </tr>
                                                 </thead>
                                                 <tbody className={darkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-100'}>
-                                                    {portfolioData.map(h => (
+                                                    {portfolioPositionsTableData.map(h => (
                                                         <tr key={`${h.account}-${h.noteId}`} className={darkMode ? 'hover:bg-gray-700/40' : 'hover:bg-gray-50'}>
                                                             <td className="px-5 py-3">
                                                                 <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{h.ticker}</div>
                                                                 <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                                    {Number(h.shares).toLocaleString()} shares · {h.price > 0 ? formatUsd(h.price) : 'Price unavailable'}
+                                                                    {h.isCombinedCash
+                                                                        ? h.cashSummary
+                                                                        : <>{Number(h.shares).toLocaleString()} shares · {h.price > 0 ? formatUsd(h.price) : 'Price unavailable'}</>}
                                                                 </div>
                                                             </td>
-                                                            <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{getAccountLabel(h.account)}</td>
-                                                            <td className={`px-4 py-3 text-right font-semibold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>{h.price > 0 ? formatUsd(h.value) : '—'}</td>
+                                                            <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.accountLabel || getAccountLabel(h.account)}</td>
+                                                            <td
+                                                                className={`px-4 py-3 text-right font-semibold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}
+                                                                style={{ color: darkMode ? '#f3f4f6' : '#111827' }}
+                                                            >
+                                                                {h.price > 0 ? formatUsd(h.value) : '—'}
+                                                            </td>
                                                             <td className={`px-4 py-3 text-right tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.costBasis == null ? 'Unavailable' : formatUsd(h.costBasis)}</td>
                                                             <td className={`px-4 py-3 text-right font-bold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${h.unrealizedPnL == null
                                                                 ? (darkMode ? 'text-gray-500' : 'text-gray-400')

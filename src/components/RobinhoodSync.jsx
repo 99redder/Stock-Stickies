@@ -23,6 +23,20 @@ function normalizeTicker(value) {
   return String(value || '').trim().toUpperCase()
 }
 
+function normalizePlaidPosition(position) {
+  if (normalizeTicker(position?.ticker) !== 'CUR:USD') return position
+
+  const quantity = Number(position?.quantity)
+  return {
+    ...position,
+    ticker: 'USD',
+    type: position?.type || 'cash',
+    institutionPrice: 1,
+    institutionValue: Number.isFinite(quantity) ? quantity : position?.institutionValue,
+    costBasis: null,
+  }
+}
+
 function isSupportedTicker(value) {
   return /^[A-Z0-9]{1,5}(?:\.[A-Z0-9]{1,3})?$/.test(normalizeTicker(value))
 }
@@ -123,7 +137,9 @@ function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
   const unsupported = []
   const plaidCsps = []
   const plaidCoveredCalls = []
-  for (const position of Array.isArray(positions) ? positions : []) {
+  const normalizedPositions = (Array.isArray(positions) ? positions : [])
+    .map(normalizePlaidPosition)
+  for (const position of normalizedPositions) {
     const normalizedCsp = normalizePlaidCsp(position)
     if (normalizedCsp) {
       plaidCsps.push(normalizedCsp)
@@ -226,7 +242,7 @@ function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
     }
   }
 
-  const liveKeys = new Set((Array.isArray(positions) ? positions : []).map(position =>
+  const liveKeys = new Set(normalizedPositions.map(position =>
     positionKey(position.stockStickiesAccount, position.ticker)
   ))
   const possibleClosed = notes.filter(note =>
