@@ -2,6 +2,14 @@ const CARD_WIDTH = 1600
 const CARD_HEIGHT = 900
 export const YTD_SHARE_CARD_SIZE = { width: CARD_WIDTH, height: CARD_HEIGHT }
 
+const YTD_REACTION_ASSETS = {
+  negative: '/assets/ytd-reactions/negative-sad-bull.png',
+  trailingSpy: '/assets/ytd-reactions/trailing-spy-capybara.png',
+  beatingSpy: '/assets/ytd-reactions/beating-spy-astronaut-bull.png',
+}
+const SPY_YTD_CACHE_KEY = 'stock-stickies-spy-ytd'
+const SPY_YTD_CACHE_MS = 12 * 60 * 60 * 1000
+
 const roundedRect = (ctx, x, y, width, height, radius) => {
   const r = Math.min(radius, width / 2, height / 2)
   ctx.beginPath()
@@ -60,6 +68,42 @@ const loadImage = async (sources) => {
     }
   }
   return null
+}
+
+export async function fetchSpyYtdReturn(apiKey, year = new Date().getFullYear()) {
+  if (!apiKey) return null
+  try {
+    const cached = JSON.parse(localStorage.getItem(SPY_YTD_CACHE_KEY) || 'null')
+    if (
+      cached?.year === year &&
+      Number.isFinite(cached?.returnPercent) &&
+      Date.now() - Number(cached?.timestamp || 0) < SPY_YTD_CACHE_MS
+    ) {
+      return cached.returnPercent
+    }
+  } catch {
+    // A malformed cache should never prevent generating the share card.
+  }
+
+  try {
+    const token = encodeURIComponent(apiKey)
+    const response = await fetch(
+      `https://finnhub.io/api/v1/stock/metric?symbol=SPY&metric=all&token=${token}`
+    )
+    if (!response.ok) return null
+    const data = await response.json()
+    const returnPercent = Number(data?.metric?.yearToDatePriceReturnDaily)
+    if (!Number.isFinite(returnPercent)) return null
+
+    localStorage.setItem(SPY_YTD_CACHE_KEY, JSON.stringify({
+      year,
+      returnPercent,
+      timestamp: Date.now(),
+    }))
+    return returnPercent
+  } catch {
+    return null
+  }
 }
 
 const downloadBlob = (blob, filename) => {
@@ -146,11 +190,22 @@ export async function createYtdShareCard({
   year,
   gain,
   returnPercent,
+  spyReturnPercent,
   scopeLabel,
   displayName,
   profilePhoto,
   displayMode = 'full',
 }) {
+  const hasReturnPercent = returnPercent != null && Number.isFinite(Number(returnPercent))
+  const numericPercent = hasReturnPercent ? Number(returnPercent) : null
+  const hasSpyReturn = spyReturnPercent != null && Number.isFinite(Number(spyReturnPercent))
+  const numericSpyReturn = hasSpyReturn ? Number(spyReturnPercent) : null
+  const reactionAsset = numericPercent < 0
+    ? YTD_REACTION_ASSETS.negative
+    : (hasSpyReturn && numericPercent > numericSpyReturn
+        ? YTD_REACTION_ASSETS.beatingSpy
+        : YTD_REACTION_ASSETS.trailingSpy)
+
   const canvas = document.createElement('canvas')
   canvas.width = CARD_WIDTH
   canvas.height = CARD_HEIGHT
@@ -196,6 +251,21 @@ export async function createYtdShareCard({
   ctx.strokeStyle = 'rgba(255,255,255,.12)'
   ctx.stroke()
 
+  const reactionImage = await loadImage(reactionAsset)
+  if (reactionImage) {
+    const maxWidth = 610
+    const maxHeight = 700
+    const scale = Math.min(maxWidth / reactionImage.width, maxHeight / reactionImage.height)
+    const width = reactionImage.width * scale
+    const height = reactionImage.height * scale
+    ctx.save()
+    roundedRect(ctx, 64, 64, 1472, 772, 36)
+    ctx.clip()
+    ctx.globalAlpha = 0.28
+    ctx.drawImage(reactionImage, 1490 - width, 112 + ((700 - height) / 2), width, height)
+    ctx.restore()
+  }
+
   drawBrandMark(ctx, 118, 112, 92)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
@@ -228,8 +298,6 @@ export async function createYtdShareCard({
   ctx.textAlign = 'left'
   ctx.fillText(`${year} YTD PERFORMANCE`, 143, 296)
 
-  const hasReturnPercent = returnPercent != null && Number.isFinite(Number(returnPercent))
-  const numericPercent = hasReturnPercent ? Number(returnPercent) : null
   const percentText = hasReturnPercent
     ? `${numericPercent > 0 ? '+' : ''}${numericPercent.toFixed(2)}%`
     : ''
@@ -237,7 +305,7 @@ export async function createYtdShareCard({
 
   if (percentOnly) {
     ctx.fillStyle = numericPercent >= 0 ? '#39d98a' : '#ff6b7c'
-    fitText(ctx, percentText, 1320, 142, 900)
+    fitText(ctx, percentText, 850, 142, 900)
     ctx.fillText(percentText, 118, 493)
     ctx.fillStyle = '#aab6c6'
     ctx.font = '650 27px Inter, ui-sans-serif, system-ui, sans-serif'
@@ -251,7 +319,7 @@ export async function createYtdShareCard({
       maximumFractionDigits: 2,
     }).format(numericGain)}`
     ctx.fillStyle = numericGain >= 0 ? '#39d98a' : '#ff6b7c'
-    fitText(ctx, gainText, 1320, 142, 900)
+    fitText(ctx, gainText, 850, 142, 900)
     ctx.fillText(gainText, 118, 493)
   }
 

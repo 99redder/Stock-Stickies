@@ -3,7 +3,7 @@ import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
 import 'firebase/compat/app-check'
-import { copyYtdCardToClipboard, createYtdShareCard, shareOrDownloadYtdCard } from './ytdShareCard'
+import { copyYtdCardToClipboard, createYtdShareCard, fetchSpyYtdReturn, shareOrDownloadYtdCard } from './ytdShareCard'
 
 const firebaseConfig = {
   // Firebase web configuration is public client metadata. Keep production
@@ -1071,10 +1071,12 @@ export default function App() {
     const displayName = nickname || user.email?.split('@')[0] || 'Investor'
     const accountSlug = accountFilter === 'all' ? 'all-accounts' : accountFilter
     try {
+      const spyReturnPercent = await fetchSpyYtdReturn(finnhubKey, year)
       const cardData = {
         year,
         gain: scopedYtdPerformance.gain,
         returnPercent: scopedYtdPerformance.returnPercent,
+        spyReturnPercent,
         scopeLabel,
         displayName,
         profilePhoto: [profilePhoto, user.photoURL],

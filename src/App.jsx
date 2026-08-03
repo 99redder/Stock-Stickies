@@ -67,7 +67,7 @@ import 'firebase/compat/app-check'
 import { Chart } from 'chart.js/auto'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
 import html2canvas from 'html2canvas-pro'
-import { copyYtdCardToClipboard, createYtdShareCard, shareOrDownloadYtdCard } from './utils/ytdShareCard'
+import { copyYtdCardToClipboard, createYtdShareCard, fetchSpyYtdReturn, shareOrDownloadYtdCard } from './utils/ytdShareCard'
 import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
@@ -1605,10 +1605,12 @@ const firebaseConfig = {
                 const displayName = nickname || currentUser?.split('@')[0] || 'Investor';
                 const accountSlug = portfolioAccountFilter === 'all' ? 'all-accounts' : portfolioAccountFilter;
                 try {
+                    const spyReturnPercent = await fetchSpyYtdReturn(finnhubApiKey, year);
                     const cardData = {
                         year,
                         gain: shownYtdPerformance.gain,
                         returnPercent: shownYtdPerformance.returnPercent,
+                        spyReturnPercent,
                         scopeLabel,
                         displayName,
                         profilePhoto: [profilePhoto, auth.currentUser?.photoURL],
@@ -3527,7 +3529,7 @@ const firebaseConfig = {
 
                     // A conditional empty-state can replace the canvas without leaving
                     // donut mode. Never carry an instance across two different canvases.
-                    if (chartInstance.current?.canvas !== chartRef.current) {
+                    if (chartInstance.current && chartInstance.current.canvas !== chartRef.current) {
                         chartInstance.current.destroy();
                         chartInstance.current = null;
                     }
