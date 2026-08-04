@@ -254,6 +254,8 @@ const firebaseConfig = {
         const MAX_TITLE_LENGTH = 10; // For ticker symbols
         const MAX_CONTENT_LENGTH = 10000; // For note content
         const MAX_WATCH_LIST_NOTE_LENGTH = 300;
+        const MAX_RADAR_POSITIONS = 3;
+        const MAX_RADAR_NOTE_LENGTH = 2000;
         const MAX_NICKNAME_LENGTH = 50;
         const MAX_API_KEY_LENGTH = 200;
 
@@ -518,6 +520,19 @@ const firebaseConfig = {
             );
         };
 
+        const sanitizeRadarList = (value) => Array.isArray(value)
+            ? [...new Set(value.filter((ticker) => validateTicker(ticker)))].slice(0, MAX_RADAR_POSITIONS)
+            : [];
+
+        const sanitizeRadarNotes = (value) => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+            return Object.fromEntries(
+                Object.entries(value)
+                    .filter(([ticker, note]) => validateTicker(ticker) && typeof note === 'string')
+                    .map(([ticker, note]) => [ticker, note.slice(0, MAX_RADAR_NOTE_LENGTH)])
+            );
+        };
+
         const isPlaidCryptoNote = (note) =>
             note?.plaidIsCrypto === true || note?.plaidSecurityType === 'cryptocurrency';
 
@@ -593,6 +608,11 @@ const firebaseConfig = {
             const [watchList, setWatchList] = useState([]);
             const [watchListNotes, setWatchListNotes] = useState({});
             const [expandedWatchListNotes, setExpandedWatchListNotes] = useState({});
+            const [radarList, setRadarList] = useState([]);
+            const [radarNotes, setRadarNotes] = useState({});
+            const [radarQuotes, setRadarQuotes] = useState({});
+            const [radarLoading, setRadarLoading] = useState(false);
+            const [newRadarTicker, setNewRadarTicker] = useState('');
             const [cashSecuredPuts, setCashSecuredPuts] = useState([]);
 
             // API key help popovers (click-to-toggle; closes on outside click / Escape)
@@ -878,6 +898,7 @@ const firebaseConfig = {
                             // echoes again, forever. That idle loop re-ran the portfolio chart
                             // effect every few seconds and made the chart visibly blink.
                             // Applying state only when the payload actually differs breaks it.
+                            const incomingRadarList = sanitizeRadarList(data.radarList);
                             const incoming = {
                                 categories: data.categories || DEFAULT_COLORS,
                                 colorLabels: data.colorLabels || DEFAULT_COLOR_LABELS,
@@ -886,8 +907,10 @@ const firebaseConfig = {
                                 collapsedCategories: data.collapsedCategories || {},
                                 collapsedAccounts: data.collapsedAccounts || {},
                                 darkMode: data.darkMode || false,
-                                watchList: data.watchList || [],
+                                watchList: (data.watchList || []).filter((ticker) => !incomingRadarList.includes(ticker)),
                                 watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
+                                radarList: incomingRadarList,
+                                radarNotes: sanitizeRadarNotes(data.radarNotes),
                                 cashSecuredPuts: data.cashSecuredPuts || [],
                                 nickname: data.nickname || '',
                                 profilePhoto: data.profilePhoto || auth.currentUser?.photoURL || '',
@@ -919,6 +942,8 @@ const firebaseConfig = {
                             setDarkMode(incoming.darkMode);
                             setWatchList(incoming.watchList);
                             setWatchListNotes(incoming.watchListNotes);
+                            setRadarList(incoming.radarList);
+                            setRadarNotes(incoming.radarNotes);
                             setCashSecuredPuts(incoming.cashSecuredPuts);
                             setNickname(incoming.nickname);
                             setProfilePhoto(incoming.profilePhoto);
@@ -997,6 +1022,8 @@ const firebaseConfig = {
                             darkMode,
                             watchList,
                             watchListNotes,
+                            radarList,
+                            radarNotes,
                             cashSecuredPuts,
                             cashSecuredPutsSortMode,
                             nickname,
@@ -1052,7 +1079,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1073,6 +1100,8 @@ const firebaseConfig = {
                             darkMode,
                             watchList,
                             watchListNotes,
+                            radarList,
+                            radarNotes,
                             cashSecuredPuts,
                             cashSecuredPutsSortMode,
                             nickname,
@@ -1096,7 +1125,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1302,6 +1331,8 @@ const firebaseConfig = {
                         darkMode,
                         watchList,
                         watchListNotes,
+                        radarList,
+                        radarNotes,
                         cashSecuredPuts,
                         cashSecuredPutsSortMode,
                         nickname,
@@ -1364,6 +1395,10 @@ const firebaseConfig = {
                     showBrandedNotice('Invalid ticker symbol. Please enter 1-5 letters/numbers.');
                     return;
                 }
+                if (radarList.includes(sanitized)) {
+                    showBrandedNotice(`${sanitized} is already on RADAR.`);
+                    return;
+                }
                 if (!watchList.includes(sanitized)) {
                     isSavingRef.current = true;
                     setWatchList([...watchList, sanitized]);
@@ -1382,6 +1417,11 @@ const firebaseConfig = {
                     return next;
                 });
                 setExpandedWatchListNotes((current) => {
+                    const next = { ...current };
+                    delete next[ticker];
+                    return next;
+                });
+                setRadarNotes((current) => {
                     const next = { ...current };
                     delete next[ticker];
                     return next;
@@ -1411,6 +1451,201 @@ const firebaseConfig = {
                     (rows, line) => rows + Math.max(1, Math.ceil(line.length / 32)),
                     0
                 )
+            );
+
+            const addToRadar = (tickerValue = newRadarTicker) => {
+                const ticker = sanitizeTicker(tickerValue);
+                if (!ticker || !validateTicker(ticker)) {
+                    showBrandedNotice('Enter a valid ticker symbol for RADAR.');
+                    return;
+                }
+                if (radarList.includes(ticker)) {
+                    showBrandedNotice(`${ticker} is already on RADAR.`);
+                    return;
+                }
+                if (radarList.length >= MAX_RADAR_POSITIONS) {
+                    showBrandedNotice('RADAR is full. Move one ticker back to Watch List first.');
+                    return;
+                }
+
+                isSavingRef.current = true;
+                setRadarList((current) => [...current, ticker]);
+                setRadarNotes((current) => ({
+                    ...current,
+                    [ticker]: current[ticker] || watchListNotes[ticker] || ''
+                }));
+                setWatchList((current) => current.filter((item) => item !== ticker));
+                setWatchListNotes((current) => {
+                    const next = { ...current };
+                    delete next[ticker];
+                    return next;
+                });
+                setNewRadarTicker('');
+            };
+
+            const moveRadarToWatchList = (ticker) => {
+                isSavingRef.current = true;
+                setRadarList((current) => current.filter((item) => item !== ticker));
+                setWatchList((current) => current.includes(ticker) ? current : [...current, ticker]);
+                setWatchListNotes((current) => ({
+                    ...current,
+                    [ticker]: (radarNotes[ticker] || '').slice(0, MAX_WATCH_LIST_NOTE_LENGTH)
+                }));
+            };
+
+            const updateRadarNote = (ticker, value) => {
+                const note = value.slice(0, MAX_RADAR_NOTE_LENGTH);
+                setRadarNotes((current) => ({ ...current, [ticker]: note }));
+            };
+
+            useEffect(() => {
+                let cancelled = false;
+                let refreshTimer = null;
+
+                const loadRadarQuotes = async () => {
+                    if (!finnhubApiKey || radarList.length === 0) {
+                        if (!cancelled) {
+                            setRadarQuotes({});
+                            setRadarLoading(false);
+                        }
+                        return;
+                    }
+
+                    setRadarLoading(true);
+                    const results = await Promise.all(radarList.map(async (ticker) => {
+                        try {
+                            const quoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
+                                symbol: ticker,
+                                token: finnhubApiKey
+                            });
+                            const response = await fetchWithRetry(quoteUrl, {}, { retries: 1, timeoutMs: 10000 });
+                            const data = await response.json();
+                            const price = Number(data?.c);
+                            if (!Number.isFinite(price) || price <= 0) return [ticker, null];
+                            const previousClose = Number(data?.pc);
+                            const change = Number.isFinite(Number(data?.d))
+                                ? Number(data.d)
+                                : (Number.isFinite(previousClose) ? price - previousClose : 0);
+                            const changePercent = Number.isFinite(Number(data?.dp))
+                                ? Number(data.dp)
+                                : (previousClose > 0 ? (change / previousClose) * 100 : 0);
+                            return [ticker, { price, previousClose, change, changePercent }];
+                        } catch (error) {
+                            console.warn(`RADAR quote failed for ${ticker}:`, error);
+                            return [ticker, null];
+                        }
+                    }));
+
+                    if (!cancelled) {
+                        setRadarQuotes(Object.fromEntries(results.filter(([, quote]) => quote)));
+                        setRadarLoading(false);
+                    }
+                };
+
+                loadRadarQuotes();
+                refreshTimer = window.setInterval(loadRadarQuotes, 5 * 60 * 1000);
+
+                return () => {
+                    cancelled = true;
+                    if (refreshTimer) window.clearInterval(refreshTimer);
+                };
+            }, [radarList, finnhubApiKey]);
+
+            const renderRadarSection = (idPrefix) => (
+                <section className={`border-y px-6 py-5 ${darkMode ? 'border-gray-700 bg-cyan-950/20' : 'border-gray-200 bg-cyan-50/50'}`}>
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h3 className={`text-lg font-black tracking-wide ${darkMode ? 'text-cyan-300' : 'text-cyan-800'}`}>RADAR</h3>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${darkMode ? 'bg-cyan-900/60 text-cyan-200' : 'bg-cyan-100 text-cyan-700'}`}>
+                                    {radarList.length}/{MAX_RADAR_POSITIONS}
+                                </span>
+                            </div>
+                            <p className={`mt-0.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Your highest-priority ideas</p>
+                        </div>
+                        {radarLoading && <span className={`text-[10px] ${darkMode ? 'text-cyan-400' : 'text-cyan-700'}`}>Updating…</span>}
+                    </div>
+
+                    <div className="mb-4 flex gap-2">
+                        <input
+                            id={`${idPrefix}-radar-ticker`}
+                            type="text"
+                            value={newRadarTicker}
+                            onChange={(e) => setNewRadarTicker(sanitizeTicker(e.target.value))}
+                            onKeyDown={(e) => e.key === 'Enter' && addToRadar()}
+                            placeholder={radarList.length >= MAX_RADAR_POSITIONS ? 'RADAR is full' : 'Add top idea…'}
+                            disabled={radarList.length >= MAX_RADAR_POSITIONS}
+                            maxLength={MAX_TITLE_LENGTH}
+                            className={`min-w-0 flex-1 rounded border-2 px-3 py-2 text-sm uppercase outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 ${darkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => addToRadar()}
+                            disabled={radarList.length >= MAX_RADAR_POSITIONS}
+                            className="rounded bg-cyan-600 px-3 py-2 text-white shadow hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label="Add ticker to RADAR"
+                        >
+                            <Plus size={18}/>
+                        </button>
+                    </div>
+
+                    <div className="space-y-3">
+                        {radarList.length === 0 ? (
+                            <p className={`rounded-lg border border-dashed px-3 py-5 text-center text-xs ${darkMode ? 'border-gray-600 text-gray-500' : 'border-gray-300 text-gray-500'}`}>
+                                Add up to three tickers you’re watching most closely.
+                            </p>
+                        ) : radarList.map((ticker) => {
+                            const quote = radarQuotes[ticker];
+                            const isPositive = (quote?.change || 0) >= 0;
+                            return (
+                                <article
+                                    key={ticker}
+                                    onClick={() => setWatchListModalTicker(ticker)}
+                                    className={`cursor-pointer rounded-xl border p-3 shadow-sm transition hover:shadow-md ${darkMode ? 'border-cyan-800/70 bg-gray-800' : 'border-cyan-200 bg-white'}`}
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div className={`text-xl font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>{ticker}</div>
+                                            {quote ? (
+                                                <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                                    <span className={`font-bold tabular-nums ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{formatUsd(quote.price)}</span>
+                                                    <span className={`text-xs font-bold tabular-nums ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {formatSignedUsd(quote.change)} · {isPositive ? '+' : ''}{quote.changePercent.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <div className={`mt-0.5 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    {finnhubApiKey ? (radarLoading ? 'Loading quote…' : 'Quote unavailable') : 'Finnhub key required for quotes'}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); moveRadarToWatchList(ticker); }}
+                                            className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+                                            title={`Move ${ticker} back to Watch List`}
+                                        >
+                                            Watch List
+                                        </button>
+                                    </div>
+                                    <textarea
+                                        value={radarNotes[ticker] || ''}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) => updateRadarNote(ticker, e.target.value)}
+                                        maxLength={MAX_RADAR_NOTE_LENGTH}
+                                        rows={6}
+                                        placeholder="Thesis, catalysts, entry levels, risks…"
+                                        aria-label={`RADAR notes for ${ticker}`}
+                                        className={`mt-3 min-h-28 max-h-80 w-full resize-y rounded-lg border px-3 py-2 text-xs leading-relaxed outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 ${darkMode ? 'border-gray-600 bg-gray-900/70 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-gray-50 text-gray-700 placeholder:text-gray-400'}`}
+                                    />
+                                    <div className={`mt-1 text-right text-[10px] tabular-nums ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                        {(radarNotes[ticker] || '').length}/{MAX_RADAR_NOTE_LENGTH}
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                </section>
             );
 
             const refreshPortfolioPrices = async (
@@ -2073,6 +2308,8 @@ const firebaseConfig = {
                         darkMode: !!data.darkMode,
                         watchList: data.watchList || [],
                         watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
+                        radarList: sanitizeRadarList(data.radarList),
+                        radarNotes: sanitizeRadarNotes(data.radarNotes),
                         nickname: data.nickname || '',
                         profilePhoto: data.profilePhoto || '',
                         notesGroupMode: data.notesGroupMode || 'account',
@@ -3311,9 +3548,16 @@ const firebaseConfig = {
                     })),
                     watchList: Array.isArray(watchList) ? watchList.slice(0, 100) : [],
                     watchListNotes: sanitizeWatchListNotes(watchListNotes),
+                    radar: radarList.map((ticker) => ({
+                        ticker,
+                        note: radarNotes[ticker]?.trim() || '',
+                        price: radarQuotes[ticker]?.price ?? null,
+                        dailyChange: radarQuotes[ticker]?.change ?? null,
+                        dailyChangePercent: radarQuotes[ticker]?.changePercent ?? null
+                    })),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, categories, colorLabels]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels]);
 
             // Markdown snapshot of whatever the Portfolio tab is currently showing, for
             // pasting into an external LLM. Follows the account filter, exactly like the
@@ -6523,6 +6767,7 @@ const firebaseConfig = {
                                         )}
                                     </div>
                                 </div>
+                                {renderRadarSection('notes')}
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
                                         <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
@@ -6565,14 +6810,25 @@ const firebaseConfig = {
                                                         <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                                                             {ticker}
                                                         </span>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
-                                                            className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
-                                                            aria-label={`Remove ${ticker} from watch list`}
-                                                            title="Remove from watch list"
-                                                        >
-                                                            <X size={18}/>
-                                                        </button>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { e.stopPropagation(); addToRadar(ticker); }}
+                                                                disabled={radarList.length >= MAX_RADAR_POSITIONS}
+                                                                className={`rounded-full border px-2 py-1 text-[10px] font-black tracking-wide disabled:cursor-not-allowed disabled:opacity-40 ${darkMode ? 'border-cyan-700 text-cyan-300 hover:bg-cyan-950/50' : 'border-cyan-300 text-cyan-700 hover:bg-cyan-50'}`}
+                                                                title={radarList.length >= MAX_RADAR_POSITIONS ? 'RADAR is full' : `Move ${ticker} to RADAR`}
+                                                            >
+                                                                RADAR
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
+                                                                className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
+                                                                aria-label={`Remove ${ticker} from watch list`}
+                                                                title="Remove from watch list"
+                                                            >
+                                                                <X size={18}/>
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     <div
                                                         className={`relative mt-2 overflow-hidden rounded-md border ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${expandedWatchListNotes[ticker] ? 'focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30' : ''}`}
@@ -6665,6 +6921,7 @@ const firebaseConfig = {
                                         )}
                                     </div>
                                 </div>
+                                {renderRadarSection('portfolio')}
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
                                         <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Watch List</h3>
@@ -6707,14 +6964,25 @@ const firebaseConfig = {
                                                         <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                                                             {ticker}
                                                         </span>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
-                                                            className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
-                                                            aria-label={`Remove ${ticker} from watch list`}
-                                                            title="Remove from watch list"
-                                                        >
-                                                            <X size={18}/>
-                                                        </button>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { e.stopPropagation(); addToRadar(ticker); }}
+                                                                disabled={radarList.length >= MAX_RADAR_POSITIONS}
+                                                                className={`rounded-full border px-2 py-1 text-[10px] font-black tracking-wide disabled:cursor-not-allowed disabled:opacity-40 ${darkMode ? 'border-cyan-700 text-cyan-300 hover:bg-cyan-950/50' : 'border-cyan-300 text-cyan-700 hover:bg-cyan-50'}`}
+                                                                title={radarList.length >= MAX_RADAR_POSITIONS ? 'RADAR is full' : `Move ${ticker} to RADAR`}
+                                                            >
+                                                                RADAR
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
+                                                                className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
+                                                                aria-label={`Remove ${ticker} from watch list`}
+                                                                title="Remove from watch list"
+                                                            >
+                                                                <X size={18}/>
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     <div
                                                         className={`relative mt-2 overflow-hidden rounded-md border ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${expandedWatchListNotes[ticker] ? 'focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30' : ''}`}
