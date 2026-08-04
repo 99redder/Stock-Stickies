@@ -6574,31 +6574,48 @@ const firebaseConfig = {
                                                             <X size={18}/>
                                                         </button>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); toggleWatchListNote(ticker); }}
-                                                        className={`mt-2 flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-300' : 'border-gray-300 bg-white text-gray-600'}`}
-                                                        aria-expanded={!!expandedWatchListNotes[ticker]}
-                                                        aria-controls={`watch-note-${ticker}`}
+                                                    <div
+                                                        className={`relative mt-2 overflow-hidden rounded-md border ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${expandedWatchListNotes[ticker] ? 'focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30' : ''}`}
+                                                        onClick={(e) => e.stopPropagation()}
                                                     >
-                                                        <ChevronDown size={14} className={`shrink-0 transition-transform ${expandedWatchListNotes[ticker] ? 'rotate-180' : ''}`}/>
-                                                        <span className="min-w-0 flex-1 truncate">
-                                                            {watchListNotes[ticker] || 'Add a brief note…'}
-                                                        </span>
-                                                    </button>
-                                                    {expandedWatchListNotes[ticker] && (
-                                                        <textarea
-                                                            id={`watch-note-${ticker}`}
-                                                            value={watchListNotes[ticker] || ''}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            onChange={(e) => updateWatchListNote(ticker, e.target.value)}
-                                                            maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
-                                                            rows={getWatchListNoteRows(watchListNotes[ticker])}
-                                                            placeholder="Brief note…"
-                                                            aria-label={`Notes for ${ticker}`}
-                                                            className={`mt-2 w-full resize-none overflow-hidden rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
-                                                        />
-                                                    )}
+                                                        {expandedWatchListNotes[ticker] ? (
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleWatchListNote(ticker)}
+                                                                    className={`absolute right-1.5 top-1.5 z-10 rounded p-1 ${darkMode ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}
+                                                                    aria-label={`Minimize notes for ${ticker}`}
+                                                                    aria-expanded="true"
+                                                                    aria-controls={`watch-note-${ticker}`}
+                                                                >
+                                                                    <ChevronDown size={14} className="rotate-180"/>
+                                                                </button>
+                                                                <textarea
+                                                                    id={`watch-note-${ticker}`}
+                                                                    value={watchListNotes[ticker] || ''}
+                                                                    onChange={(e) => updateWatchListNote(ticker, e.target.value)}
+                                                                    maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
+                                                                    rows={getWatchListNoteRows(watchListNotes[ticker])}
+                                                                    placeholder="Brief note…"
+                                                                    aria-label={`Notes for ${ticker}`}
+                                                                    className={`block w-full resize-none overflow-hidden border-0 bg-transparent px-2.5 py-2 pr-9 text-xs leading-relaxed outline-none ${darkMode ? 'text-gray-100 placeholder:text-gray-500' : 'text-gray-700 placeholder:text-gray-400'}`}
+                                                                />
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleWatchListNote(ticker)}
+                                                                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                                                                aria-expanded="false"
+                                                                aria-controls={`watch-note-${ticker}`}
+                                                            >
+                                                                <ChevronDown size={14} className="shrink-0"/>
+                                                                <span className="min-w-0 flex-1 truncate">
+                                                                    {watchListNotes[ticker] || 'Add a brief note…'}
+                                                                </span>
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))
                                         )}
@@ -6699,31 +6716,48 @@ const firebaseConfig = {
                                                             <X size={18}/>
                                                         </button>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); toggleWatchListNote(ticker); }}
-                                                        className={`mt-2 flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-300' : 'border-gray-300 bg-white text-gray-600'}`}
-                                                        aria-expanded={!!expandedWatchListNotes[ticker]}
-                                                        aria-controls={`portfolio-watch-note-${ticker}`}
+                                                    <div
+                                                        className={`relative mt-2 overflow-hidden rounded-md border ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${expandedWatchListNotes[ticker] ? 'focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/30' : ''}`}
+                                                        onClick={(e) => e.stopPropagation()}
                                                     >
-                                                        <ChevronDown size={14} className={`shrink-0 transition-transform ${expandedWatchListNotes[ticker] ? 'rotate-180' : ''}`}/>
-                                                        <span className="min-w-0 flex-1 truncate">
-                                                            {watchListNotes[ticker] || 'Add a brief note…'}
-                                                        </span>
-                                                    </button>
-                                                    {expandedWatchListNotes[ticker] && (
-                                                        <textarea
-                                                            id={`portfolio-watch-note-${ticker}`}
-                                                            value={watchListNotes[ticker] || ''}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            onChange={(e) => updateWatchListNote(ticker, e.target.value)}
-                                                            maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
-                                                            rows={getWatchListNoteRows(watchListNotes[ticker])}
-                                                            placeholder="Brief note…"
-                                                            aria-label={`Notes for ${ticker}`}
-                                                            className={`mt-2 w-full resize-none overflow-hidden rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
-                                                        />
-                                                    )}
+                                                        {expandedWatchListNotes[ticker] ? (
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleWatchListNote(ticker)}
+                                                                    className={`absolute right-1.5 top-1.5 z-10 rounded p-1 ${darkMode ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}
+                                                                    aria-label={`Minimize notes for ${ticker}`}
+                                                                    aria-expanded="true"
+                                                                    aria-controls={`portfolio-watch-note-${ticker}`}
+                                                                >
+                                                                    <ChevronDown size={14} className="rotate-180"/>
+                                                                </button>
+                                                                <textarea
+                                                                    id={`portfolio-watch-note-${ticker}`}
+                                                                    value={watchListNotes[ticker] || ''}
+                                                                    onChange={(e) => updateWatchListNote(ticker, e.target.value)}
+                                                                    maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
+                                                                    rows={getWatchListNoteRows(watchListNotes[ticker])}
+                                                                    placeholder="Brief note…"
+                                                                    aria-label={`Notes for ${ticker}`}
+                                                                    className={`block w-full resize-none overflow-hidden border-0 bg-transparent px-2.5 py-2 pr-9 text-xs leading-relaxed outline-none ${darkMode ? 'text-gray-100 placeholder:text-gray-500' : 'text-gray-700 placeholder:text-gray-400'}`}
+                                                                />
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleWatchListNote(ticker)}
+                                                                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                                                                aria-expanded="false"
+                                                                aria-controls={`portfolio-watch-note-${ticker}`}
+                                                            >
+                                                                <ChevronDown size={14} className="shrink-0"/>
+                                                                <span className="min-w-0 flex-1 truncate">
+                                                                    {watchListNotes[ticker] || 'Add a brief note…'}
+                                                                </span>
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))
                                         )}
