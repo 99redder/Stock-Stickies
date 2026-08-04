@@ -1573,18 +1573,18 @@ const firebaseConfig = {
             }, [currentUser, userDataReady, radarList.length, finnhubApiKey, refreshRadarQuotes]);
 
             const renderRadarSection = (idPrefix) => (
-                <section className={`border-y px-6 py-5 ${darkMode ? 'border-gray-700 bg-cyan-950/20' : 'border-gray-200 bg-cyan-50/50'}`}>
+                <section className={`border-y px-6 py-5 shadow-inner ${darkMode ? 'border-violet-500/50 bg-gradient-to-br from-violet-950 via-indigo-950 to-fuchsia-950/80' : 'border-violet-300 bg-gradient-to-br from-violet-100 via-fuchsia-50 to-indigo-100'}`}>
                     <div className="mb-3 flex items-start justify-between gap-3">
                         <div>
                             <div className="flex items-center gap-2">
-                                <h3 className={`text-lg font-black tracking-wide ${darkMode ? 'text-cyan-300' : 'text-cyan-800'}`}>RADAR</h3>
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${darkMode ? 'bg-cyan-900/60 text-cyan-200' : 'bg-cyan-100 text-cyan-700'}`}>
+                                <h3 className={`text-lg font-black tracking-wide ${darkMode ? 'text-fuchsia-300' : 'text-violet-900'}`}>RADAR</h3>
+                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${darkMode ? 'border-fuchsia-400/40 bg-fuchsia-500/20 text-fuchsia-200' : 'border-violet-300 bg-white/70 text-violet-800'}`}>
                                     {radarList.length}/{MAX_RADAR_POSITIONS}
                                 </span>
                             </div>
-                            <p className={`mt-0.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Your highest-priority ideas</p>
+                            <p className={`mt-0.5 text-xs ${darkMode ? 'text-violet-200/70' : 'text-violet-700'}`}>Your highest-priority ideas</p>
                         </div>
-                        {radarLoading && <span className={`text-[10px] ${darkMode ? 'text-cyan-400' : 'text-cyan-700'}`}>Updating…</span>}
+                        {radarLoading && <span className={`text-[10px] font-semibold ${darkMode ? 'text-fuchsia-300' : 'text-violet-700'}`}>Updating…</span>}
                     </div>
 
                     <div className="mb-4 flex gap-2">
@@ -1597,13 +1597,13 @@ const firebaseConfig = {
                             placeholder={radarList.length >= MAX_RADAR_POSITIONS ? 'RADAR is full' : 'Add top idea…'}
                             disabled={radarList.length >= MAX_RADAR_POSITIONS}
                             maxLength={MAX_TITLE_LENGTH}
-                            className={`min-w-0 flex-1 rounded border-2 px-3 py-2 text-sm uppercase outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 ${darkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
+                            className={`min-w-0 flex-1 rounded border-2 px-3 py-2 text-sm uppercase outline-none focus:ring-2 focus:ring-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-50 ${darkMode ? 'border-violet-500/60 bg-indigo-950/70 text-white placeholder:text-violet-300/50' : 'border-violet-300 bg-white/90 text-gray-900 placeholder:text-violet-400'}`}
                         />
                         <button
                             type="button"
                             onClick={() => addToRadar()}
                             disabled={radarList.length >= MAX_RADAR_POSITIONS}
-                            className="rounded bg-cyan-600 px-3 py-2 text-white shadow hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded bg-fuchsia-600 px-3 py-2 text-white shadow-md shadow-fuchsia-950/20 hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-40"
                             aria-label="Add ticker to RADAR"
                         >
                             <Plus size={18}/>
@@ -1612,7 +1612,7 @@ const firebaseConfig = {
 
                     <div className="space-y-3">
                         {radarList.length === 0 ? (
-                            <p className={`rounded-lg border border-dashed px-3 py-5 text-center text-xs ${darkMode ? 'border-gray-600 text-gray-500' : 'border-gray-300 text-gray-500'}`}>
+                            <p className={`rounded-lg border border-dashed px-3 py-5 text-center text-xs ${darkMode ? 'border-violet-400/40 bg-indigo-950/30 text-violet-300/60' : 'border-violet-300 bg-white/40 text-violet-700'}`}>
                                 Add up to three tickers you’re watching most closely.
                             </p>
                         ) : radarList.map((ticker) => {
@@ -1622,20 +1622,20 @@ const firebaseConfig = {
                                 <article
                                     key={ticker}
                                     onClick={() => setWatchListModalTicker(ticker)}
-                                    className={`cursor-pointer rounded-xl border p-3 shadow-sm transition hover:shadow-md ${darkMode ? 'border-cyan-800/70 bg-gray-800' : 'border-cyan-200 bg-white'}`}
+                                    className={`cursor-pointer rounded-xl border p-3 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg ${darkMode ? 'border-cyan-400/50 bg-gradient-to-br from-cyan-950/90 via-teal-950/80 to-slate-900 shadow-cyan-950/40' : 'border-cyan-300 bg-gradient-to-br from-white via-cyan-50 to-teal-100/80 shadow-cyan-900/10'}`}
                                 >
                                     <div className="flex items-start justify-between gap-2">
                                         <div>
-                                            <div className={`text-xl font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>{ticker}</div>
+                                            <div className={`text-xl font-black ${darkMode ? 'text-cyan-100' : 'text-teal-950'}`}>{ticker}</div>
                                             {quote ? (
                                                 <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                                                    <span className={`font-bold tabular-nums ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{formatUsd(quote.price)}</span>
+                                                    <span className={`font-bold tabular-nums ${darkMode ? 'text-white' : 'text-teal-950'}`}>{formatUsd(quote.price)}</span>
                                                     <span className={`text-xs font-bold tabular-nums ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
                                                         {formatSignedUsd(quote.change)} · {isPositive ? '+' : ''}{quote.changePercent.toFixed(2)}%
                                                     </span>
                                                 </div>
                                             ) : (
-                                                <div className={`mt-0.5 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                <div className={`mt-0.5 text-xs ${darkMode ? 'text-cyan-200/50' : 'text-teal-600'}`}>
                                                     {finnhubApiKey ? (radarLoading ? 'Loading quote…' : 'Quote unavailable') : 'Finnhub key required for quotes'}
                                                 </div>
                                             )}
@@ -1643,7 +1643,7 @@ const firebaseConfig = {
                                         <button
                                             type="button"
                                             onClick={(e) => { e.stopPropagation(); moveRadarToWatchList(ticker); }}
-                                            className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+                                            className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${darkMode ? 'border-cyan-500/50 bg-cyan-950/50 text-cyan-200 hover:bg-cyan-900' : 'border-teal-300 bg-white/70 text-teal-800 hover:bg-white'}`}
                                             title={`Move ${ticker} back to Watch List`}
                                         >
                                             Watch List
@@ -1657,9 +1657,9 @@ const firebaseConfig = {
                                         rows={6}
                                         placeholder="Thesis, catalysts, entry levels, risks…"
                                         aria-label={`RADAR notes for ${ticker}`}
-                                        className={`mt-3 min-h-28 max-h-80 w-full resize-y rounded-lg border px-3 py-2 text-xs leading-relaxed outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 ${darkMode ? 'border-gray-600 bg-gray-900/70 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-gray-50 text-gray-700 placeholder:text-gray-400'}`}
+                                        className={`mt-3 min-h-28 max-h-80 w-full resize-y rounded-lg border px-3 py-2 text-xs leading-relaxed outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 ${darkMode ? 'border-cyan-800/80 bg-slate-950/70 text-cyan-50 placeholder:text-cyan-200/30' : 'border-teal-200 bg-white/80 text-teal-950 placeholder:text-teal-500'}`}
                                     />
-                                    <div className={`mt-1 text-right text-[10px] tabular-nums ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                    <div className={`mt-1 text-right text-[10px] tabular-nums ${darkMode ? 'text-cyan-300/40' : 'text-teal-600/70'}`}>
                                         {(radarNotes[ticker] || '').length}/{MAX_RADAR_NOTE_LENGTH}
                                     </div>
                                 </article>
