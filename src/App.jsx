@@ -253,6 +253,7 @@ const firebaseConfig = {
         // Input validation constants
         const MAX_TITLE_LENGTH = 10; // For ticker symbols
         const MAX_CONTENT_LENGTH = 10000; // For note content
+        const MAX_WATCH_LIST_NOTES_LENGTH = 1500;
         const MAX_NICKNAME_LENGTH = 50;
         const MAX_API_KEY_LENGTH = 200;
 
@@ -581,6 +582,7 @@ const firebaseConfig = {
             const [finnhubApiKey, setFinnhubApiKey] = useState('');
             const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
             const [watchList, setWatchList] = useState([]);
+            const [watchListNotes, setWatchListNotes] = useState('');
             const [cashSecuredPuts, setCashSecuredPuts] = useState([]);
 
             // API key help popovers (click-to-toggle; closes on outside click / Escape)
@@ -875,6 +877,9 @@ const firebaseConfig = {
                                 collapsedAccounts: data.collapsedAccounts || {},
                                 darkMode: data.darkMode || false,
                                 watchList: data.watchList || [],
+                                watchListNotes: typeof data.watchListNotes === 'string'
+                                    ? data.watchListNotes.slice(0, MAX_WATCH_LIST_NOTES_LENGTH)
+                                    : '',
                                 cashSecuredPuts: data.cashSecuredPuts || [],
                                 nickname: data.nickname || '',
                                 profilePhoto: data.profilePhoto || auth.currentUser?.photoURL || '',
@@ -905,6 +910,7 @@ const firebaseConfig = {
                             setCollapsedAccounts(incoming.collapsedAccounts);
                             setDarkMode(incoming.darkMode);
                             setWatchList(incoming.watchList);
+                            setWatchListNotes(incoming.watchListNotes);
                             setCashSecuredPuts(incoming.cashSecuredPuts);
                             setNickname(incoming.nickname);
                             setProfilePhoto(incoming.profilePhoto);
@@ -982,6 +988,7 @@ const firebaseConfig = {
                             collapsedAccounts,
                             darkMode,
                             watchList,
+                            watchListNotes,
                             cashSecuredPuts,
                             cashSecuredPutsSortMode,
                             nickname,
@@ -1037,7 +1044,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1057,6 +1064,7 @@ const firebaseConfig = {
                             collapsedAccounts,
                             darkMode,
                             watchList,
+                            watchListNotes,
                             cashSecuredPuts,
                             cashSecuredPutsSortMode,
                             nickname,
@@ -1080,7 +1088,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1285,6 +1293,7 @@ const firebaseConfig = {
                         collapsedAccounts,
                         darkMode,
                         watchList,
+                        watchListNotes,
                         cashSecuredPuts,
                         cashSecuredPutsSortMode,
                         nickname,
@@ -2020,6 +2029,9 @@ const firebaseConfig = {
                         collapsedAccounts: data.collapsedAccounts || {},
                         darkMode: !!data.darkMode,
                         watchList: data.watchList || [],
+                        watchListNotes: typeof data.watchListNotes === 'string'
+                            ? data.watchListNotes.slice(0, MAX_WATCH_LIST_NOTES_LENGTH)
+                            : '',
                         nickname: data.nickname || '',
                         profilePhoto: data.profilePhoto || '',
                         notesGroupMode: data.notesGroupMode || 'account',
@@ -3257,9 +3269,10 @@ const firebaseConfig = {
                         accountLabel: getAccountLabel(getPutAccount(p))
                     })),
                     watchList: Array.isArray(watchList) ? watchList.slice(0, 100) : [],
+                    watchListNotes: watchListNotes.trim(),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, categories, colorLabels]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, categories, colorLabels]);
 
             // Markdown snapshot of whatever the Portfolio tab is currently showing, for
             // pasting into an external LLM. Follows the account filter, exactly like the
@@ -6522,6 +6535,26 @@ const firebaseConfig = {
                                             ))
                                         )}
                                     </div>
+                                    <div className={`mt-5 border-t pt-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                            <label htmlFor="watch-list-notes" className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                                Quick notes
+                                            </label>
+                                            <span className={`text-[11px] tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {watchListNotes.length}/{MAX_WATCH_LIST_NOTES_LENGTH}
+                                            </span>
+                                        </div>
+                                        <textarea
+                                            id="watch-list-notes"
+                                            value={watchListNotes}
+                                            onChange={(e) => setWatchListNotes(e.target.value.slice(0, MAX_WATCH_LIST_NOTES_LENGTH))}
+                                            maxLength={MAX_WATCH_LIST_NOTES_LENGTH}
+                                            rows={4}
+                                            placeholder="Price levels, catalysts, reminders…"
+                                            className={`min-h-24 max-h-40 w-full resize-y rounded-lg border px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-500' : 'border-gray-300 bg-gray-50 text-gray-800 placeholder:text-gray-400'}`}
+                                        />
+                                        <p className={`mt-1 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Saved automatically</p>
+                                    </div>
                                 </div>
                             </div>
                         ) : (mainTab === 'portfolio' ? (
@@ -6619,6 +6652,26 @@ const firebaseConfig = {
                                                 </div>
                                             ))
                                         )}
+                                    </div>
+                                    <div className={`mt-5 border-t pt-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                            <label htmlFor="portfolio-watch-list-notes" className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                                Quick notes
+                                            </label>
+                                            <span className={`text-[11px] tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {watchListNotes.length}/{MAX_WATCH_LIST_NOTES_LENGTH}
+                                            </span>
+                                        </div>
+                                        <textarea
+                                            id="portfolio-watch-list-notes"
+                                            value={watchListNotes}
+                                            onChange={(e) => setWatchListNotes(e.target.value.slice(0, MAX_WATCH_LIST_NOTES_LENGTH))}
+                                            maxLength={MAX_WATCH_LIST_NOTES_LENGTH}
+                                            rows={4}
+                                            placeholder="Price levels, catalysts, reminders…"
+                                            className={`min-h-24 max-h-40 w-full resize-y rounded-lg border px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-500' : 'border-gray-300 bg-gray-50 text-gray-800 placeholder:text-gray-400'}`}
+                                        />
+                                        <p className={`mt-1 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Saved automatically</p>
                                     </div>
                                 </div>
                             </div>
