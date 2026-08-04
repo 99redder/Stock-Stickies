@@ -253,7 +253,7 @@ const firebaseConfig = {
         // Input validation constants
         const MAX_TITLE_LENGTH = 10; // For ticker symbols
         const MAX_CONTENT_LENGTH = 10000; // For note content
-        const MAX_WATCH_LIST_NOTES_LENGTH = 1500;
+        const MAX_WATCH_LIST_NOTE_LENGTH = 300;
         const MAX_NICKNAME_LENGTH = 50;
         const MAX_API_KEY_LENGTH = 200;
 
@@ -509,6 +509,15 @@ const firebaseConfig = {
             return out;
         };
 
+        const sanitizeWatchListNotes = (value) => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+            return Object.fromEntries(
+                Object.entries(value)
+                    .filter(([ticker, note]) => validateTicker(ticker) && typeof note === 'string')
+                    .map(([ticker, note]) => [ticker, note.slice(0, MAX_WATCH_LIST_NOTE_LENGTH)])
+            );
+        };
+
         const isPlaidCryptoNote = (note) =>
             note?.plaidIsCrypto === true || note?.plaidSecurityType === 'cryptocurrency';
 
@@ -582,7 +591,7 @@ const firebaseConfig = {
             const [finnhubApiKey, setFinnhubApiKey] = useState('');
             const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
             const [watchList, setWatchList] = useState([]);
-            const [watchListNotes, setWatchListNotes] = useState('');
+            const [watchListNotes, setWatchListNotes] = useState({});
             const [cashSecuredPuts, setCashSecuredPuts] = useState([]);
 
             // API key help popovers (click-to-toggle; closes on outside click / Escape)
@@ -877,9 +886,7 @@ const firebaseConfig = {
                                 collapsedAccounts: data.collapsedAccounts || {},
                                 darkMode: data.darkMode || false,
                                 watchList: data.watchList || [],
-                                watchListNotes: typeof data.watchListNotes === 'string'
-                                    ? data.watchListNotes.slice(0, MAX_WATCH_LIST_NOTES_LENGTH)
-                                    : '',
+                                watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
                                 cashSecuredPuts: data.cashSecuredPuts || [],
                                 nickname: data.nickname || '',
                                 profilePhoto: data.profilePhoto || auth.currentUser?.photoURL || '',
@@ -1368,6 +1375,21 @@ const firebaseConfig = {
             const removeFromWatchList = (ticker) => {
                 isSavingRef.current = true;
                 setWatchList(watchList.filter(t => t !== ticker));
+                setWatchListNotes((current) => {
+                    const next = { ...current };
+                    delete next[ticker];
+                    return next;
+                });
+            };
+
+            const updateWatchListNote = (ticker, value) => {
+                const note = value.slice(0, MAX_WATCH_LIST_NOTE_LENGTH);
+                setWatchListNotes((current) => {
+                    const next = { ...current };
+                    if (note) next[ticker] = note;
+                    else delete next[ticker];
+                    return next;
+                });
             };
 
             const refreshPortfolioPrices = async (
@@ -2029,9 +2051,7 @@ const firebaseConfig = {
                         collapsedAccounts: data.collapsedAccounts || {},
                         darkMode: !!data.darkMode,
                         watchList: data.watchList || [],
-                        watchListNotes: typeof data.watchListNotes === 'string'
-                            ? data.watchListNotes.slice(0, MAX_WATCH_LIST_NOTES_LENGTH)
-                            : '',
+                        watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
                         nickname: data.nickname || '',
                         profilePhoto: data.profilePhoto || '',
                         notesGroupMode: data.notesGroupMode || 'account',
@@ -3269,7 +3289,7 @@ const firebaseConfig = {
                         accountLabel: getAccountLabel(getPutAccount(p))
                     })),
                     watchList: Array.isArray(watchList) ? watchList.slice(0, 100) : [],
-                    watchListNotes: watchListNotes.trim(),
+                    watchListNotes: sanitizeWatchListNotes(watchListNotes),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
             }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, categories, colorLabels]);
@@ -6517,43 +6537,35 @@ const firebaseConfig = {
                                             watchList.map((ticker) => (
                                                 <div
                                                     key={ticker}
-                                                    className={`flex items-center justify-between p-3 rounded cursor-pointer ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} hover:shadow-md transition-all`}
+                                                    className={`rounded p-3 cursor-pointer ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} hover:shadow-md transition-all`}
                                                     onClick={() => setWatchListModalTicker(ticker)}
                                                 >
-                                                    <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                                        {ticker}
-                                                    </span>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
-                                                        className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
-                                                        aria-label={`Remove ${ticker} from watch list`}
-                                                        title="Remove from watch list"
-                                                    >
-                                                        <X size={18}/>
-                                                    </button>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                                            {ticker}
+                                                        </span>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
+                                                            className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
+                                                            aria-label={`Remove ${ticker} from watch list`}
+                                                            title="Remove from watch list"
+                                                        >
+                                                            <X size={18}/>
+                                                        </button>
+                                                    </div>
+                                                    <textarea
+                                                        value={watchListNotes[ticker] || ''}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        onChange={(e) => updateWatchListNote(ticker, e.target.value)}
+                                                        maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
+                                                        rows={2}
+                                                        placeholder="Brief note…"
+                                                        aria-label={`Notes for ${ticker}`}
+                                                        className={`mt-2 w-full resize-none rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
+                                                    />
                                                 </div>
                                             ))
                                         )}
-                                    </div>
-                                    <div className={`mt-5 border-t pt-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                        <div className="mb-2 flex items-center justify-between gap-3">
-                                            <label htmlFor="watch-list-notes" className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                                                Quick notes
-                                            </label>
-                                            <span className={`text-[11px] tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                {watchListNotes.length}/{MAX_WATCH_LIST_NOTES_LENGTH}
-                                            </span>
-                                        </div>
-                                        <textarea
-                                            id="watch-list-notes"
-                                            value={watchListNotes}
-                                            onChange={(e) => setWatchListNotes(e.target.value.slice(0, MAX_WATCH_LIST_NOTES_LENGTH))}
-                                            maxLength={MAX_WATCH_LIST_NOTES_LENGTH}
-                                            rows={4}
-                                            placeholder="Price levels, catalysts, reminders…"
-                                            className={`min-h-24 max-h-40 w-full resize-y rounded-lg border px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-500' : 'border-gray-300 bg-gray-50 text-gray-800 placeholder:text-gray-400'}`}
-                                        />
-                                        <p className={`mt-1 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Saved automatically</p>
                                     </div>
                                 </div>
                             </div>
@@ -6635,43 +6647,35 @@ const firebaseConfig = {
                                             watchList.map((ticker) => (
                                                 <div
                                                     key={ticker}
-                                                    className={`flex items-center justify-between p-3 rounded cursor-pointer ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} hover:shadow-md transition-all`}
+                                                    className={`rounded p-3 cursor-pointer ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} hover:shadow-md transition-all`}
                                                     onClick={() => setWatchListModalTicker(ticker)}
                                                 >
-                                                    <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                                        {ticker}
-                                                    </span>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
-                                                        className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
-                                                        aria-label={`Remove ${ticker} from watch list`}
-                                                        title="Remove from watch list"
-                                                    >
-                                                        <X size={18}/>
-                                                    </button>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                                            {ticker}
+                                                        </span>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); removeFromWatchList(ticker); }}
+                                                            className={`flex items-center justify-center w-8 h-8 rounded-full border ${darkMode ? 'border-red-400 text-red-300 hover:text-red-200 hover:border-red-300 hover:bg-red-900/20' : 'border-red-400 text-red-600 hover:text-red-700 hover:border-red-500 hover:bg-red-50'}`}
+                                                            aria-label={`Remove ${ticker} from watch list`}
+                                                            title="Remove from watch list"
+                                                        >
+                                                            <X size={18}/>
+                                                        </button>
+                                                    </div>
+                                                    <textarea
+                                                        value={watchListNotes[ticker] || ''}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        onChange={(e) => updateWatchListNote(ticker, e.target.value)}
+                                                        maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
+                                                        rows={2}
+                                                        placeholder="Brief note…"
+                                                        aria-label={`Notes for ${ticker}`}
+                                                        className={`mt-2 w-full resize-none rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
+                                                    />
                                                 </div>
                                             ))
                                         )}
-                                    </div>
-                                    <div className={`mt-5 border-t pt-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                        <div className="mb-2 flex items-center justify-between gap-3">
-                                            <label htmlFor="portfolio-watch-list-notes" className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                                                Quick notes
-                                            </label>
-                                            <span className={`text-[11px] tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                {watchListNotes.length}/{MAX_WATCH_LIST_NOTES_LENGTH}
-                                            </span>
-                                        </div>
-                                        <textarea
-                                            id="portfolio-watch-list-notes"
-                                            value={watchListNotes}
-                                            onChange={(e) => setWatchListNotes(e.target.value.slice(0, MAX_WATCH_LIST_NOTES_LENGTH))}
-                                            maxLength={MAX_WATCH_LIST_NOTES_LENGTH}
-                                            rows={4}
-                                            placeholder="Price levels, catalysts, reminders…"
-                                            className={`min-h-24 max-h-40 w-full resize-y rounded-lg border px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-500' : 'border-gray-300 bg-gray-50 text-gray-800 placeholder:text-gray-400'}`}
-                                        />
-                                        <p className={`mt-1 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Saved automatically</p>
                                     </div>
                                 </div>
                             </div>
