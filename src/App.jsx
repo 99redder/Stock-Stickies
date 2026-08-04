@@ -613,6 +613,8 @@ const firebaseConfig = {
             const [radarQuotes, setRadarQuotes] = useState({});
             const [radarLoading, setRadarLoading] = useState(false);
             const [newRadarTicker, setNewRadarTicker] = useState('');
+            const radarQuoteLoadUserRef = useRef(null);
+            const radarRefreshPromiseRef = useRef(null);
             const [cashSecuredPuts, setCashSecuredPuts] = useState([]);
 
             // API key help popovers (click-to-toggle; closes on outside click / Escape)
@@ -1498,58 +1500,77 @@ const firebaseConfig = {
                 setRadarNotes((current) => ({ ...current, [ticker]: note }));
             };
 
-            useEffect(() => {
-                let cancelled = false;
-                let refreshTimer = null;
+            const refreshRadarQuotes = useCallback(async () => {
+                if (radarRefreshPromiseRef.current) return radarRefreshPromiseRef.current;
+                if (!finnhubApiKey || radarList.length === 0) {
+                    setRadarLoading(false);
+                    return { requestedCount: radarList.length, refreshedCount: 0 };
+                }
 
-                const loadRadarQuotes = async () => {
-                    if (!finnhubApiKey || radarList.length === 0) {
-                        if (!cancelled) {
-                            setRadarQuotes({});
-                            setRadarLoading(false);
-                        }
-                        return;
-                    }
-
+                const refreshPromise = (async () => {
                     setRadarLoading(true);
-                    const results = await Promise.all(radarList.map(async (ticker) => {
-                        try {
-                            const quoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                                symbol: ticker,
-                                token: finnhubApiKey
-                            });
-                            const response = await fetchWithRetry(quoteUrl, {}, { retries: 1, timeoutMs: 10000 });
-                            const data = await response.json();
-                            const price = Number(data?.c);
-                            if (!Number.isFinite(price) || price <= 0) return [ticker, null];
-                            const previousClose = Number(data?.pc);
-                            const change = Number.isFinite(Number(data?.d))
-                                ? Number(data.d)
-                                : (Number.isFinite(previousClose) ? price - previousClose : 0);
-                            const changePercent = Number.isFinite(Number(data?.dp))
-                                ? Number(data.dp)
-                                : (previousClose > 0 ? (change / previousClose) * 100 : 0);
-                            return [ticker, { price, previousClose, change, changePercent }];
-                        } catch (error) {
-                            console.warn(`RADAR quote failed for ${ticker}:`, error);
-                            return [ticker, null];
-                        }
-                    }));
+                    try {
+                        const results = await Promise.all(radarList.map(async (ticker) => {
+                            try {
+                                const quoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
+                                    symbol: ticker,
+                                    token: finnhubApiKey
+                                });
+                                const response = await fetchWithRetry(quoteUrl, {}, { retries: 0, timeoutMs: 10000 });
+                                const data = await response.json();
+                                const price = Number(data?.c);
+                                if (!Number.isFinite(price) || price <= 0) return [ticker, null];
+                                const previousClose = Number(data?.pc);
+                                const change = Number.isFinite(Number(data?.d))
+                                    ? Number(data.d)
+                                    : (Number.isFinite(previousClose) ? price - previousClose : 0);
+                                const changePercent = Number.isFinite(Number(data?.dp))
+                                    ? Number(data.dp)
+                                    : (previousClose > 0 ? (change / previousClose) * 100 : 0);
+                                return [ticker, { price, previousClose, change, changePercent }];
+                            } catch (error) {
+                                console.warn(`RADAR quote failed for ${ticker}:`, error);
+                                return [ticker, null];
+                            }
+                        }));
 
-                    if (!cancelled) {
-                        setRadarQuotes(Object.fromEntries(results.filter(([, quote]) => quote)));
+                        const successfulQuotes = Object.fromEntries(results.filter(([, quote]) => quote));
+                        setRadarQuotes((current) => ({ ...current, ...successfulQuotes }));
+                        return {
+                            requestedCount: radarList.length,
+                            refreshedCount: Object.keys(successfulQuotes).length
+                        };
+                    } finally {
                         setRadarLoading(false);
                     }
-                };
+                })();
 
-                loadRadarQuotes();
-                refreshTimer = window.setInterval(loadRadarQuotes, 5 * 60 * 1000);
-
-                return () => {
-                    cancelled = true;
-                    if (refreshTimer) window.clearInterval(refreshTimer);
-                };
+                radarRefreshPromiseRef.current = refreshPromise;
+                try {
+                    return await refreshPromise;
+                } finally {
+                    if (radarRefreshPromiseRef.current === refreshPromise) {
+                        radarRefreshPromiseRef.current = null;
+                    }
+                }
             }, [radarList, finnhubApiKey]);
+
+            useEffect(() => {
+                const userId = auth?.currentUser?.uid || null;
+                if (!currentUser) {
+                    radarQuoteLoadUserRef.current = null;
+                    return;
+                }
+                if (!userDataReady || !userId || radarQuoteLoadUserRef.current === userId) return;
+                if (radarList.length === 0) {
+                    radarQuoteLoadUserRef.current = userId;
+                    return;
+                }
+                if (!finnhubApiKey) return;
+
+                radarQuoteLoadUserRef.current = userId;
+                void refreshRadarQuotes();
+            }, [currentUser, userDataReady, radarList.length, finnhubApiKey, refreshRadarQuotes]);
 
             const renderRadarSection = (idPrefix) => (
                 <section className={`border-y px-6 py-5 ${darkMode ? 'border-gray-700 bg-cyan-950/20' : 'border-gray-200 bg-cyan-50/50'}`}>
@@ -1745,7 +1766,11 @@ const firebaseConfig = {
             };
 
             const handleRefreshPortfolioPrices = async () => {
-                await refreshPortfolioPrices(portfolioNotes, { showNotices: true, cacheReason: 'manual' });
+                if (portfolioLoading || radarLoading) return;
+                await Promise.all([
+                    refreshPortfolioPrices(portfolioNotes, { showNotices: true, cacheReason: 'manual' }),
+                    refreshRadarQuotes()
+                ]);
             };
 
             const handleDownloadPortfolioSnapshot = async () => {
@@ -5717,11 +5742,11 @@ const firebaseConfig = {
                                             <button
                                                 type="button"
                                                 onClick={handleRefreshPortfolioPrices}
-                                                disabled={portfolioLoading}
-                                                className={`ml-2 px-2.5 py-1 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'} ${portfolioLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                title="Refresh portfolio prices"
+                                                disabled={portfolioLoading || radarLoading}
+                                                className={`ml-2 px-2.5 py-1 rounded text-xs font-semibold ${darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-white text-gray-700 hover:bg-gray-100'} border ${darkMode ? 'border-gray-700' : 'border-gray-300'} ${portfolioLoading || radarLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                title="Refresh portfolio and RADAR prices"
                                             >
-                                                {portfolioLoading ? 'Refreshing...' : 'Refresh Prices'}
+                                                {portfolioLoading || radarLoading ? 'Refreshing...' : 'Refresh Prices'}
                                             </button>
                                         </>
                                     )}
@@ -5861,10 +5886,16 @@ const firebaseConfig = {
                                             ready={userDataReady}
                                             darkMode={darkMode}
                                             onApply={applyRobinhoodReconciliation}
-                                            onRefreshPrices={(targetNotes) => refreshPortfolioPrices(
-                                                targetNotes,
-                                                { showNotices: false, cacheReason: 'position-sync' }
-                                            )}
+                                            onRefreshPrices={async (targetNotes) => {
+                                                const [portfolioResult] = await Promise.all([
+                                                    refreshPortfolioPrices(
+                                                        targetNotes,
+                                                        { showNotices: false, cacheReason: 'position-sync' }
+                                                    ),
+                                                    refreshRadarQuotes()
+                                                ]);
+                                                return portfolioResult;
+                                            }}
                                             onPerformanceChange={setRobinhoodPerformance}
                                         />
                                     )}
@@ -6366,12 +6397,12 @@ const firebaseConfig = {
                                         </button>
                                         <button
                                             onClick={handleRefreshPortfolioPrices}
-                                            disabled={portfolioLoading}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border snapshot-hide inline-flex items-center gap-2 ${portfolioLoading ? (darkMode ? 'border-blue-400/40 text-blue-300/70 bg-blue-500/10 cursor-not-allowed' : 'border-blue-300 text-blue-400 bg-blue-50 cursor-not-allowed') : (darkMode ? 'border-blue-400/60 text-blue-200 hover:text-blue-100 hover:border-blue-300 hover:bg-blue-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50')}`}
-                                            title="Refresh portfolio prices"
+                                            disabled={portfolioLoading || radarLoading}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border snapshot-hide inline-flex items-center gap-2 ${portfolioLoading || radarLoading ? (darkMode ? 'border-blue-400/40 text-blue-300/70 bg-blue-500/10 cursor-not-allowed' : 'border-blue-300 text-blue-400 bg-blue-50 cursor-not-allowed') : (darkMode ? 'border-blue-400/60 text-blue-200 hover:text-blue-100 hover:border-blue-300 hover:bg-blue-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50')}`}
+                                            title="Refresh portfolio and RADAR prices"
                                         >
-                                            {portfolioLoading && <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
-                                            {portfolioLoading ? 'Refreshing...' : 'Refresh Prices'}
+                                            {(portfolioLoading || radarLoading) && <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
+                                            {portfolioLoading || radarLoading ? 'Refreshing...' : 'Refresh Prices'}
                                         </button>
                                         <div className="flex flex-col items-end gap-1">
                                             <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
