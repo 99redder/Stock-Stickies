@@ -125,7 +125,7 @@ const firebaseConfig = {
         const LogOut = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
         const Moon = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
         const Sun = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
-        const ChevronDown = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>;
+        const ChevronDown = ({ size = 24, className = '' }) => <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>;
         const ChevronRight = ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>;
         const Grip = ({ size = 24 }) => (
             <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -592,6 +592,7 @@ const firebaseConfig = {
             const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
             const [watchList, setWatchList] = useState([]);
             const [watchListNotes, setWatchListNotes] = useState({});
+            const [expandedWatchListNotes, setExpandedWatchListNotes] = useState({});
             const [cashSecuredPuts, setCashSecuredPuts] = useState([]);
 
             // API key help popovers (click-to-toggle; closes on outside click / Escape)
@@ -1380,6 +1381,11 @@ const firebaseConfig = {
                     delete next[ticker];
                     return next;
                 });
+                setExpandedWatchListNotes((current) => {
+                    const next = { ...current };
+                    delete next[ticker];
+                    return next;
+                });
             };
 
             const updateWatchListNote = (ticker, value) => {
@@ -1391,6 +1397,21 @@ const firebaseConfig = {
                     return next;
                 });
             };
+
+            const toggleWatchListNote = (ticker) => {
+                setExpandedWatchListNotes((current) => ({
+                    ...current,
+                    [ticker]: !current[ticker]
+                }));
+            };
+
+            const getWatchListNoteRows = (note = '') => Math.max(
+                3,
+                note.split('\n').reduce(
+                    (rows, line) => rows + Math.max(1, Math.ceil(line.length / 32)),
+                    0
+                )
+            );
 
             const refreshPortfolioPrices = async (
                 targetNotes,
@@ -6553,16 +6574,31 @@ const firebaseConfig = {
                                                             <X size={18}/>
                                                         </button>
                                                     </div>
-                                                    <textarea
-                                                        value={watchListNotes[ticker] || ''}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        onChange={(e) => updateWatchListNote(ticker, e.target.value)}
-                                                        maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
-                                                        rows={2}
-                                                        placeholder="Brief note…"
-                                                        aria-label={`Notes for ${ticker}`}
-                                                        className={`mt-2 w-full resize-none rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
-                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); toggleWatchListNote(ticker); }}
+                                                        className={`mt-2 flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-300' : 'border-gray-300 bg-white text-gray-600'}`}
+                                                        aria-expanded={!!expandedWatchListNotes[ticker]}
+                                                        aria-controls={`watch-note-${ticker}`}
+                                                    >
+                                                        <ChevronDown size={14} className={`shrink-0 transition-transform ${expandedWatchListNotes[ticker] ? 'rotate-180' : ''}`}/>
+                                                        <span className="min-w-0 flex-1 truncate">
+                                                            {watchListNotes[ticker] || 'Add a brief note…'}
+                                                        </span>
+                                                    </button>
+                                                    {expandedWatchListNotes[ticker] && (
+                                                        <textarea
+                                                            id={`watch-note-${ticker}`}
+                                                            value={watchListNotes[ticker] || ''}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            onChange={(e) => updateWatchListNote(ticker, e.target.value)}
+                                                            maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
+                                                            rows={getWatchListNoteRows(watchListNotes[ticker])}
+                                                            placeholder="Brief note…"
+                                                            aria-label={`Notes for ${ticker}`}
+                                                            className={`mt-2 w-full resize-none overflow-hidden rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
+                                                        />
+                                                    )}
                                                 </div>
                                             ))
                                         )}
@@ -6663,16 +6699,31 @@ const firebaseConfig = {
                                                             <X size={18}/>
                                                         </button>
                                                     </div>
-                                                    <textarea
-                                                        value={watchListNotes[ticker] || ''}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        onChange={(e) => updateWatchListNote(ticker, e.target.value)}
-                                                        maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
-                                                        rows={2}
-                                                        placeholder="Brief note…"
-                                                        aria-label={`Notes for ${ticker}`}
-                                                        className={`mt-2 w-full resize-none rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
-                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); toggleWatchListNote(ticker); }}
+                                                        className={`mt-2 flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-300' : 'border-gray-300 bg-white text-gray-600'}`}
+                                                        aria-expanded={!!expandedWatchListNotes[ticker]}
+                                                        aria-controls={`portfolio-watch-note-${ticker}`}
+                                                    >
+                                                        <ChevronDown size={14} className={`shrink-0 transition-transform ${expandedWatchListNotes[ticker] ? 'rotate-180' : ''}`}/>
+                                                        <span className="min-w-0 flex-1 truncate">
+                                                            {watchListNotes[ticker] || 'Add a brief note…'}
+                                                        </span>
+                                                    </button>
+                                                    {expandedWatchListNotes[ticker] && (
+                                                        <textarea
+                                                            id={`portfolio-watch-note-${ticker}`}
+                                                            value={watchListNotes[ticker] || ''}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            onChange={(e) => updateWatchListNote(ticker, e.target.value)}
+                                                            maxLength={MAX_WATCH_LIST_NOTE_LENGTH}
+                                                            rows={getWatchListNoteRows(watchListNotes[ticker])}
+                                                            placeholder="Brief note…"
+                                                            aria-label={`Notes for ${ticker}`}
+                                                            className={`mt-2 w-full resize-none overflow-hidden rounded-md border px-2.5 py-2 text-xs leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 ${darkMode ? 'border-gray-600 bg-gray-800 text-gray-100 placeholder:text-gray-500' : 'border-gray-300 bg-white text-gray-700 placeholder:text-gray-400'}`}
+                                                        />
+                                                    )}
                                                 </div>
                                             ))
                                         )}
