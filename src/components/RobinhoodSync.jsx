@@ -1036,7 +1036,7 @@ export default function RobinhoodSync({
                       <div>
                         <div className="font-bold">{holdings.performance?.year || new Date().getFullYear()} YTD performance</div>
                         <p className={`mt-1 text-xs ${muted}`}>
-                          December 31 closing values establish the baseline. YTD is shown only when deposits and withdrawals can also be reconciled; daily closing snapshots continue automatically.
+                          December 31 closing values establish the baseline. The return uses Modified Dietz cash-flow weighting. YTD is shown only when deposits and withdrawals can also be reconciled; daily closing snapshots continue automatically.
                         </p>
                       </div>
                       {holdings.performance?.total?.status === 'ready' && (
@@ -1050,6 +1050,11 @@ export default function RobinhoodSync({
                             {Number.isFinite(holdings.performance.total.returnPercent) &&
                               ` · ${holdings.performance.total.returnPercent >= 0 ? '+' : ''}${holdings.performance.total.returnPercent.toFixed(2)}%`}
                           </div>
+                        </div>
+                      )}
+                      {holdings.performance?.total?.status === 'provisional-external-flow' && (
+                        <div className="max-w-xs text-right text-xs font-bold text-amber-500">
+                          YTD temporarily hidden while brokerage cash activity finishes syncing
                         </div>
                       )}
                     </div>
@@ -1098,6 +1103,11 @@ export default function RobinhoodSync({
                             {performance?.status === 'cash-flow-history-incomplete' && (
                               <span className="mt-1 block text-xs font-bold text-amber-500">
                                 YTD unavailable · cash-flow history is incomplete
+                              </span>
+                            )}
+                            {performance?.status === 'provisional-external-flow' && (
+                              <span className="mt-1 block text-xs font-bold text-amber-500">
+                                YTD pending matching deposit or withdrawal activity
                               </span>
                             )}
                           </label>

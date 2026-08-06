@@ -6230,6 +6230,11 @@ const firebaseConfig = {
                                                     ` · ${formatSignedPercent(robinhoodPerformance.total.returnPercent)}`}
                                             </div>
                                         )}
+                                        {robinhoodPerformance?.total?.status === 'provisional-external-flow' && (
+                                            <div className={`mt-1 text-xs font-bold ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                                                YTD pending cash activity
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -6361,6 +6366,8 @@ const firebaseConfig = {
                                             }`}>
                                                 {shownYtdPerformance?.status === 'ready'
                                                     ? `${robinhoodPerformance.year} YTD ${formatSignedUsd(shownYtdPerformance.gain)}${shownYtdPerformance.returnPercent == null ? '' : ` · ${formatSignedPercent(shownYtdPerformance.returnPercent)}`}`
+                                                    : shownYtdPerformance?.status === 'provisional-external-flow'
+                                                        ? `${robinhoodPerformance.year} YTD pending cash activity`
                                                     : shownYtdPerformance?.status === 'cash-flow-history-incomplete'
                                                         ? `${robinhoodPerformance.year} YTD needs cash-flow history`
                                                         : robinhoodPerformance

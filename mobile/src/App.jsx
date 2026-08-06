@@ -1218,6 +1218,8 @@ export default function App() {
                 <strong>
                   {scopedYtdPerformance?.status === 'ready'
                     ? `${signedMoney(scopedYtdPerformance.gain)}${scopedYtdPerformance.returnPercent == null ? '' : ` · ${signedPercent(scopedYtdPerformance.returnPercent)}`}`
+                    : scopedYtdPerformance?.status === 'provisional-external-flow'
+                      ? 'Pending cash activity'
                     : scopedYtdPerformance?.status === 'cash-flow-history-incomplete'
                       ? 'Needs cash-flow history'
                       : ytdPerformance
