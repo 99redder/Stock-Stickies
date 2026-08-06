@@ -45,6 +45,14 @@ function positionKey(account, ticker) {
   return `${account}:${normalizeTicker(ticker)}`
 }
 
+function isOutOfScopePlaidAccount(position) {
+  const accountDescription = [
+    position?.accountName,
+    position?.accountSubtype,
+  ].join(' ').toLowerCase()
+  return /\butma\b|\bcustodial\b/.test(accountDescription)
+}
+
 function cspPositionKey(account, ticker, strike, expiry) {
   const normalizedStrike = Number(strike)
   return [
@@ -135,11 +143,16 @@ function coveredCallKey(call) {
 function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
   const usable = []
   const unsupported = []
+  const outOfScope = []
   const plaidCsps = []
   const plaidCoveredCalls = []
   const normalizedPositions = (Array.isArray(positions) ? positions : [])
     .map(normalizePlaidPosition)
   for (const position of normalizedPositions) {
+    if (!position.stockStickiesAccount && isOutOfScopePlaidAccount(position)) {
+      outOfScope.push(position)
+      continue
+    }
     const normalizedCsp = normalizePlaidCsp(position)
     if (normalizedCsp) {
       plaidCsps.push(normalizedCsp)
@@ -365,6 +378,7 @@ function buildRobinhoodReconciliation(notes, positions, cashSecuredPuts = []) {
     additions,
     possibleClosed,
     unsupported,
+    outOfScope,
     usable,
     cspUpdates,
     cspAdditions,
