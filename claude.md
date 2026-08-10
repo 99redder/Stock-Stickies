@@ -281,7 +281,8 @@ deliberate action, and the numbers are the point.
 The Portfolio card's view toggle has three modes: `donut` (per-ticker), `sector`, and `map`
 (`portfolioViewMode`). The **Sector** view groups holdings into **user-defined** buckets —
 *not* GICS/Finnhub industries (an earlier auto-GICS version was replaced). The starter set
-is `DEFAULT_SECTOR_THEMES` = Energy, Utilities, Pharma, AI trade, Defense, Financials.
+is `DEFAULT_SECTOR_THEMES` = Energy, Utilities, Pharma, AI trade, Defense, Financials,
+China, Cloud.
 
 Two pieces of state drive it, both persisted to the Firestore user doc alongside
 `categories`:

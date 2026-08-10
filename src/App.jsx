@@ -164,7 +164,7 @@ const firebaseConfig = {
         // Custom sector/theme buckets for the secondary "by sector" donut. User-editable and
         // persisted; these are the starter set. "Cash" and "Uncategorized" are implicit buckets
         // (auto-derived), so they are intentionally NOT in this list.
-        const DEFAULT_SECTOR_THEMES = ['Energy', 'Utilities', 'Pharma', 'AI trade', 'Defense', 'Financials'];
+        const DEFAULT_SECTOR_THEMES = ['Energy', 'Utilities', 'Pharma', 'AI trade', 'Defense', 'Financials', 'China', 'Cloud'];
         const SECTOR_UNCATEGORIZED = 'Uncategorized';
         const SECTOR_CASH = 'Cash';
 
