@@ -199,7 +199,7 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 ## Key Features
 1. **Sticky Notes** — Create, edit, delete notes; each note has a ticker symbol (1–5 chars) and optional share count
 2. **Categories** — Up to 10 color-coded categories (add, delete, rename, recolor); minimum 1
-3. **Portfolio View** — Pie chart of holdings with real-time prices; updates 3× daily at 9:35 AM, 1:00 PM, 4:05 PM EST; 8-hour cache
+3. **Portfolio View** — Donut/treemap of holdings with real-time prices; updates 3× daily at 9:35 AM, 1:00 PM, 4:05 PM EST; 8-hour cache. A `sector` view mode groups holdings by **user-defined sector buckets** (see Custom sector buckets)
 4. **Stock Data** — Live quotes, fundamentals, 52-week range, earnings dates (Finnhub API)
 5. **News Feed** — Per-ticker news from MarketAux API
 6. **Watch List** — Track tickers without creating notes
@@ -272,9 +272,44 @@ The Ask K prompt describes the same arrangement.
 textarea + `execCommand` fallback). It follows the account filter exactly like the donut
 does, and emits: totals (market value, cash, CSP obligation, share of the combined
 portfolio when scoped), a per-account table with each account's intent (composite view
-only), a positions table, a CSP table, and each position's note text. Intended for pasting
-into an outside LLM. It exports real dollar figures even while `hidePortfolioValues` is
-blurring the screen — the copy is a deliberate action, and the numbers are the point.
+only), a **Sector allocation** table (custom buckets — see below), a positions table, a CSP
+table, and each position's note text. Intended for pasting into an outside LLM. It exports
+real dollar figures even while `hidePortfolioValues` is blurring the screen — the copy is a
+deliberate action, and the numbers are the point.
+
+### Custom sector buckets
+The Portfolio card's view toggle has three modes: `donut` (per-ticker), `sector`, and `map`
+(`portfolioViewMode`). The **Sector** view groups holdings into **user-defined** buckets —
+*not* GICS/Finnhub industries (an earlier auto-GICS version was replaced). The starter set
+is `DEFAULT_SECTOR_THEMES` = Energy, Utilities, Pharma, AI trade, Defense, Financials.
+
+Two pieces of state drive it, both persisted to the Firestore user doc alongside
+`categories`:
+
+- `sectorThemes` — the ordered, editable list of bucket names.
+- `sectorAssignments` — a `ticker -> sector name` map (assignment is **per company**, so a
+  ticker held in several accounts is assigned once).
+
+`resolveSector(holding)` is the single grouping predicate: a cash holding (`isCashHolding`)
+always maps to the implicit **Cash** bucket; otherwise it uses the ticker's assignment, but
+only if that sector still exists in `sectorThemes` — a stale assignment to a deleted sector
+falls back to the implicit **Uncategorized** bucket. `Cash` and `Uncategorized` are implicit
+and must never be stored in `sectorThemes` (the sanitizer strips them). `portfolioBySector`
+sums values per bucket and follows the account filter exactly like `portfolioData`, so a
+single-account view breaks that account down by sector. Cash and Uncategorized always sort
+to the bottom.
+
+Assignment is **manual** and lives **inline in the Sector view** (no note-card UI): a
+per-ticker dropdown (`assignSector`), removable sector chips + an "Add a sector…" input
+(`addSectorTheme` / `removeSectorTheme`), and an "N holdings not yet assigned"
+(`unassignedSectorCount`) hint. The secondary donut is its own Chart.js instance
+(`sectorChartRef` / `sectorChartInstance`), separate from the primary per-ticker chart.
+
+`sectorThemes` and `sectorAssignments` are wired into every persistence path —
+`onSnapshot` load (via `sanitizeSectorThemes` / `sanitizeSectorAssignments`), the debounced
+autosave, the `beforeunload` save, `syncNow`, `restoreBackupSnapshot`, and the logout reset.
+When adding another persisted field, mirror this exact set of touch points to avoid the
+documented save/load races. This feature is **desktop-only**; mobile has no sector view.
 
 ### Duplicate positions
 A ticker may be held in several accounts (SGOV sits in both IRAs) but only once **within**
