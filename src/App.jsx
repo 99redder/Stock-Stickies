@@ -161,6 +161,13 @@ const firebaseConfig = {
         const DEFAULT_COLORS = ['bg-blue-600', 'bg-green-600', 'bg-purple-600', 'bg-orange-500', 'bg-red-600'];
         const UNCLASSIFIED_COLOR = 'bg-gray-400';
 
+        // Custom sector/theme buckets for the secondary "by sector" donut. User-editable and
+        // persisted; these are the starter set. "Cash" and "Uncategorized" are implicit buckets
+        // (auto-derived), so they are intentionally NOT in this list.
+        const DEFAULT_SECTOR_THEMES = ['Energy', 'Utilities', 'Pharma', 'AI trade', 'Defense', 'Financials'];
+        const SECTOR_UNCATEGORIZED = 'Uncategorized';
+        const SECTOR_CASH = 'Cash';
+
 
         // Available bold solid colors for category customization
         const AVAILABLE_COLORS = [
@@ -533,6 +540,33 @@ const firebaseConfig = {
             );
         };
 
+        // Sector bucket sanitizers — used when loading the persisted config from Firestore.
+        const sanitizeSectorThemes = (value) => {
+            if (!Array.isArray(value)) return DEFAULT_SECTOR_THEMES;
+            const seen = new Set();
+            const cleaned = [];
+            value.forEach(t => {
+                if (typeof t !== 'string') return;
+                const trimmed = t.trim();
+                // "Cash"/"Uncategorized" are implicit buckets — never store them in the list.
+                if (!trimmed || trimmed === SECTOR_CASH || trimmed === SECTOR_UNCATEGORIZED) return;
+                const key = trimmed.toLowerCase();
+                if (seen.has(key)) return;
+                seen.add(key);
+                cleaned.push(trimmed);
+            });
+            return cleaned;
+        };
+        const sanitizeSectorAssignments = (value) => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+            const cleaned = {};
+            Object.entries(value).forEach(([ticker, theme]) => {
+                const t = String(ticker || '').trim().toUpperCase();
+                if (t && typeof theme === 'string' && theme.trim()) cleaned[t] = theme.trim();
+            });
+            return cleaned;
+        };
+
         const isPlaidCryptoNote = (note) =>
             note?.plaidIsCrypto === true || note?.plaidSecurityType === 'cryptocurrency';
 
@@ -575,6 +609,11 @@ const firebaseConfig = {
             const [tempLabel, setTempLabel] = useState('');
             const [collapsedCategories, setCollapsedCategories] = useState({});
             const [collapsedAccounts, setCollapsedAccounts] = useState({});
+            // Custom sector buckets and each ticker's assignment (ticker -> theme name).
+            // Both persisted to Firestore alongside categories.
+            const [sectorThemes, setSectorThemes] = useState(DEFAULT_SECTOR_THEMES);
+            const [sectorAssignments, setSectorAssignments] = useState({});
+            const [newSectorThemeInput, setNewSectorThemeInput] = useState('');
             // Notes whose shares/account fields are unlocked for editing. Deliberately not
             // persisted — every note starts locked again on reload, so the guard can't be
             // left permanently off by accident.
@@ -784,28 +823,6 @@ const firebaseConfig = {
             // fights the primary per-ticker chart for the same node.
             const sectorChartRef = useRef(null);
             const sectorChartInstance = useRef(null);
-            // Ticker -> GICS-style sector (Finnhub `finnhubIndustry`). Sectors are stable, so we
-            // cache successful lookups to localStorage and only re-fetch missing tickers.
-            const [sectorMap, setSectorMap] = useState(() => {
-                try {
-                    const cached = localStorage.getItem('portfolio_sector_cache');
-                    if (cached) {
-                        const parsed = JSON.parse(cached);
-                        if (parsed && typeof parsed === 'object') {
-                            const normalized = {};
-                            Object.entries(parsed).forEach(([k, v]) => {
-                                const ticker = normalizeTicker(k);
-                                if (ticker && typeof v === 'string' && v.trim()) normalized[ticker] = v.trim();
-                            });
-                            return normalized;
-                        }
-                    }
-                } catch (e) {}
-                return {};
-            });
-            // Tickers attempted this session (success or failure) so a failed/empty lookup isn't
-            // hammered on every render. Failures aren't persisted, so they retry next session.
-            const attemptedSectorsRef = useRef(new Set());
 
             // Compute the active ticker for data fetching (from expanded note or watch list modal)
             const activeTicker = expandedNote?.title || watchListModalTicker;
@@ -934,6 +951,8 @@ const firebaseConfig = {
                                 nextId: data.nextId || 1,
                                 collapsedCategories: data.collapsedCategories || {},
                                 collapsedAccounts: data.collapsedAccounts || {},
+                                sectorThemes: sanitizeSectorThemes(data.sectorThemes),
+                                sectorAssignments: sanitizeSectorAssignments(data.sectorAssignments),
                                 darkMode: data.darkMode || false,
                                 watchList: (data.watchList || []).filter((ticker) => !incomingRadarList.includes(ticker)),
                                 watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
@@ -967,6 +986,8 @@ const firebaseConfig = {
                             setNextId(incoming.nextId);
                             setCollapsedCategories(incoming.collapsedCategories);
                             setCollapsedAccounts(incoming.collapsedAccounts);
+                            setSectorThemes(incoming.sectorThemes);
+                            setSectorAssignments(incoming.sectorAssignments);
                             setDarkMode(incoming.darkMode);
                             setWatchList(incoming.watchList);
                             setWatchListNotes(incoming.watchListNotes);
@@ -1047,6 +1068,8 @@ const firebaseConfig = {
                             nextId,
                             collapsedCategories,
                             collapsedAccounts,
+                            sectorThemes,
+                            sectorAssignments,
                             darkMode,
                             watchList,
                             watchListNotes,
@@ -1107,7 +1130,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1125,6 +1148,8 @@ const firebaseConfig = {
                             nextId,
                             collapsedCategories,
                             collapsedAccounts,
+                            sectorThemes,
+                            sectorAssignments,
                             darkMode,
                             watchList,
                             watchListNotes,
@@ -1153,7 +1178,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1356,6 +1381,8 @@ const firebaseConfig = {
                         nextId,
                         collapsedCategories,
                         collapsedAccounts,
+                        sectorThemes,
+                        sectorAssignments,
                         darkMode,
                         watchList,
                         watchListNotes,
@@ -2057,8 +2084,11 @@ const firebaseConfig = {
                 setMarketauxApiKey('');
                 // Reset categories to defaults on logout
                 setCategories(DEFAULT_COLORS);
+                setSectorThemes(DEFAULT_SECTOR_THEMES);
+                setSectorAssignments({});
                 // Clear localStorage cache on logout
                 localStorage.removeItem('portfolio_prices_cache');
+                localStorage.removeItem('portfolio_sector_cache');
                 setColorLabels(DEFAULT_COLOR_LABELS);
             };
 
@@ -2356,6 +2386,8 @@ const firebaseConfig = {
                         nextId: data.nextId || 1,
                         collapsedCategories: data.collapsedCategories || {},
                         collapsedAccounts: data.collapsedAccounts || {},
+                        sectorThemes: sanitizeSectorThemes(data.sectorThemes),
+                        sectorAssignments: sanitizeSectorAssignments(data.sectorAssignments),
                         darkMode: !!data.darkMode,
                         watchList: data.watchList || [],
                         watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
@@ -3193,65 +3225,6 @@ const firebaseConfig = {
                 return () => { isMounted = false; };
             }, [portfolioTickerKey, finnhubApiKey]);
 
-            // Fetch each holding's sector (Finnhub `finnhubIndustry`) for the by-sector donut.
-            // Only runs on the portfolio tab, only for tickers we don't already have a sector
-            // for, and only for real equities (cash-equivalents/crypto have no sector). Sectors
-            // rarely change, so a single successful lookup is cached to localStorage.
-            useEffect(() => {
-                if (mainTab !== 'portfolio' || !finnhubApiKey) return;
-                let isMounted = true;
-                const missing = portfolioNotes
-                    .map(n => normalizeTicker(n.title))
-                    .filter(ticker =>
-                        ticker &&
-                        !isCashEquivalentTicker(ticker) &&
-                        !sectorMap[ticker] &&
-                        !attemptedSectorsRef.current.has(ticker)
-                    );
-                // De-dupe while preserving order.
-                const tickers = [...new Set(missing)];
-                if (tickers.length === 0) return;
-
-                const fetchSectors = async () => {
-                    const found = {};
-                    for (const ticker of tickers) {
-                        attemptedSectorsRef.current.add(ticker);
-                        try {
-                            const url = buildApiUrl('https://finnhub.io/api/v1/stock/profile2', {
-                                symbol: ticker,
-                                token: finnhubApiKey
-                            });
-                            const res = await fetch(url);
-                            if (res.ok) {
-                                const data = await res.json();
-                                const sector = typeof data?.finnhubIndustry === 'string'
-                                    ? data.finnhubIndustry.trim()
-                                    : '';
-                                if (sector) found[ticker] = sector;
-                            }
-                        } catch (e) {
-                            // Leave it unattempted-across-sessions: remove from the set so a later
-                            // mount retries after a transient network failure.
-                            attemptedSectorsRef.current.delete(ticker);
-                        }
-                        await sleep(250); // Stay within Finnhub free-tier rate limits.
-                    }
-                    if (isMounted && Object.keys(found).length > 0) {
-                        setSectorMap(prev => {
-                            const next = { ...prev, ...found };
-                            try {
-                                localStorage.setItem('portfolio_sector_cache', JSON.stringify(next));
-                            } catch (e) {}
-                            return next;
-                        });
-                    }
-                };
-
-                fetchSectors();
-                return () => { isMounted = false; };
-                // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [mainTab, portfolioTickerKey, finnhubApiKey, sectorMap]);
-
             // Portfolio computed data - derived from notes.
             // Percentages are always relative to the set being shown, so the same builder
             // powers both the composite view and each single-account view.
@@ -3421,17 +3394,26 @@ const firebaseConfig = {
                 : 0;
             const nonCashPortfolioValue = Math.max(0, totalPortfolioValue - cashPortfolioValue);
 
-            // Group the currently-shown holdings by sector for the secondary donut. Cash lands in
-            // one "Cash" bucket (matching the primary donut), holdings whose sector hasn't been
-            // resolved yet fall into "Uncategorized". Follows the account filter exactly like
-            // portfolioData does, so a single-account view breaks that account down by sector.
+            // Resolve a holding's sector bucket from the user's manual assignments. Cash lands in
+            // one implicit "Cash" bucket (matching the primary donut); a non-cash holding uses its
+            // assigned theme, but only if that theme still exists — a stale assignment to a deleted
+            // theme falls back to "Uncategorized" rather than resurrecting the theme.
+            const resolveSector = useCallback((h) => {
+                if (isCashHolding(h)) return SECTOR_CASH;
+                const assigned = sectorAssignments[normalizeTicker(h.ticker)];
+                return assigned && sectorThemes.includes(assigned) ? assigned : SECTOR_UNCATEGORIZED;
+                // isCashHolding closes over colorLabels, already a dependency at each call site.
+                // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [sectorAssignments, sectorThemes, colorLabels]);
+
+            // Group the currently-shown holdings by their assigned sector for the secondary donut.
+            // Follows the account filter exactly like portfolioData does, so a single-account view
+            // breaks that account down by sector.
             const portfolioBySector = useMemo(() => {
                 const buckets = new Map();
                 portfolioData.forEach(h => {
                     if (h.value <= 0) return;
-                    const sector = isCashHolding(h)
-                        ? 'Cash'
-                        : (sectorMap[normalizeTicker(h.ticker)] || 'Uncategorized');
+                    const sector = resolveSector(h);
                     if (!buckets.has(sector)) buckets.set(sector, { sector, value: 0, tickers: [], count: 0 });
                     const bucket = buckets.get(sector);
                     bucket.value += h.value;
@@ -3443,20 +3425,74 @@ const firebaseConfig = {
                     .map(b => ({ ...b, percentage: total > 0 ? (b.value / total) * 100 : 0 }))
                     .sort((a, b) => {
                         // Keep the meaningful sectors up top; the two catch-alls sink to the bottom.
-                        const rank = (s) => (s.sector === 'Uncategorized' ? 2 : s.sector === 'Cash' ? 1 : 0);
+                        const rank = (s) => (s.sector === SECTOR_UNCATEGORIZED ? 2 : s.sector === SECTOR_CASH ? 1 : 0);
                         const dr = rank(a) - rank(b);
                         return dr !== 0 ? dr : b.value - a.value;
                     });
-                // isCashHolding closes over colorLabels, already a dependency below.
-                // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [portfolioData, totalPortfolioValue, sectorMap, colorLabels]);
-            // Count of shown non-cash holdings still waiting on a sector lookup — drives a hint.
-            const unresolvedSectorCount = useMemo(() =>
+            }, [portfolioData, totalPortfolioValue, resolveSector]);
+            // Non-cash holdings not yet assigned to a sector — drives the "assign these" hint.
+            const unassignedSectorCount = useMemo(() =>
                 portfolioData.filter(h =>
-                    h.value > 0 && !isCashHolding(h) && !sectorMap[normalizeTicker(h.ticker)]
+                    h.value > 0 && !isCashHolding(h) && resolveSector(h) === SECTOR_UNCATEGORIZED
                 ).length,
             // eslint-disable-next-line react-hooks/exhaustive-deps
-            [portfolioData, sectorMap, colorLabels]);
+            [portfolioData, resolveSector, colorLabels]);
+
+            // Unique non-cash holdings in the current view, for the inline assignment panel.
+            // One row per ticker (a ticker held in several accounts is assigned once, by company).
+            const sectorAssignableTickers = useMemo(() => {
+                const byTicker = new Map();
+                portfolioData.forEach(h => {
+                    if (isCashHolding(h)) return;
+                    const ticker = h.ticker;
+                    if (!byTicker.has(ticker)) byTicker.set(ticker, { ticker, value: 0 });
+                    byTicker.get(ticker).value += h.value;
+                });
+                return [...byTicker.values()].sort((a, b) => b.value - a.value);
+                // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [portfolioData, colorLabels]);
+
+            // Assign (or clear) a ticker's sector. Passing SECTOR_UNCATEGORIZED/empty clears it.
+            const assignSector = (ticker, theme) => {
+                const t = normalizeTicker(ticker);
+                if (!t) return;
+                setSectorAssignments(prev => {
+                    const next = { ...prev };
+                    if (!theme || theme === SECTOR_UNCATEGORIZED) {
+                        delete next[t];
+                    } else {
+                        next[t] = theme;
+                    }
+                    return next;
+                });
+            };
+
+            // Add a new sector bucket. Returns the accepted name, or null if rejected.
+            const addSectorTheme = (rawName) => {
+                const name = String(rawName || '').trim().slice(0, 40);
+                if (!name) return null;
+                if (name === SECTOR_CASH || name === SECTOR_UNCATEGORIZED) return null;
+                if (sectorThemes.some(t => t.toLowerCase() === name.toLowerCase())) return null;
+                setSectorThemes(prev => [...prev, name]);
+                return name;
+            };
+            const handleAddSectorTheme = () => {
+                const added = addSectorTheme(newSectorThemeInput);
+                if (added) setNewSectorThemeInput('');
+            };
+
+            // Remove a sector bucket and clear any assignments pointing at it (those tickers
+            // fall back to Uncategorized automatically).
+            const removeSectorTheme = (theme) => {
+                setSectorThemes(prev => prev.filter(t => t !== theme));
+                setSectorAssignments(prev => {
+                    const next = {};
+                    Object.entries(prev).forEach(([ticker, assigned]) => {
+                        if (assigned !== theme) next[ticker] = assigned;
+                    });
+                    return next;
+                });
+            };
             // Compact dependency key so the sector chart effect re-renders only on real changes.
             const sectorChartDataKey = useMemo(
                 () => portfolioBySector.map(b => `${b.sector}:${b.value.toFixed(2)}`).join('|'),
@@ -3764,9 +3800,9 @@ const firebaseConfig = {
 
                 if (portfolioBySector.length > 0) {
                     lines.push('## Sector allocation');
-                    lines.push('Holdings grouped by sector (Finnhub industry classification), to show where the book is over- or under-weight.');
-                    if (unresolvedSectorCount > 0) {
-                        lines.push(`NOTE: ${unresolvedSectorCount} holding(s) have no sector yet and are counted under "Uncategorized".`);
+                    lines.push('Holdings grouped by custom sector buckets, to show where the book is over- or under-weight.');
+                    if (unassignedSectorCount > 0) {
+                        lines.push(`NOTE: ${unassignedSectorCount} holding(s) are not yet assigned to a sector and are counted under "Uncategorized".`);
                     }
                     lines.push('');
                     lines.push('| Sector | Market value | % of shown | Positions | Tickers |');
@@ -6913,45 +6949,122 @@ const firebaseConfig = {
                                                             No positions to break down by sector
                                                         </div>
                                                     ) : (
-                                                        <>
-                                                            <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">
-                                                                <div className="min-h-0">
+                                                        <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">
+                                                            {/* Donut + weights summary */}
+                                                            <div className="flex min-h-0 flex-col">
+                                                                <div className="min-h-0 flex-1">
                                                                     <canvas ref={sectorChartRef}></canvas>
                                                                 </div>
-                                                                <div className="min-h-0 overflow-y-auto pr-1">
-                                                                    <div className={`mb-2 text-[11px] font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                                        Sector weights
+                                                                {unassignedSectorCount > 0 && (
+                                                                    <div className={`mt-1 flex items-center justify-center gap-1.5 text-xs font-semibold ${darkMode ? 'text-amber-300' : 'text-amber-600'}`}>
+                                                                        <span className="inline-block h-2 w-2 rounded-full bg-current"></span>
+                                                                        {unassignedSectorCount} holding{unassignedSectorCount === 1 ? '' : 's'} not yet assigned
                                                                     </div>
-                                                                    <div className="space-y-1.5">
-                                                                        {portfolioBySector.map((b, i) => (
-                                                                            <div key={b.sector} className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${darkMode ? 'bg-gray-900/60' : 'bg-gray-50'}`}>
-                                                                                <span className="h-3 w-3 flex-shrink-0 rounded-sm" style={{backgroundColor: sectorSliceColor(b, i)}}></span>
-                                                                                <span className={`flex-1 truncate text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`} title={`${b.tickers.join(', ')}`}>
-                                                                                    {b.sector}
-                                                                                    <span className={`ml-1.5 text-[11px] font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                                                        ({b.count})
-                                                                                    </span>
-                                                                                </span>
-                                                                                {portfolioLegendDollarAmounts && !hidePortfolioValues && (
-                                                                                    <span className={`text-xs font-semibold tabular-nums ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                                                        {formatUsd(b.value).replace(/\.00$/, '')}
-                                                                                    </span>
-                                                                                )}
-                                                                                <span className={`w-14 text-right text-sm font-bold tabular-nums ${darkMode ? 'text-cyan-300' : 'text-blue-600'}`}>
-                                                                                    {b.percentage.toFixed(1)}%
-                                                                                </span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
+                                                                )}
                                                             </div>
-                                                            {unresolvedSectorCount > 0 && (
-                                                                <div className={`mt-2 flex items-center justify-center gap-1.5 text-xs font-semibold ${darkMode ? 'text-amber-300' : 'text-amber-600'}`}>
-                                                                    <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-current"></span>
-                                                                    Fetching sector data for {unresolvedSectorCount} holding{unresolvedSectorCount === 1 ? '' : 's'}…
+                                                            {/* Weights + assignment panel */}
+                                                            <div className="min-h-0 overflow-y-auto pr-1 snapshot-hide">
+                                                                <div className={`mb-2 text-[11px] font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    Sector weights
                                                                 </div>
-                                                            )}
-                                                        </>
+                                                                <div className="space-y-1.5">
+                                                                    {portfolioBySector.map((b, i) => (
+                                                                        <div key={b.sector} className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${darkMode ? 'bg-gray-900/60' : 'bg-gray-50'}`}>
+                                                                            <span className="h-3 w-3 flex-shrink-0 rounded-sm" style={{backgroundColor: sectorSliceColor(b, i)}}></span>
+                                                                            <span className={`flex-1 truncate text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`} title={`${b.tickers.join(', ')}`}>
+                                                                                {b.sector}
+                                                                                <span className={`ml-1.5 text-[11px] font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                    ({b.count})
+                                                                                </span>
+                                                                            </span>
+                                                                            {portfolioLegendDollarAmounts && !hidePortfolioValues && (
+                                                                                <span className={`text-xs font-semibold tabular-nums ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                                    {formatUsd(b.value).replace(/\.00$/, '')}
+                                                                                </span>
+                                                                            )}
+                                                                            <span className={`w-14 text-right text-sm font-bold tabular-nums ${darkMode ? 'text-cyan-300' : 'text-blue-600'}`}>
+                                                                                {b.percentage.toFixed(1)}%
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+
+                                                                {/* Manage sector buckets */}
+                                                                <div className={`mt-4 mb-2 text-[11px] font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    Your sectors
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {sectorThemes.length === 0 && (
+                                                                        <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No sectors yet — add one below.</span>
+                                                                    )}
+                                                                    {sectorThemes.map(theme => (
+                                                                        <span key={theme} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${darkMode ? 'bg-gray-900/70 text-gray-200 border border-gray-700' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}>
+                                                                            {theme}
+                                                                            <button
+                                                                                onClick={() => removeSectorTheme(theme)}
+                                                                                title={`Remove ${theme} (its holdings become Uncategorized)`}
+                                                                                className={`ml-0.5 rounded-full ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-200 text-gray-400 hover:text-gray-600'}`}
+                                                                            >
+                                                                                <X size={12} />
+                                                                            </button>
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="mt-2 flex items-center gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={newSectorThemeInput}
+                                                                        onChange={(e) => setNewSectorThemeInput(e.target.value)}
+                                                                        onKeyDown={(e) => e.key === 'Enter' && handleAddSectorTheme()}
+                                                                        placeholder="Add a sector…"
+                                                                        maxLength={40}
+                                                                        className={`flex-1 rounded-md border px-2.5 py-1.5 text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-100 placeholder-gray-500' : 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'}`}
+                                                                    />
+                                                                    <button
+                                                                        onClick={handleAddSectorTheme}
+                                                                        disabled={!newSectorThemeInput.trim()}
+                                                                        className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${!newSectorThemeInput.trim() ? (darkMode ? 'bg-gray-800 text-gray-600' : 'bg-gray-100 text-gray-400') : (darkMode ? 'bg-cyan-500 text-gray-950 hover:bg-cyan-400' : 'bg-blue-500 text-white hover:bg-blue-600')}`}
+                                                                    >
+                                                                        Add
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* Assign each holding */}
+                                                                <div className={`mt-4 mb-2 text-[11px] font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    Assign holdings
+                                                                </div>
+                                                                {sectorAssignableTickers.length === 0 ? (
+                                                                    <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No non-cash holdings to assign.</span>
+                                                                ) : (
+                                                                    <div className="space-y-1.5">
+                                                                        {sectorAssignableTickers.map(t => {
+                                                                            const assigned = sectorThemes.includes(sectorAssignments[t.ticker]) ? sectorAssignments[t.ticker] : SECTOR_UNCATEGORIZED;
+                                                                            const isUnassigned = assigned === SECTOR_UNCATEGORIZED;
+                                                                            return (
+                                                                                <div key={t.ticker} className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${darkMode ? 'bg-gray-900/60' : 'bg-gray-50'}`}>
+                                                                                    <span className={`flex-1 truncate text-sm font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{t.ticker}</span>
+                                                                                    {portfolioLegendDollarAmounts && !hidePortfolioValues && (
+                                                                                        <span className={`text-xs font-semibold tabular-nums ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                                            {formatUsd(t.value).replace(/\.00$/, '')}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    <select
+                                                                                        value={assigned}
+                                                                                        onChange={(e) => assignSector(t.ticker, e.target.value)}
+                                                                                        className={`rounded-md border px-2 py-1 text-xs font-semibold ${isUnassigned ? (darkMode ? 'border-amber-500/50 text-amber-300' : 'border-amber-400 text-amber-600') : (darkMode ? 'border-gray-700 text-gray-200' : 'border-gray-300 text-gray-700')} ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+                                                                                    >
+                                                                                        <option value={SECTOR_UNCATEGORIZED}>Uncategorized</option>
+                                                                                        {sectorThemes.map(theme => (
+                                                                                            <option key={theme} value={theme}>{theme}</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     )}
                                                 </div>
                                             ) : (
