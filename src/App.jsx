@@ -614,6 +614,8 @@ const firebaseConfig = {
             const [sectorThemes, setSectorThemes] = useState(DEFAULT_SECTOR_THEMES);
             const [sectorAssignments, setSectorAssignments] = useState({});
             const [newSectorThemeInput, setNewSectorThemeInput] = useState('');
+            // Sort direction for the Sector weights table (ephemeral UI pref, not persisted).
+            const [sectorWeightSort, setSectorWeightSort] = useState('desc'); // 'desc' | 'asc'
             // Notes whose shares/account fields are unlocked for editing. Deliberately not
             // persisted — every note starts locked again on reload, so the guard can't be
             // left permanently off by accident.
@@ -4354,11 +4356,27 @@ const firebaseConfig = {
                 '#14B8A6', '#A855F7', '#EAB308', '#F43F5E', '#0EA5E9'
             ];
             const sectorSliceColor = useCallback((bucket, index) => {
-                if (bucket.sector === 'Cash') return '#16a34a';
-                if (bucket.sector === 'Uncategorized') return '#9CA3AF';
+                if (bucket.sector === SECTOR_CASH) return '#16a34a';
+                if (bucket.sector === SECTOR_UNCATEGORIZED) return '#9CA3AF';
                 return SECTOR_CHART_COLORS[index % SECTOR_CHART_COLORS.length];
                 // eslint-disable-next-line react-hooks/exhaustive-deps
             }, []);
+            // Each bucket's chart color, keyed by name so the weights table can re-sort freely
+            // while staying color-matched to the donut (whose slice colors are fixed by the
+            // canonical portfolioBySector order).
+            const sectorColorByName = useMemo(() => {
+                const map = {};
+                portfolioBySector.forEach((b, i) => { map[b.sector] = sectorSliceColor(b, i); });
+                return map;
+            }, [portfolioBySector, sectorSliceColor]);
+            // The weights table's own view of the buckets, sorted purely by % in the chosen
+            // direction (so a large Cash/Uncategorized bucket ranks by weight rather than being
+            // pinned last as it is in the donut).
+            const sortedSectorWeights = useMemo(() =>
+                [...portfolioBySector].sort((a, b) =>
+                    sectorWeightSort === 'asc' ? a.percentage - b.percentage : b.percentage - a.percentage
+                ),
+            [portfolioBySector, sectorWeightSort]);
             useEffect(() => {
                 if (mainTab !== 'portfolio' || portfolioViewMode !== 'sector' || portfolioBySector.length === 0) {
                     if (sectorChartInstance.current) {
@@ -6964,13 +6982,19 @@ const firebaseConfig = {
                                                             </div>
                                                             {/* Weights + assignment panel */}
                                                             <div className="min-h-0 overflow-y-auto pr-1 snapshot-hide">
-                                                                <div className={`mb-2 text-[11px] font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                <button
+                                                                    onClick={() => setSectorWeightSort(s => s === 'desc' ? 'asc' : 'desc')}
+                                                                    title="Sort by percentage"
+                                                                    className={`mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider transition ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
+                                                                >
                                                                     Sector weights
-                                                                </div>
+                                                                    <span className="text-[10px]" aria-hidden="true">{sectorWeightSort === 'desc' ? '▼' : '▲'}</span>
+                                                                    <span className="sr-only">{sectorWeightSort === 'desc' ? '(highest first)' : '(lowest first)'}</span>
+                                                                </button>
                                                                 <div className="space-y-1.5">
-                                                                    {portfolioBySector.map((b, i) => (
+                                                                    {sortedSectorWeights.map((b) => (
                                                                         <div key={b.sector} className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${darkMode ? 'bg-gray-900/60' : 'bg-gray-50'}`}>
-                                                                            <span className="h-3 w-3 flex-shrink-0 rounded-sm" style={{backgroundColor: sectorSliceColor(b, i)}}></span>
+                                                                            <span className="h-3 w-3 flex-shrink-0 rounded-sm" style={{backgroundColor: sectorColorByName[b.sector]}}></span>
                                                                             <span className={`flex-1 truncate text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`} title={`${b.tickers.join(', ')}`}>
                                                                                 {b.sector}
                                                                                 <span className={`ml-1.5 text-[11px] font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
