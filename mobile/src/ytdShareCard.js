@@ -336,6 +336,52 @@ export async function createYtdShareCard({
     ctx.fillText('Cash-flow-adjusted year-to-date gain', 122, 576)
   }
 
+  if (hasSpyReturn) {
+    const spyValueText = `${numericSpyReturn > 0 ? '+' : ''}${numericSpyReturn.toFixed(2)}% YTD`
+    const hasDelta = hasReturnPercent
+    const delta = hasDelta ? numericPercent - numericSpyReturn : 0
+    const beating = delta >= 0
+    const winColor = '#39d98a'
+    const loseColor = '#ff6b7c'
+    const segments = [
+      { text: 'S&P 500 (SPY)  ', color: '#8794a7' },
+      { text: spyValueText, color: '#e8edf4' },
+    ]
+    if (hasDelta) {
+      segments.push({ text: '   ·   ', color: '#586376' })
+      segments.push({
+        text: `${beating ? '▲ +' : '▼ '}${delta.toFixed(2)} pts vs S&P`,
+        color: beating ? winColor : loseColor,
+      })
+    }
+
+    const pillFont = '800 22px Inter, ui-sans-serif, system-ui, -apple-system, sans-serif'
+    ctx.font = pillFont
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    const totalWidth = segments.reduce((sum, s) => sum + ctx.measureText(s.text).width, 0)
+
+    const padX = 26
+    const pillH = 52
+    const pillX = 118
+    const pillY = percentOnly ? 576 : (hasReturnPercent ? 616 : 604)
+    roundedRect(ctx, pillX, pillY, totalWidth + padX * 2, pillH, pillH / 2)
+    ctx.fillStyle = 'rgba(255,255,255,.05)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255,255,255,.12)'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+
+    let cursorX = pillX + padX
+    const textY = pillY + pillH / 2 + 8
+    ctx.font = pillFont
+    segments.forEach((segment) => {
+      ctx.fillStyle = segment.color
+      ctx.fillText(segment.text, cursorX, textY)
+      cursorX += ctx.measureText(segment.text).width
+    })
+  }
+
   const asOf = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   ctx.fillStyle = '#dce4ef'
   ctx.font = '750 24px Inter, ui-sans-serif, system-ui, sans-serif'
