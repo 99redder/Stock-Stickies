@@ -297,7 +297,7 @@ export default function NoteCard({
                     setNotes(notes.map(n => n.id === note.id ? { ...n, text: newText } : n));
                 }}
                 placeholder="Notes..."
-                className="w-full h-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-700"
+                className="w-full h-full bg-transparent border-none outline-none resize-none text-xs leading-snug text-gray-800 placeholder-gray-700"
                 style={{ minHeight: '100px' }}
                 maxLength={MAX_CONTENT_LENGTH}
             />
