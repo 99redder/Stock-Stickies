@@ -255,7 +255,7 @@ const firebaseConfig = {
         // explicit "Unassigned" bucket rather than silently landing in a real account.
         const getNoteAccount = (note) =>
             ACCOUNT_IDS.includes(note?.account) ? note.account : UNASSIGNED_ACCOUNT_ID;
-        const getDefaultAccountLabel = (accountId) =>
+        const getAccountLabel = (accountId) =>
             ACCOUNTS.find(a => a.id === accountId)?.label || 'Unassigned';
 
         const sanitizeAccountThemes = (value) => {
@@ -622,24 +622,18 @@ const firebaseConfig = {
             const [accountThemes, setAccountThemes] = useState({});
             const [editingAccountTheme, setEditingAccountTheme] = useState(null);
             const [tempAccountTheme, setTempAccountTheme] = useState('');
-            const getAccountLabel = useCallback((accountId) =>
-                accountThemes[accountId] || getDefaultAccountLabel(accountId),
-            [accountThemes]);
-            const displayAccounts = useMemo(() => ACCOUNTS.map(account => ({
-                ...account,
-                label: getAccountLabel(account.id)
-            })), [getAccountLabel]);
+            const getAccountTheme = (accountId) => accountThemes[accountId] || '';
             const beginEditingAccountTheme = (accountId) => {
                 if (!ACCOUNT_IDS.includes(accountId)) return;
                 setEditingAccountTheme(accountId);
-                setTempAccountTheme(getAccountLabel(accountId));
+                setTempAccountTheme(getAccountTheme(accountId));
             };
             const saveAccountTheme = (accountId) => {
                 if (!ACCOUNT_IDS.includes(accountId)) return;
                 const title = tempAccountTheme.trim().slice(0, MAX_ACCOUNT_THEME_LENGTH);
                 setAccountThemes(current => {
                     const next = { ...current };
-                    if (!title || title === getDefaultAccountLabel(accountId)) delete next[accountId];
+                    if (!title) delete next[accountId];
                     else next[accountId] = title;
                     return next;
                 });
@@ -3586,7 +3580,7 @@ const firebaseConfig = {
                 ].sort((a, b) => b.value - a.value);
             // isCashHolding closes over colorLabels, which is already declared here.
             // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [portfolioData, portfolioAccountFilter, colorLabels, getAccountLabel]);
+            }, [portfolioData, portfolioAccountFilter, colorLabels]);
             const portfolioMapTiles = useMemo(() => {
                 const cashPositions = portfolioData.filter(isCashHolding);
                 const stockPositions = portfolioData.filter(h => !isCashHolding(h));
@@ -3711,7 +3705,8 @@ const firebaseConfig = {
                     accounts: [
                         ...ACCOUNTS.map(a => ({
                             id: a.id,
-                            label: getAccountLabel(a.id),
+                            label: a.label,
+                            theme: getAccountTheme(a.id) || null,
                             strategy: a.strategy,
                             marketValue: Number((accountTotals[a.id]?.value || 0).toFixed(2)),
                             knownCostBasis: Number(allPortfolioData
@@ -3791,7 +3786,7 @@ const firebaseConfig = {
                     })),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, getAccountLabel]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, accountThemes]);
 
             // Markdown snapshot of whatever the Portfolio tab is currently showing, for
             // pasting into an external LLM. Follows the account filter, exactly like the
@@ -3812,6 +3807,9 @@ const firebaseConfig = {
 
                 lines.push('## Totals');
                 lines.push(`- Market value: ${money(totalPortfolioValue)}`);
+                if (portfolioAccountFilter !== 'all' && getAccountTheme(portfolioAccountFilter)) {
+                    lines.push(`- Account theme: ${getAccountTheme(portfolioAccountFilter)}`);
+                }
                 lines.push(`- Positions: ${portfolioData.length}`);
                 if (cashPortfolioValue > 0) {
                     const cashPct = totalPortfolioValue > 0 ? (cashPortfolioValue / totalPortfolioValue) * 100 : 0;
@@ -3833,13 +3831,13 @@ const firebaseConfig = {
                     lines.push('## Accounts');
                     lines.push('Each account is run with a different intent, so judge a position against the account holding it.');
                     lines.push('');
-                    lines.push('| Account | Intent | Market value | % of total | Positions | CSP obligation |');
-                    lines.push('|---|---|---|---|---|---|');
+                    lines.push('| Account | Theme | Intent | Market value | % of total | Positions | CSP obligation |');
+                    lines.push('|---|---|---|---|---|---|---|');
                     presentAccountIds.forEach(id => {
                         const value = accountTotals[id]?.value || 0;
                         const pct = grandPortfolioValue > 0 ? (value / grandPortfolioValue) * 100 : 0;
                         const intent = ACCOUNTS.find(a => a.id === id)?.strategy || 'Not yet assigned to an account.';
-                        lines.push(`| ${getAccountLabel(id)} | ${intent} | ${money(value)} | ${pct.toFixed(1)}% | ${accountTotals[id]?.positionCount || 0} | ${money(putObligationByAccount[id] || 0)} |`);
+                        lines.push(`| ${getAccountLabel(id)} | ${getAccountTheme(id) || '—'} | ${intent} | ${money(value)} | ${pct.toFixed(1)}% | ${accountTotals[id]?.positionCount || 0} | ${money(putObligationByAccount[id] || 0)} |`);
                     });
                     lines.push('');
                 }
@@ -3971,7 +3969,7 @@ const firebaseConfig = {
                     updateNoteTitle={updateNoteTitle}
                     updateNoteShares={updateNoteShares}
                     updateNoteAccount={updateNoteAccount}
-                    accounts={displayAccounts}
+                    accounts={ACCOUNTS}
                     accountIds={ACCOUNT_IDS}
                     isUnlocked={!!unlockedNotes[note.id]}
                     toggleNoteLock={toggleNoteLock}
@@ -5210,7 +5208,7 @@ const firebaseConfig = {
                                                             className="w-48 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700"
                                                         >
                                                             <option value="" disabled>Select account</option>
-                                                            {displayAccounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                                            {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                                                         </select>
                                                         <span className="text-gray-600">account</span>
                                                     </div>
@@ -5517,7 +5515,7 @@ const firebaseConfig = {
                                 <label className="block">
                                     <span className={`mb-1 block text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Account</span>
                                     <select value={newPutAccount} onChange={(e) => setNewPutAccount(e.target.value)} className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} title="Account this put is written in">
-                                        {displayAccounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                        {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                                     </select>
                                 </label>
                             </div>
@@ -6645,8 +6643,12 @@ const firebaseConfig = {
                                         >
                                             {isCollapsed ? <ChevronRight size={20}/> : <ChevronDown size={20}/>}
                                         </button>
-                                        {editingAccountTheme === accountId ? (
-                                                <span className="flex min-w-0 items-center gap-1.5">
+                                        <span className="truncate font-semibold text-lg">{getAccountLabel(accountId)}</span>
+                                        <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({accountNotes.length})</span>
+                                        {ACCOUNT_IDS.includes(accountId) && (
+                                            <span className={`ml-2 flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 ${darkMode ? 'border-purple-400/40 bg-purple-500/10' : 'border-purple-200 bg-purple-50'}`}>
+                                                <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>Theme</span>
+                                                {editingAccountTheme === accountId ? (<>
                                                     <input
                                                         autoFocus
                                                         value={tempAccountTheme}
@@ -6659,16 +6661,28 @@ const firebaseConfig = {
                                                                 setTempAccountTheme('');
                                                             }
                                                         }}
-                                                        className={`min-w-0 max-w-sm rounded border px-2 py-1 text-base font-semibold outline-none focus:ring-2 focus:ring-blue-500 ${darkMode ? 'border-gray-600 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
-                                                        aria-label={`Theme title for ${getDefaultAccountLabel(accountId)}`}
+                                                        placeholder="Add a theme"
+                                                        className={`w-44 min-w-0 rounded border px-2 py-0.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500 ${darkMode ? 'border-gray-600 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
+                                                        aria-label={`Theme for ${getAccountLabel(accountId)}`}
                                                     />
                                                     <button type="button" onClick={() => saveAccountTheme(accountId)} className="rounded p-1 text-green-600 hover:bg-green-500/10" title="Save theme title"><Check size={18}/></button>
                                                     <button type="button" onClick={() => { setEditingAccountTheme(null); setTempAccountTheme(''); }} className="rounded p-1 text-gray-500 hover:bg-gray-500/10" title="Cancel"><X size={18}/></button>
-                                                </span>
-                                        ) : (
-                                            <span className="truncate font-semibold text-lg">{getAccountLabel(accountId)}</span>
+                                                </>) : (<>
+                                                    <span className={`max-w-56 truncate text-sm font-semibold ${getAccountTheme(accountId) ? '' : 'italic opacity-60'}`}>
+                                                        {getAccountTheme(accountId) || 'Not set'}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => beginEditingAccountTheme(accountId)}
+                                                        className={`shrink-0 rounded p-1 ${darkMode ? 'text-purple-300 hover:bg-purple-400/10' : 'text-purple-700 hover:bg-purple-100'}`}
+                                                        title={`Edit theme for ${getAccountLabel(accountId)}`}
+                                                        aria-label={`Edit theme for ${getAccountLabel(accountId)}`}
+                                                    >
+                                                        <Edit2 size={15}/>
+                                                    </button>
+                                                </>)}
+                                            </span>
                                         )}
-                                        <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({accountNotes.length})</span>
                                         <span className={`ml-auto text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                             {accountValue > 0 && (
                                                 <span className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -6696,17 +6710,6 @@ const firebaseConfig = {
                                                 </span>
                                             )}
                                         </span>
-                                        {ACCOUNT_IDS.includes(accountId) && editingAccountTheme !== accountId && (
-                                            <button
-                                                type="button"
-                                                onClick={() => beginEditingAccountTheme(accountId)}
-                                                className={`shrink-0 rounded p-2 ${darkMode ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}
-                                                title={`Edit ${getDefaultAccountLabel(accountId)} theme title`}
-                                                aria-label={`Edit ${getDefaultAccountLabel(accountId)} theme title`}
-                                            >
-                                                <Edit2 size={17}/>
-                                            </button>
-                                        )}
                                     </div>
                                     {!isCollapsed && (
                                         accountNotes.length > 0 ? (
@@ -6765,6 +6768,12 @@ const firebaseConfig = {
                                             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                                 {portfolioAccountFilter === 'all' ? 'Total Portfolio Value' : `${getAccountLabel(portfolioAccountFilter)} Value`}
                                             </p>
+                                            {portfolioAccountFilter !== 'all' && getAccountTheme(portfolioAccountFilter) && (
+                                                <div className={`mt-1 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${darkMode ? 'border-purple-400/40 bg-purple-500/10 text-purple-200' : 'border-purple-200 bg-purple-50 text-purple-800'}`}>
+                                                    <span className="text-[9px] font-bold uppercase tracking-wider opacity-75">Theme</span>
+                                                    <span className="font-semibold">{getAccountTheme(portfolioAccountFilter)}</span>
+                                                </div>
+                                            )}
                                             <p className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} ${hidePortfolioValues ? 'blur-md select-none' : ''}`}>
                                                 ${totalPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                                             </p>
@@ -6877,6 +6886,14 @@ const firebaseConfig = {
                                                     <div className="text-sm font-semibold">
                                                         {accountId === 'all' ? 'All Accounts' : getAccountLabel(accountId)}
                                                     </div>
+                                                    {accountId !== 'all' && getAccountTheme(accountId) && (
+                                                        <div className={`my-1 rounded border px-1.5 py-0.5 text-[10px] ${isActive
+                                                            ? 'border-current/30 bg-white/10'
+                                                            : (darkMode ? 'border-purple-400/30 bg-purple-500/10 text-purple-200' : 'border-purple-200 bg-purple-50 text-purple-700')}`}>
+                                                            <span className="mr-1 font-bold uppercase tracking-wider opacity-75">Theme</span>
+                                                            <span className="font-semibold">{getAccountTheme(accountId)}</span>
+                                                        </div>
+                                                    )}
                                                     <div className={`text-xs ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                                         ${value.toLocaleString(undefined, {maximumFractionDigits: 0})} · {count} position{count !== 1 ? 's' : ''}
                                                     </div>
@@ -6933,11 +6950,19 @@ const firebaseConfig = {
                                                     </div>
                                                     <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full ${darkMode ? 'bg-green-400' : 'bg-green-500'} border-2 ${darkMode ? 'border-gray-800' : 'border-white'}`} style={{boxShadow: darkMode ? '0 0 6px rgba(74, 222, 128, 0.6)' : 'none'}}></div>
                                                 </div>
-                                                <h3 className={`text-xl font-bold tracking-tight portfolio-title ${darkMode ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400' : 'text-gray-800'}`} style={darkMode ? {textShadow: '0 0 20px rgba(6, 182, 212, 0.4)'} : {}}>
-                                                    {nickname || currentUser?.split('@')[0] || 'User'}'s Portfolio
-                                                    {portfolioAccountFilter !== 'all' && ` — ${getAccountLabel(portfolioAccountFilter)}`}
-                                                    <span className="snapshot-only snapshot-timestamp text-sm font-semibold ml-2"></span>
-                                                </h3>
+                                                <div>
+                                                    <h3 className={`text-xl font-bold tracking-tight portfolio-title ${darkMode ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400' : 'text-gray-800'}`} style={darkMode ? {textShadow: '0 0 20px rgba(6, 182, 212, 0.4)'} : {}}>
+                                                        {nickname || currentUser?.split('@')[0] || 'User'}'s Portfolio
+                                                        {portfolioAccountFilter !== 'all' && ` — ${getAccountLabel(portfolioAccountFilter)}`}
+                                                        <span className="snapshot-only snapshot-timestamp text-sm font-semibold ml-2"></span>
+                                                    </h3>
+                                                    {portfolioAccountFilter !== 'all' && getAccountTheme(portfolioAccountFilter) && (
+                                                        <div className={`mt-1 inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs ${darkMode ? 'border-purple-400/40 bg-purple-500/10 text-purple-200' : 'border-purple-200 bg-purple-50 text-purple-800'}`}>
+                                                            <span className="text-[9px] font-bold uppercase tracking-wider opacity-75">Theme</span>
+                                                            <span className="font-semibold">{getAccountTheme(portfolioAccountFilter)}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div className="flex flex-wrap items-center justify-end gap-3">
                                                 <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
