@@ -8,6 +8,7 @@ const ResponsiveGridLayout = WidthProvider(Responsive)
 
 const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v1'
 const MAX_SYMBOL_LENGTH = 24
+const SUBSCRIPTION_PROBE_DELAY_MS = 350
 
 const DEFAULT_SYMBOLS = [
     'AMZN', 'GOOG', 'TSLA', 'META', 'AAPL', 'NVDA',
@@ -131,13 +132,18 @@ const formatSigned = (value, digits = 2) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
 }
 
-const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, editing, onBeginEdit, onCancelEdit, onSaveEdit, onRemove }) {
+const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabled, editing, onBeginEdit, onCancelEdit, onSaveEdit, onRemove }) {
     const [draft, setDraft] = useState(widget.symbol)
     const price = quote?.price
     const change = quote?.change
     const changePercent = quote?.changePercent
     const direction = Number.isFinite(change) ? (change >= 0 ? 'up' : 'down') : 'flat'
     const isFresh = Boolean(quote?.isFresh)
+    const feedLabel = isFresh
+        ? 'LIVE'
+        : streamEnabled
+            ? (quote?.snapshotAt ? 'SNAPSHOT / STREAM' : 'STREAM READY')
+            : (quote?.snapshotAt ? 'SNAPSHOT ONLY' : 'QUEUED')
 
     const save = () => {
         const next = cleanSymbol(draft)
@@ -191,7 +197,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, editing, on
             </div>
 
             <div className="quote-widget-footer">
-                <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`}>{isFresh ? 'LIVE' : quote?.snapshotAt ? 'SNAPSHOT' : 'PENDING'}</span>
+                <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`}>{feedLabel}</span>
                 <span>{quote?.events ? `${quote.events.toLocaleString()} ticks` : ''}</span>
             </div>
         </div>
@@ -199,6 +205,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, editing, on
 }, (previous, next) => (
     previous.widget === next.widget
     && previous.quote === next.quote
+    && previous.streamEnabled === next.streamEnabled
     && previous.editing === next.editing
 ))
 
@@ -214,6 +221,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
     const [newSymbol, setNewSymbol] = useState('')
     const [layoutLocked, setLayoutLocked] = useState(false)
     const [streamPaused, setStreamPaused] = useState(false)
+    const [streamedSymbols, setStreamedSymbols] = useState([])
+    const [subscriptionNotice, setSubscriptionNotice] = useState('')
     const [stats, setStats] = useState({ totalEvents: 0, eventsPerMinute: 0, eventsPerSecond: 0, liveSymbols: 0, peakPerSecond: 0 })
 
     const socketRef = useRef(null)
@@ -226,6 +235,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
     const pausedRef = useRef(false)
     const reconnectTimerRef = useRef(null)
     const snapshotLoadedRef = useRef(new Set())
+    const subscriptionTimerRef = useRef(null)
+    const lastSubscriptionAttemptRef = useRef('')
+    const subscriptionCapRef = useRef(null)
 
     const symbolKey = useMemo(() => widgets.map((widget) => providerSymbol(widget.symbol)).sort().join('|'), [widgets])
 
@@ -273,7 +285,12 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
             if (!active) return
             setConnectionState('connecting')
             setConnectionError('')
+            setSubscriptionNotice('')
+            setStreamedSymbols([])
             subscribedSymbolsRef.current = new Set()
+            subscriptionCapRef.current = null
+            lastSubscriptionAttemptRef.current = ''
+            if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
             const socket = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`)
             socketRef.current = socket
 
@@ -284,14 +301,27 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
             }
 
             socket.onmessage = (event) => {
-                if (!active || pausedRef.current) return
+                if (!active) return
                 try {
                     const message = JSON.parse(event.data)
                     if (message.type === 'error') {
-                        setConnectionError(message.msg || 'Finnhub stream error')
+                        const providerMessage = message.msg || 'Finnhub stream error'
+                        if (/too many symbols/i.test(providerMessage)) {
+                            if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
+                            const rejectedSymbol = lastSubscriptionAttemptRef.current
+                            if (rejectedSymbol) subscribedSymbolsRef.current.delete(rejectedSymbol)
+                            const accepted = [...subscribedSymbolsRef.current]
+                            subscriptionCapRef.current = accepted.length
+                            setStreamedSymbols(accepted)
+                            setSubscriptionNotice(`Finnhub accepted ${accepted.length} simultaneous symbols on this API key. The remaining widgets will continue with paced snapshots.`)
+                            setConnectionError('')
+                        } else {
+                            setConnectionError(providerMessage)
+                        }
                         return
                     }
                     if (message.type !== 'trade' || !Array.isArray(message.data)) return
+                    if (pausedRef.current) return
 
                     message.data.forEach((trade) => {
                         const symbol = cleanSymbol(trade.s)
@@ -325,6 +355,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
                 if (!active) return
                 socketRef.current = null
                 subscribedSymbolsRef.current = new Set()
+                setStreamedSymbols([])
                 setConnectionState('reconnecting')
                 reconnectTimerRef.current = setTimeout(connect, 3000)
             }
@@ -334,10 +365,13 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
         return () => {
             active = false
             if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+            if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
             const socket = socketRef.current
             socketRef.current = null
             if (socket) socket.close()
             subscribedSymbolsRef.current = new Set()
+            subscriptionCapRef.current = null
+            lastSubscriptionAttemptRef.current = ''
         }
     }, [apiKey])
 
@@ -347,18 +381,42 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
         const wanted = new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter(Boolean))
         const subscribed = subscribedSymbolsRef.current
 
+        if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
+
         subscribed.forEach((symbol) => {
             if (!wanted.has(symbol)) {
                 socket.send(JSON.stringify({ type: 'unsubscribe', symbol }))
                 subscribed.delete(symbol)
             }
         })
-        wanted.forEach((symbol) => {
-            if (!subscribed.has(symbol)) {
-                socket.send(JSON.stringify({ type: 'subscribe', symbol }))
-                subscribed.add(symbol)
-            }
-        })
+        setStreamedSymbols([...subscribed])
+
+        const missing = [...wanted].filter((symbol) => !subscribed.has(symbol))
+        const knownCap = subscriptionCapRef.current
+        const availableSlots = knownCap === null ? missing.length : Math.max(0, knownCap - subscribed.size)
+        const queue = missing.slice(0, availableSlots)
+
+        if (knownCap !== null) {
+            const snapshotOnlyCount = Math.max(0, wanted.size - Math.min(wanted.size, knownCap))
+            setSubscriptionNotice(snapshotOnlyCount
+                ? `Finnhub accepted ${knownCap} simultaneous symbols on this API key. ${snapshotOnlyCount} widget${snapshotOnlyCount === 1 ? '' : 's'} will use paced snapshots.`
+                : '')
+        }
+
+        const subscribeNext = () => {
+            if (queue.length === 0 || socket.readyState !== WebSocket.OPEN) return
+            const symbol = queue.shift()
+            lastSubscriptionAttemptRef.current = symbol
+            socket.send(JSON.stringify({ type: 'subscribe', symbol }))
+            subscribed.add(symbol)
+            setStreamedSymbols([...subscribed])
+            subscriptionTimerRef.current = setTimeout(subscribeNext, SUBSCRIPTION_PROBE_DELAY_MS)
+        }
+        subscribeNext()
+
+        return () => {
+            if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
+        }
     }, [symbolKey, socketEpoch, widgets])
 
     useEffect(() => {
@@ -442,6 +500,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
 
     const displayedConnectionState = apiKey ? connectionState : 'missing-key'
     const connectedClass = displayedConnectionState === 'connected' ? 'connected' : displayedConnectionState === 'connecting' || displayedConnectionState === 'reconnecting' ? 'connecting' : 'disconnected'
+    const streamedSymbolSet = useMemo(() => new Set(streamedSymbols), [streamedSymbols])
+    const uniqueSymbolCount = useMemo(() => new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter(Boolean)).size, [widgets])
 
     return (
         <section className="finnhub-diagnostic-shell">
@@ -453,6 +513,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
 
                 <div className="diagnostic-stats">
                     <div><span>WIDGETS</span><strong>{widgets.length}</strong></div>
+                    <div><span>STREAMED</span><strong>{streamedSymbols.length}/{uniqueSymbolCount}</strong></div>
                     <div><span>LIVE ≤5S</span><strong>{stats.liveSymbols}</strong></div>
                     <div><span>EVENTS/MIN</span><strong>{stats.eventsPerMinute.toLocaleString()}</strong></div>
                     <div><span>EVENTS/SEC</span><strong>{stats.eventsPerSecond.toLocaleString()}</strong></div>
@@ -489,6 +550,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
                 <div className="diagnostic-alert">Add your Finnhub API key in the Stock Stickies header to start the diagnostic stream.</div>
             )}
             {connectionError && <div className="diagnostic-alert diagnostic-alert-error">{connectionError}</div>}
+            {subscriptionNotice && <div className="diagnostic-alert diagnostic-alert-cap">{subscriptionNotice}</div>}
 
             <div className="finnhub-grid-canvas">
                 <ResponsiveGridLayout
@@ -513,6 +575,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
                             <QuoteWidget
                                 widget={widget}
                                 quote={quotes[providerSymbol(widget.symbol)]}
+                                streamEnabled={streamedSymbolSet.has(providerSymbol(widget.symbol))}
                                 editing={editingWidgetId === widget.id}
                                 onBeginEdit={setEditingWidgetId}
                                 onCancelEdit={() => setEditingWidgetId(null)}

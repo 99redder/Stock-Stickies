@@ -123,6 +123,7 @@
     font-size: 10px;
 }
 .diagnostic-alert-error { border-color: #78323a; background: #2a1719; color: #ef7783; }
+.diagnostic-alert-cap { border-color: #8b692f; background: #2b2317; color: #dfb96d; }
 
 .finnhub-grid-canvas {
     min-height: 720px;
