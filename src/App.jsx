@@ -250,12 +250,22 @@ const firebaseConfig = {
         const ACCOUNT_IDS = ACCOUNTS.map(a => a.id);
         const DEFAULT_ACCOUNT_ID = 'individual';
         const UNASSIGNED_ACCOUNT_ID = 'unassigned';
+        const MAX_ACCOUNT_THEME_LENGTH = 60;
         // Notes created before accounts existed have no `account` field. They stay in an
         // explicit "Unassigned" bucket rather than silently landing in a real account.
         const getNoteAccount = (note) =>
             ACCOUNT_IDS.includes(note?.account) ? note.account : UNASSIGNED_ACCOUNT_ID;
-        const getAccountLabel = (accountId) =>
+        const getDefaultAccountLabel = (accountId) =>
             ACCOUNTS.find(a => a.id === accountId)?.label || 'Unassigned';
+
+        const sanitizeAccountThemes = (value) => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+            return Object.fromEntries(
+                Object.entries(value)
+                    .filter(([accountId, title]) => ACCOUNT_IDS.includes(accountId) && typeof title === 'string' && title.trim())
+                    .map(([accountId, title]) => [accountId, title.trim().slice(0, MAX_ACCOUNT_THEME_LENGTH)])
+            );
+        };
 
         // Input validation constants
         const MAX_TITLE_LENGTH = 10; // For ticker symbols
@@ -609,6 +619,33 @@ const firebaseConfig = {
             const [tempLabel, setTempLabel] = useState('');
             const [collapsedCategories, setCollapsedCategories] = useState({});
             const [collapsedAccounts, setCollapsedAccounts] = useState({});
+            const [accountThemes, setAccountThemes] = useState({});
+            const [editingAccountTheme, setEditingAccountTheme] = useState(null);
+            const [tempAccountTheme, setTempAccountTheme] = useState('');
+            const getAccountLabel = useCallback((accountId) =>
+                accountThemes[accountId] || getDefaultAccountLabel(accountId),
+            [accountThemes]);
+            const displayAccounts = useMemo(() => ACCOUNTS.map(account => ({
+                ...account,
+                label: getAccountLabel(account.id)
+            })), [getAccountLabel]);
+            const beginEditingAccountTheme = (accountId) => {
+                if (!ACCOUNT_IDS.includes(accountId)) return;
+                setEditingAccountTheme(accountId);
+                setTempAccountTheme(getAccountLabel(accountId));
+            };
+            const saveAccountTheme = (accountId) => {
+                if (!ACCOUNT_IDS.includes(accountId)) return;
+                const title = tempAccountTheme.trim().slice(0, MAX_ACCOUNT_THEME_LENGTH);
+                setAccountThemes(current => {
+                    const next = { ...current };
+                    if (!title || title === getDefaultAccountLabel(accountId)) delete next[accountId];
+                    else next[accountId] = title;
+                    return next;
+                });
+                setEditingAccountTheme(null);
+                setTempAccountTheme('');
+            };
             // Custom sector buckets and each ticker's assignment (ticker -> theme name).
             // Both persisted to Firestore alongside categories.
             const [sectorThemes, setSectorThemes] = useState(DEFAULT_SECTOR_THEMES);
@@ -953,6 +990,7 @@ const firebaseConfig = {
                                 nextId: data.nextId || 1,
                                 collapsedCategories: data.collapsedCategories || {},
                                 collapsedAccounts: data.collapsedAccounts || {},
+                                accountThemes: sanitizeAccountThemes(data.accountThemes),
                                 sectorThemes: sanitizeSectorThemes(data.sectorThemes),
                                 sectorAssignments: sanitizeSectorAssignments(data.sectorAssignments),
                                 darkMode: data.darkMode || false,
@@ -988,6 +1026,7 @@ const firebaseConfig = {
                             setNextId(incoming.nextId);
                             setCollapsedCategories(incoming.collapsedCategories);
                             setCollapsedAccounts(incoming.collapsedAccounts);
+                            setAccountThemes(incoming.accountThemes);
                             setSectorThemes(incoming.sectorThemes);
                             setSectorAssignments(incoming.sectorAssignments);
                             setDarkMode(incoming.darkMode);
@@ -1070,6 +1109,7 @@ const firebaseConfig = {
                             nextId,
                             collapsedCategories,
                             collapsedAccounts,
+                            accountThemes,
                             sectorThemes,
                             sectorAssignments,
                             darkMode,
@@ -1132,7 +1172,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1150,6 +1190,7 @@ const firebaseConfig = {
                             nextId,
                             collapsedCategories,
                             collapsedAccounts,
+                            accountThemes,
                             sectorThemes,
                             sectorAssignments,
                             darkMode,
@@ -1180,7 +1221,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1383,6 +1424,7 @@ const firebaseConfig = {
                         nextId,
                         collapsedCategories,
                         collapsedAccounts,
+                        accountThemes,
                         sectorThemes,
                         sectorAssignments,
                         darkMode,
@@ -2086,6 +2128,7 @@ const firebaseConfig = {
                 setMarketauxApiKey('');
                 // Reset categories to defaults on logout
                 setCategories(DEFAULT_COLORS);
+                setAccountThemes({});
                 setSectorThemes(DEFAULT_SECTOR_THEMES);
                 setSectorAssignments({});
                 // Clear localStorage cache on logout
@@ -2388,6 +2431,7 @@ const firebaseConfig = {
                         nextId: data.nextId || 1,
                         collapsedCategories: data.collapsedCategories || {},
                         collapsedAccounts: data.collapsedAccounts || {},
+                        accountThemes: sanitizeAccountThemes(data.accountThemes),
                         sectorThemes: sanitizeSectorThemes(data.sectorThemes),
                         sectorAssignments: sanitizeSectorAssignments(data.sectorAssignments),
                         darkMode: !!data.darkMode,
@@ -3542,7 +3586,7 @@ const firebaseConfig = {
                 ].sort((a, b) => b.value - a.value);
             // isCashHolding closes over colorLabels, which is already declared here.
             // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [portfolioData, portfolioAccountFilter, colorLabels]);
+            }, [portfolioData, portfolioAccountFilter, colorLabels, getAccountLabel]);
             const portfolioMapTiles = useMemo(() => {
                 const cashPositions = portfolioData.filter(isCashHolding);
                 const stockPositions = portfolioData.filter(h => !isCashHolding(h));
@@ -3667,7 +3711,7 @@ const firebaseConfig = {
                     accounts: [
                         ...ACCOUNTS.map(a => ({
                             id: a.id,
-                            label: a.label,
+                            label: getAccountLabel(a.id),
                             strategy: a.strategy,
                             marketValue: Number((accountTotals[a.id]?.value || 0).toFixed(2)),
                             knownCostBasis: Number(allPortfolioData
@@ -3747,7 +3791,7 @@ const firebaseConfig = {
                     })),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, getAccountLabel]);
 
             // Markdown snapshot of whatever the Portfolio tab is currently showing, for
             // pasting into an external LLM. Follows the account filter, exactly like the
@@ -3927,7 +3971,7 @@ const firebaseConfig = {
                     updateNoteTitle={updateNoteTitle}
                     updateNoteShares={updateNoteShares}
                     updateNoteAccount={updateNoteAccount}
-                    accounts={ACCOUNTS}
+                    accounts={displayAccounts}
                     accountIds={ACCOUNT_IDS}
                     isUnlocked={!!unlockedNotes[note.id]}
                     toggleNoteLock={toggleNoteLock}
@@ -5166,7 +5210,7 @@ const firebaseConfig = {
                                                             className="w-48 bg-white bg-opacity-50 border border-gray-400 rounded px-3 py-2 text-lg text-gray-700"
                                                         >
                                                             <option value="" disabled>Select account</option>
-                                                            {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                                            {displayAccounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                                                         </select>
                                                         <span className="text-gray-600">account</span>
                                                     </div>
@@ -5473,7 +5517,7 @@ const firebaseConfig = {
                                 <label className="block">
                                     <span className={`mb-1 block text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Account</span>
                                     <select value={newPutAccount} onChange={(e) => setNewPutAccount(e.target.value)} className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} title="Account this put is written in">
-                                        {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                        {displayAccounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                                     </select>
                                 </label>
                             </div>
@@ -6590,16 +6634,40 @@ const firebaseConfig = {
                             const isCollapsed = !!collapsedAccounts[accountId];
                             return (
                                 <div key={accountId} className="mb-6">
-                                    <button
-                                        type="button"
-                                        onClick={() => setCollapsedAccounts(current => ({...current, [accountId]: !current[accountId]}))}
-                                        aria-expanded={!isCollapsed}
-                                        aria-controls={`account-notes-${accountId}`}
-                                        className={`flex w-full cursor-pointer items-center gap-2 rounded-lg p-3 mb-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-800 hover:bg-gray-50'}`}
-                                        title={ACCOUNTS.find(a => a.id === accountId)?.strategy || 'Notes not assigned to an account'}
-                                    >
-                                        {isCollapsed ? <ChevronRight size={20}/> : <ChevronDown size={20}/>}
-                                        <span className="font-semibold text-lg">{getAccountLabel(accountId)}</span>
+                                    <div className={`flex w-full items-center gap-2 rounded-lg p-3 mb-3 transition-colors ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCollapsedAccounts(current => ({...current, [accountId]: !current[accountId]}))}
+                                            aria-expanded={!isCollapsed}
+                                            aria-controls={`account-notes-${accountId}`}
+                                            className="shrink-0 rounded p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                                            title={ACCOUNTS.find(a => a.id === accountId)?.strategy || 'Notes not assigned to an account'}
+                                        >
+                                            {isCollapsed ? <ChevronRight size={20}/> : <ChevronDown size={20}/>}
+                                        </button>
+                                        {editingAccountTheme === accountId ? (
+                                                <span className="flex min-w-0 items-center gap-1.5">
+                                                    <input
+                                                        autoFocus
+                                                        value={tempAccountTheme}
+                                                        maxLength={MAX_ACCOUNT_THEME_LENGTH}
+                                                        onChange={(event) => setTempAccountTheme(event.target.value)}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === 'Enter') saveAccountTheme(accountId);
+                                                            if (event.key === 'Escape') {
+                                                                setEditingAccountTheme(null);
+                                                                setTempAccountTheme('');
+                                                            }
+                                                        }}
+                                                        className={`min-w-0 max-w-sm rounded border px-2 py-1 text-base font-semibold outline-none focus:ring-2 focus:ring-blue-500 ${darkMode ? 'border-gray-600 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
+                                                        aria-label={`Theme title for ${getDefaultAccountLabel(accountId)}`}
+                                                    />
+                                                    <button type="button" onClick={() => saveAccountTheme(accountId)} className="rounded p-1 text-green-600 hover:bg-green-500/10" title="Save theme title"><Check size={18}/></button>
+                                                    <button type="button" onClick={() => { setEditingAccountTheme(null); setTempAccountTheme(''); }} className="rounded p-1 text-gray-500 hover:bg-gray-500/10" title="Cancel"><X size={18}/></button>
+                                                </span>
+                                        ) : (
+                                            <span className="truncate font-semibold text-lg">{getAccountLabel(accountId)}</span>
+                                        )}
                                         <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({accountNotes.length})</span>
                                         <span className={`ml-auto text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                             {accountValue > 0 && (
@@ -6628,7 +6696,18 @@ const firebaseConfig = {
                                                 </span>
                                             )}
                                         </span>
-                                    </button>
+                                        {ACCOUNT_IDS.includes(accountId) && editingAccountTheme !== accountId && (
+                                            <button
+                                                type="button"
+                                                onClick={() => beginEditingAccountTheme(accountId)}
+                                                className={`shrink-0 rounded p-2 ${darkMode ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}
+                                                title={`Edit ${getDefaultAccountLabel(accountId)} theme title`}
+                                                aria-label={`Edit ${getDefaultAccountLabel(accountId)} theme title`}
+                                            >
+                                                <Edit2 size={17}/>
+                                            </button>
+                                        )}
+                                    </div>
                                     {!isCollapsed && (
                                         accountNotes.length > 0 ? (
                                             <div id={`account-notes-${accountId}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
