@@ -6,7 +6,7 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v2'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v3'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const MAX_SYMBOL_LENGTH = 24
@@ -75,7 +75,7 @@ const createGodelLayout = (widgets) => {
                 maxH: 5
             })
         })
-        y += Math.ceil(themedWidgets.length / 8) * 2 + 1
+        y += Math.ceil(themedWidgets.length / 8) * 2
     })
 
     return layout
