@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "deploy:cloudflare": "npm run build && wrangler pages deploy dist --project-name stock-stickies --branch main",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -32,6 +33,7 @@
     "globals": "^16.5.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "wrangler": "^4.126.0"
   }
 }
