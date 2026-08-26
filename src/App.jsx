@@ -72,6 +72,7 @@ import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
 import RobinhoodSync from './components/RobinhoodSync.jsx'
+import FinnhubDiagnosticDashboard from './components/FinnhubDiagnosticDashboard.jsx'
 
 const OWNER_FIREBASE_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
 
@@ -5952,7 +5953,7 @@ const firebaseConfig = {
 
                 <div className={`min-h-screen p-4 sm:p-6 lg:p-8 ${darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-100 to-gray-200'}`}>
                     <div className="flex flex-col xl:flex-row gap-6 max-w-full mx-auto items-stretch xl:items-start">
-                        <div className={`w-full min-w-0 xl:w-[77%]`}>
+                        <div className={`w-full min-w-0 ${mainTab === 'dashboard' ? 'xl:w-full' : 'xl:w-[77%]'}`}>
                         <div className="flex items-center justify-between gap-6 mb-4">
                             <div className="shrink-0">
                                 <div className="flex items-center gap-3">
@@ -6299,7 +6300,7 @@ const firebaseConfig = {
                         </div>
 
                         {/* Main Tab Navigation */}
-                        <div className={`flex gap-1 mb-6 p-0.5 rounded-lg w-full max-w-xl mx-auto ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+                        <div className={`flex gap-1 mb-6 p-0.5 rounded-lg w-full max-w-2xl mx-auto ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
                             <button
                                 onClick={() => setMainTab('notes')}
                                 className={`flex-1 py-2 px-6 rounded-lg font-semibold transition-all ${
@@ -6320,9 +6321,21 @@ const firebaseConfig = {
                             >
                                 Portfolio {portfolioData.length > 0 && `(${portfolioData.length})`}
                             </button>
+                            <button
+                                onClick={() => setMainTab('dashboard')}
+                                className={`flex-1 py-2 px-3 sm:px-6 rounded-lg font-semibold transition-all ${
+                                    mainTab === 'dashboard'
+                                        ? 'bg-gray-950 text-green-400 shadow ring-1 ring-green-500/50'
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                                }`}
+                            >
+                                Live Dashboard
+                            </button>
                         </div>
 
-                        {mainTab === 'notes' ? (
+                        {mainTab === 'dashboard' ? (
+                            <FinnhubDiagnosticDashboard apiKey={finnhubApiKey} />
+                        ) : mainTab === 'notes' ? (
                         <>
                         {!hideLegendPanel && (
                         <div className={`rounded-lg shadow-md p-3 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
