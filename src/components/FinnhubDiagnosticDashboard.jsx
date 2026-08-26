@@ -187,7 +187,10 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
                 </div>
             </div>
 
-            <div className="quote-widget-reading">
+            <div
+                key={quote?.events || 'no-live-ticks'}
+                className={`quote-widget-reading ${quote?.events ? 'quote-tick-blink' : ''}`}
+            >
                 <div className="quote-price">{Number.isFinite(price) ? `$${formatPrice(price)}` : 'WAITING'}</div>
                 <div className="quote-change">
                     {Number.isFinite(changePercent) && Number.isFinite(change)

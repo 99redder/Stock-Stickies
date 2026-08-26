@@ -217,6 +217,10 @@
     text-align: right;
 }
 
+.quote-up .quote-widget-reading.quote-tick-blink { animation: quote-tick-up 420ms ease-out; }
+.quote-down .quote-widget-reading.quote-tick-blink { animation: quote-tick-down 420ms ease-out; }
+.quote-flat .quote-widget-reading.quote-tick-blink { animation: quote-tick-flat 420ms ease-out; }
+
 .quote-price { color: #989898; font-size: clamp(12px, 9cqw, 20px); font-weight: 700; letter-spacing: -.05em; white-space: nowrap; }
 .quote-change { margin-top: 4px; color: #696969; font-size: clamp(8px, 5.4cqw, 12px); font-weight: 700; white-space: nowrap; }
 .quote-up .quote-price, .quote-up .quote-change { color: var(--terminal-green); }
@@ -261,6 +265,25 @@
 
 @keyframes terminal-pulse {
     50% { opacity: .35; }
+}
+
+@keyframes quote-tick-up {
+    0% { background: rgb(43 154 108 / 24%); filter: brightness(1.65); }
+    100% { background: transparent; filter: brightness(1); }
+}
+
+@keyframes quote-tick-down {
+    0% { background: rgb(223 64 80 / 24%); filter: brightness(1.65); }
+    100% { background: transparent; filter: brightness(1); }
+}
+
+@keyframes quote-tick-flat {
+    0% { background: rgb(212 152 55 / 20%); filter: brightness(1.5); }
+    100% { background: transparent; filter: brightness(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .quote-widget-reading.quote-tick-blink { animation: none !important; }
 }
 
 @media (max-width: 1050px) {
