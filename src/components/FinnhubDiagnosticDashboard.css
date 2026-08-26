@@ -17,9 +17,16 @@
     box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
 }
 
+.finnhub-diagnostic-shell.is-fullscreen {
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
 .finnhub-diagnostic-toolbar {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) auto auto;
+    grid-template-columns: minmax(220px, 1fr) auto auto auto;
     align-items: center;
     gap: 20px;
     padding: 11px 14px;
@@ -69,6 +76,27 @@
     font-weight: 800;
     letter-spacing: .09em;
     white-space: nowrap;
+}
+
+.diagnostic-exit {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 1px solid #555;
+    border-radius: 2px;
+    background: #181818;
+    color: #aaa;
+    font: 400 25px/1 Arial, sans-serif;
+    cursor: pointer;
+}
+
+.diagnostic-exit:hover,
+.diagnostic-exit:focus-visible {
+    border-color: var(--terminal-red);
+    outline: none;
+    background: #2a1719;
+    color: #ff8792;
 }
 
 .connection-light { width: 8px; height: 8px; border-radius: 999px; background: #666; }
@@ -287,7 +315,7 @@
 }
 
 @media (max-width: 1050px) {
-    .finnhub-diagnostic-toolbar { grid-template-columns: 1fr auto; }
+    .finnhub-diagnostic-toolbar { grid-template-columns: 1fr auto auto; }
     .diagnostic-stats { grid-column: 1 / -1; order: 3; overflow-x: auto; }
     .diagnostic-stats > div { flex: 1; }
 }

@@ -4793,6 +4793,16 @@ const firebaseConfig = {
                 );
             }
 
+            if (mainTab === 'dashboard') {
+                return (
+                    <FinnhubDiagnosticDashboard
+                        apiKey={finnhubApiKey}
+                        fullScreen
+                        onExit={() => setMainTab('notes')}
+                    />
+                );
+            }
+
             return (
                 <>
                 {quickStartOpen && (

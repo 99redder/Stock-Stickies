@@ -212,7 +212,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
     && previous.editing === next.editing
 ))
 
-export default function FinnhubDiagnosticDashboard({ apiKey }) {
+export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false, onExit }) {
     const [initial] = useState(() => loadSavedDashboard())
     const [widgets, setWidgets] = useState(initial.widgets)
     const [layouts, setLayouts] = useState(initial.layouts)
@@ -251,6 +251,15 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
     useEffect(() => {
         pausedRef.current = streamPaused
     }, [streamPaused])
+
+    useEffect(() => {
+        if (!onExit) return undefined
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') onExit()
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onExit])
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -507,7 +516,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
     const uniqueSymbolCount = useMemo(() => new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter(Boolean)).size, [widgets])
 
     return (
-        <section className="finnhub-diagnostic-shell">
+        <section className={`finnhub-diagnostic-shell ${fullScreen ? 'is-fullscreen' : ''}`}>
             <header className="finnhub-diagnostic-toolbar">
                 <div className="diagnostic-brand">
                     <div className="diagnostic-kicker">FINNHUB // STREAM DIAGNOSTIC</div>
@@ -528,6 +537,17 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
                     <span className={`connection-light ${connectedClass}`} />
                     <span>{displayedConnectionState.replace('-', ' ').toUpperCase()}</span>
                 </div>
+                {onExit && (
+                    <button
+                        type="button"
+                        className="diagnostic-exit"
+                        onClick={onExit}
+                        title="Return to Stock Stickies"
+                        aria-label="Close Live Dashboard and return to Stock Stickies"
+                    >
+                        ×
+                    </button>
+                )}
             </header>
 
             <div className="finnhub-diagnostic-controls">
