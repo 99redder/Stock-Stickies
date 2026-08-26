@@ -51,10 +51,14 @@ Sticky-Notes/
 ### Build & Deploy
 ```bash
 npm run dev        # Local dev server (Vite HMR)
-npm run build      # Produces dist/ — then push to GitHub Pages
+npm run build      # Produces dist/
+npm run deploy:cloudflare  # Build and deploy the production frontend to Cloudflare Pages
 npm run preview    # Preview dist/ locally
 ```
-GitHub Pages reads from the `main` branch. The `CNAME` file routes `www.stockstickies.com` to the Pages site.
+Cloudflare Pages (`stock-stickies`) is the primary production host for
+`stockstickies.com` and `www.stockstickies.com`. Deployments use Wrangler Direct Upload
+so they do not depend on GitHub Actions. GitHub Pages remains available through the
+manual **Fallback deploy to GitHub Pages** workflow; `CNAME` is retained for that fallback.
 
 ---
 
