@@ -6310,7 +6310,7 @@ const firebaseConfig = {
                         </div>
 
                         {/* Main Tab Navigation */}
-                        <div className={`flex gap-1 mb-6 p-0.5 rounded-lg w-full max-w-2xl mx-auto ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+                        <div className={`flex gap-3 mb-6 p-1 rounded-lg w-full max-w-2xl mx-auto ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
                             <button
                                 onClick={() => setMainTab('notes')}
                                 className={`flex-1 py-2 px-6 rounded-lg font-semibold transition-all ${

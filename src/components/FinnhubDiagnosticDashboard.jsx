@@ -7,6 +7,7 @@ import './FinnhubDiagnosticDashboard.css'
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
 const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v1'
+const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const MAX_SYMBOL_LENGTH = 24
 const SUBSCRIPTION_PROBE_DELAY_MS = 350
 
@@ -120,6 +121,45 @@ const loadSavedDashboard = () => {
     }
 }
 
+const loadCachedQuotes = () => {
+    const quotes = {}
+    const addCachedPrice = (symbol, quote, cachedAt) => {
+        const normalized = providerSymbol(symbol)
+        const price = Number(quote?.price)
+        if (!normalized || !Number.isFinite(price) || price <= 0) return
+        quotes[normalized] = {
+            price,
+            previousClose: Number.isFinite(Number(quote?.previousClose)) ? Number(quote.previousClose) : undefined,
+            change: Number.isFinite(Number(quote?.change)) ? Number(quote.change) : undefined,
+            changePercent: Number.isFinite(Number(quote?.changePercent)) ? Number(quote.changePercent) : undefined,
+            high: Number.isFinite(Number(quote?.high)) ? Number(quote.high) : undefined,
+            low: Number.isFinite(Number(quote?.low)) ? Number(quote.low) : undefined,
+            cachedAt: Number(cachedAt) || Date.now(),
+            isFresh: false,
+            events: 0
+        }
+    }
+
+    try {
+        const saved = JSON.parse(localStorage.getItem(QUOTE_CACHE_KEY) || 'null')
+        Object.entries(saved?.quotes || {}).forEach(([symbol, quote]) => addCachedPrice(symbol, quote, saved.savedAt))
+    } catch {
+        // A malformed cache should never prevent the dashboard from opening.
+    }
+
+    try {
+        const portfolioCache = JSON.parse(localStorage.getItem('portfolio_prices_cache') || 'null')
+        Object.entries(portfolioCache?.prices || {}).forEach(([symbol, price]) => {
+            const normalized = providerSymbol(symbol)
+            if (!quotes[normalized]) addCachedPrice(symbol, { price }, portfolioCache.timestamp)
+        })
+    } catch {
+        // Portfolio prices are an optional first-visit seed.
+    }
+
+    return quotes
+}
+
 const formatPrice = (value) => {
     if (!Number.isFinite(value)) return '—'
     if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -141,6 +181,8 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
     const isFresh = Boolean(quote?.isFresh)
     const feedLabel = isFresh
         ? 'LIVE'
+        : quote?.cachedAt
+            ? 'LAST KNOWN'
         : streamEnabled
             ? (quote?.snapshotAt ? 'SNAPSHOT / STREAM' : 'STREAM READY')
             : (quote?.snapshotAt ? 'SNAPSHOT ONLY' : 'QUEUED')
@@ -195,7 +237,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
                 <div className="quote-change">
                     {Number.isFinite(changePercent) && Number.isFinite(change)
                         ? `${formatSigned(changePercent)}% ${formatSigned(change)}`
-                        : quote?.error || 'NO PRINT YET'}
+                        : quote?.cachedAt ? 'LAST SAVED PRICE' : quote?.error || 'NO PRINT YET'}
                 </div>
             </div>
 
@@ -214,12 +256,13 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
 
 export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false, onExit }) {
     const [initial] = useState(() => loadSavedDashboard())
+    const [initialQuotes] = useState(() => loadCachedQuotes())
     const [widgets, setWidgets] = useState(initial.widgets)
     const [layouts, setLayouts] = useState(initial.layouts)
     const [connectionState, setConnectionState] = useState('disconnected')
     const [connectionError, setConnectionError] = useState('')
     const [socketEpoch, setSocketEpoch] = useState(0)
-    const [quotes, setQuotes] = useState({})
+    const [quotes, setQuotes] = useState(initialQuotes)
     const [editingWidgetId, setEditingWidgetId] = useState(null)
     const [newSymbol, setNewSymbol] = useState('')
     const [layoutLocked, setLayoutLocked] = useState(false)
@@ -230,7 +273,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
 
     const socketRef = useRef(null)
     const subscribedSymbolsRef = useRef(new Set())
-    const quotesRef = useRef({})
+    const quotesRef = useRef(initialQuotes)
     const totalEventsRef = useRef(0)
     const eventsThisSecondRef = useRef(0)
     const eventsHistoryRef = useRef([])
@@ -260,6 +303,32 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
     }, [onExit])
+
+    useEffect(() => {
+        const saveQuoteCache = () => {
+            const cacheableQuotes = Object.fromEntries(Object.entries(quotesRef.current)
+                .filter(([, quote]) => Number.isFinite(quote?.price) && quote.price > 0)
+                .map(([symbol, quote]) => [symbol, {
+                    price: quote.price,
+                    previousClose: quote.previousClose,
+                    change: quote.change,
+                    changePercent: quote.changePercent,
+                    high: quote.high,
+                    low: quote.low
+                }]))
+            if (Object.keys(cacheableQuotes).length > 0) {
+                localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), quotes: cacheableQuotes }))
+            }
+        }
+
+        const timer = window.setInterval(saveQuoteCache, 10000)
+        window.addEventListener('pagehide', saveQuoteCache)
+        return () => {
+            window.clearInterval(timer)
+            window.removeEventListener('pagehide', saveQuoteCache)
+            saveQuoteCache()
+        }
+    }, [])
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -348,6 +417,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                             price,
                             change,
                             changePercent,
+                            cachedAt: null,
                             lastEventAt: Date.now(),
                             providerTimestamp: Number(trade.t) || null,
                             events: (previous.events || 0) + 1
@@ -452,12 +522,13 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                             const previous = quotesRef.current[symbol] || {}
                             quotesRef.current[symbol] = {
                                 ...previous,
-                                price: Number.isFinite(previous.price) ? previous.price : (validPrice ? price : previous.price),
+                                price: validPrice ? price : previous.price,
                                 previousClose: validPreviousClose ? previousClose : previous.previousClose,
                                 change: Number.isFinite(Number(data.d)) ? Number(data.d) : previous.change,
                                 changePercent: Number.isFinite(Number(data.dp)) ? Number(data.dp) : previous.changePercent,
                                 high: Number(data.h) || null,
                                 low: Number(data.l) || null,
+                                cachedAt: null,
                                 snapshotAt: Date.now()
                             }
                         }
