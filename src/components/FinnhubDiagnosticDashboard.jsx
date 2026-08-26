@@ -131,14 +131,13 @@ const formatSigned = (value, digits = 2) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
 }
 
-const QuoteWidget = ({ widget, quote, measuredAt, editing, onBeginEdit, onCancelEdit, onSaveEdit, onRemove }) => {
+const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, editing, onBeginEdit, onCancelEdit, onSaveEdit, onRemove }) {
     const [draft, setDraft] = useState(widget.symbol)
     const price = quote?.price
     const change = quote?.change
     const changePercent = quote?.changePercent
     const direction = Number.isFinite(change) ? (change >= 0 ? 'up' : 'down') : 'flat'
-    const isFresh = quote?.lastEventAt && measuredAt - quote.lastEventAt < 5000
-    const isFlashing = quote?.lastDirectionAt && measuredAt - quote.lastDirectionAt < 1500
+    const isFresh = Boolean(quote?.isFresh)
 
     const save = () => {
         const next = cleanSymbol(draft)
@@ -151,7 +150,7 @@ const QuoteWidget = ({ widget, quote, measuredAt, editing, onBeginEdit, onCancel
     }
 
     return (
-        <div className={`finnhub-quote-widget quote-drag-handle quote-${direction} ${isFlashing ? `quote-flash-${quote.lastDirection}` : ''}`}>
+        <div className={`finnhub-quote-widget quote-drag-handle quote-${direction}`}>
             <div className="quote-widget-topline">
                 {editing ? (
                     <input
@@ -197,7 +196,11 @@ const QuoteWidget = ({ widget, quote, measuredAt, editing, onBeginEdit, onCancel
             </div>
         </div>
     )
-}
+}, (previous, next) => (
+    previous.widget === next.widget
+    && previous.quote === next.quote
+    && previous.editing === next.editing
+))
 
 export default function FinnhubDiagnosticDashboard({ apiKey }) {
     const [initial] = useState(() => loadSavedDashboard())
@@ -211,7 +214,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
     const [newSymbol, setNewSymbol] = useState('')
     const [layoutLocked, setLayoutLocked] = useState(false)
     const [streamPaused, setStreamPaused] = useState(false)
-    const [stats, setStats] = useState({ totalEvents: 0, eventsPerMinute: 0, eventsPerSecond: 0, liveSymbols: 0, peakPerSecond: 0, measuredAt: 0 })
+    const [stats, setStats] = useState({ totalEvents: 0, eventsPerMinute: 0, eventsPerSecond: 0, liveSymbols: 0, peakPerSecond: 0 })
 
     const socketRef = useRef(null)
     const subscribedSymbolsRef = useRef(new Set())
@@ -241,15 +244,20 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
             eventsThisSecondRef.current = 0
             eventsHistoryRef.current = [...eventsHistoryRef.current.slice(-59), thisSecond]
             peakPerSecondRef.current = Math.max(peakPerSecondRef.current, thisSecond)
-            const nextQuotes = { ...quotesRef.current }
+            const nextQuotes = Object.fromEntries(Object.entries(quotesRef.current).map(([symbol, quote]) => {
+                const isFresh = Boolean(quote.lastEventAt && now - quote.lastEventAt < 5000)
+                if (quote.isFresh === isFresh) return [symbol, quote]
+                const nextQuote = { ...quote, isFresh }
+                quotesRef.current[symbol] = nextQuote
+                return [symbol, nextQuote]
+            }))
             setQuotes(nextQuotes)
             setStats({
                 totalEvents: totalEventsRef.current,
                 eventsPerMinute: eventsHistoryRef.current.reduce((sum, count) => sum + count, 0),
                 eventsPerSecond: thisSecond,
-                liveSymbols: Object.values(nextQuotes).filter((quote) => quote.lastEventAt && now - quote.lastEventAt < 5000).length,
-                peakPerSecond: peakPerSecondRef.current,
-                measuredAt: now
+                liveSymbols: Object.values(nextQuotes).filter((quote) => quote.isFresh).length,
+                peakPerSecond: peakPerSecondRef.current
             })
         }, 1000)
         return () => clearInterval(timer)
@@ -290,13 +298,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
                         const price = Number(trade.p)
                         if (!symbol || !Number.isFinite(price)) return
                         const previous = quotesRef.current[symbol] || {}
-                        const previousPrice = previous.price
                         const previousClose = previous.previousClose
                         const change = Number.isFinite(previousClose) && previousClose !== 0 ? price - previousClose : previous.change
                         const changePercent = Number.isFinite(previousClose) && previousClose !== 0 ? (change / previousClose) * 100 : previous.changePercent
-                        const lastDirection = Number.isFinite(previousPrice) && price !== previousPrice
-                            ? (price > previousPrice ? 'up' : 'down')
-                            : previous.lastDirection
                         quotesRef.current[symbol] = {
                             ...previous,
                             price,
@@ -304,9 +308,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
                             changePercent,
                             lastEventAt: Date.now(),
                             providerTimestamp: Number(trade.t) || null,
-                            events: (previous.events || 0) + 1,
-                            lastDirection,
-                            lastDirectionAt: price !== previousPrice ? Date.now() : previous.lastDirectionAt
+                            events: (previous.events || 0) + 1
                         }
                         totalEventsRef.current += 1
                         eventsThisSecondRef.current += 1
@@ -511,7 +513,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey }) {
                             <QuoteWidget
                                 widget={widget}
                                 quote={quotes[providerSymbol(widget.symbol)]}
-                                measuredAt={stats.measuredAt}
                                 editing={editingWidgetId === widget.id}
                                 onBeginEdit={setEditingWidgetId}
                                 onCancelEdit={() => setEditingWidgetId(null)}

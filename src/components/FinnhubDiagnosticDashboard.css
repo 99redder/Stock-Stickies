@@ -235,9 +235,6 @@
 }
 
 .quote-freshness.is-live { color: #2d7958; }
-.quote-flash-up { animation: quote-flash-up 650ms ease-out; }
-.quote-flash-down { animation: quote-flash-down 650ms ease-out; }
-
 .finnhub-responsive-grid .react-resizable-handle { opacity: 0; transition: opacity 120ms ease; }
 .finnhub-responsive-grid .react-grid-item:hover .react-resizable-handle { opacity: 1; }
 .finnhub-responsive-grid .react-resizable-handle::after { border-color: #9f7531; }
@@ -259,16 +256,6 @@
 @container (max-height: 76px) {
     .quote-widget-footer { display: none; }
     .quote-widget-reading { padding-top: 17px; }
-}
-
-@keyframes quote-flash-up {
-    0% { background: rgb(43 154 108 / 36%); }
-    100% { background: var(--terminal-black); }
-}
-
-@keyframes quote-flash-down {
-    0% { background: rgb(223 64 80 / 34%); }
-    100% { background: var(--terminal-black); }
 }
 
 @keyframes terminal-pulse {
