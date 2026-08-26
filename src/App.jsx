@@ -6310,33 +6310,33 @@ const firebaseConfig = {
                         </div>
 
                         {/* Main Tab Navigation */}
-                        <div className={`flex gap-3 mb-6 p-1 rounded-lg w-full max-w-2xl mx-auto ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+                        <div className="flex gap-4 mb-6 w-full max-w-2xl mx-auto">
                             <button
                                 onClick={() => setMainTab('notes')}
-                                className={`flex-1 py-2 px-6 rounded-lg font-semibold transition-all ${
+                                className={`flex-1 py-2 px-6 rounded-lg border font-semibold shadow-sm transition-all ${
                                     mainTab === 'notes'
-                                        ? (darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow')
-                                        : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                                        ? (darkMode ? 'bg-gray-700 text-white border-gray-500' : 'bg-white text-gray-800 border-gray-300')
+                                        : (darkMode ? 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200 hover:border-gray-500' : 'bg-gray-100 text-gray-500 border-gray-300 hover:text-gray-700')
                                 }`}
                             >
                                 Notes
                             </button>
                             <button
                                 onClick={() => setMainTab('portfolio')}
-                                className={`flex-1 py-2 px-6 rounded-lg font-semibold transition-all ${
+                                className={`flex-1 py-2 px-6 rounded-lg border font-semibold shadow-sm transition-all ${
                                     mainTab === 'portfolio'
-                                        ? (darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow')
-                                        : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                                        ? (darkMode ? 'bg-gray-700 text-white border-gray-500' : 'bg-white text-gray-800 border-gray-300')
+                                        : (darkMode ? 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200 hover:border-gray-500' : 'bg-gray-100 text-gray-500 border-gray-300 hover:text-gray-700')
                                 }`}
                             >
                                 Portfolio {portfolioData.length > 0 && `(${portfolioData.length})`}
                             </button>
                             <button
                                 onClick={() => setMainTab('dashboard')}
-                                className={`flex-1 py-2 px-3 sm:px-6 rounded-lg font-semibold transition-all ${
+                                className={`flex-1 py-2 px-3 sm:px-6 rounded-lg border font-semibold shadow-sm transition-all ${
                                     mainTab === 'dashboard'
-                                        ? 'bg-gray-950 text-green-400 shadow ring-1 ring-green-500/50'
-                                        : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                                        ? 'bg-gray-950 text-green-400 border-green-500/60 ring-1 ring-green-500/50'
+                                        : (darkMode ? 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200 hover:border-gray-500' : 'bg-gray-100 text-gray-500 border-gray-300 hover:text-gray-700')
                                 }`}
                             >
                                 Live Dashboard
