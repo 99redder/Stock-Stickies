@@ -115,7 +115,8 @@
 }
 
 .diagnostic-add-control, .diagnostic-control-buttons { display: flex; align-items: center; gap: 6px; }
-.diagnostic-add-control input {
+.diagnostic-add-control input,
+.diagnostic-add-control select {
     width: 120px;
     height: 28px;
     border: 1px solid #4a4a4a;
@@ -128,7 +129,10 @@
     text-transform: uppercase;
 }
 
-.diagnostic-add-control input:focus { border-color: #a46f20; box-shadow: 0 0 0 1px #a46f20; }
+.diagnostic-add-control select { width: 170px; cursor: pointer; }
+
+.diagnostic-add-control input:focus,
+.diagnostic-add-control select:focus { border-color: #a46f20; box-shadow: 0 0 0 1px #a46f20; }
 .finnhub-diagnostic-controls button {
     height: 28px;
     border: 1px solid #4a4a4a;
@@ -166,6 +170,21 @@
 .finnhub-responsive-grid > .react-grid-item { transition: none; }
 .finnhub-responsive-grid > .react-grid-placeholder { border: 1px dashed #d49837; background: rgb(164 111 32 / 22%); opacity: 1; }
 
+.diagnostic-theme-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    border-bottom: 1px solid #5a4729;
+    color: #c18a38;
+    padding: 0 4px 3px;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .14em;
+    cursor: default;
+}
+
+.diagnostic-theme-heading span:last-child { color: #665942; font-size: 8px; }
+
 .finnhub-quote-widget {
     container-type: size;
     position: relative;
@@ -191,7 +210,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 8px 9px 0;
+    padding: 5px 7px 0;
 }
 
 .quote-symbol {
@@ -220,6 +239,9 @@
 }
 
 .quote-widget-actions { display: flex; opacity: 0; transition: opacity 120ms ease; }
+.quote-widget-actions.has-priority { opacity: 1; }
+.quote-widget-actions.has-priority button:not(.is-priority) { opacity: 0; pointer-events: none; }
+.finnhub-quote-widget:hover .quote-widget-actions.has-priority button { opacity: 1; pointer-events: auto; }
 .finnhub-quote-widget:hover .quote-widget-actions, .quote-widget-actions:focus-within { opacity: 1; }
 .quote-widget-actions button {
     display: grid;
@@ -234,6 +256,7 @@
     cursor: pointer;
 }
 .quote-widget-actions button:hover { color: #ddd; background: #252525; }
+.quote-widget-actions button.is-priority { color: #d8a23f; }
 
 .quote-widget-reading {
     display: flex;
@@ -241,7 +264,7 @@
     flex-direction: column;
     align-items: flex-end;
     justify-content: center;
-    padding: 20px 10px 10px;
+    padding: 16px 8px 8px;
     text-align: right;
 }
 
@@ -257,7 +280,7 @@
 .quote-widget-footer {
     position: absolute;
     right: 7px;
-    bottom: 4px;
+    bottom: 2px;
     left: 7px;
     display: flex;
     justify-content: space-between;
@@ -286,7 +309,7 @@
     letter-spacing: .07em;
 }
 
-@container (max-height: 76px) {
+@container (max-height: 56px) {
     .quote-widget-footer { display: none; }
     .quote-widget-reading { padding-top: 17px; }
 }
@@ -323,6 +346,7 @@
 @media (max-width: 700px) {
     .finnhub-diagnostic-controls { align-items: stretch; flex-direction: column; }
     .diagnostic-add-control input { flex: 1; width: auto; }
+    .diagnostic-add-control select { flex: 1; width: auto; }
     .diagnostic-control-buttons { flex-wrap: wrap; }
     .diagnostic-control-buttons button { flex: 1; }
     .diagnostic-stats > div { min-width: 70px; }

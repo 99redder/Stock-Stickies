@@ -6,32 +6,26 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v1'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v2'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
+const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const MAX_SYMBOL_LENGTH = 24
 const SUBSCRIPTION_PROBE_DELAY_MS = 350
+const SNAPSHOT_INTERVAL_MS = 1250
+const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
-const DEFAULT_SYMBOLS = [
-    'AMZN', 'GOOG', 'TSLA', 'META', 'AAPL', 'NVDA',
-    'MSFT', 'AVGO', 'NFLX', 'AMD', 'RTX', 'LMT',
-    'LDOS', 'NOC', 'MOG.A', 'UMAC', 'AVAV', 'SPCX',
-    'RKLB', 'ASTS', 'RDW', 'VRT', 'NBIS', 'INTC',
-    'MU', 'PFE', 'EXE', 'DVN', 'EQT', 'XOM',
-    'UNG', 'CVX', 'CCJ', 'CEG', 'VST', 'NEE',
-    'WM', 'OUST', 'BOTZ', 'KWEB', 'BABA', 'PLTR',
-    'CRWD', 'PANW', 'JPM', 'GS', 'BAC', 'COIN',
-    'SPY', 'QQQ', 'IWM', 'DIA', 'GLD', 'TLT',
-    'VIX', 'BTC', 'ONDS', 'LPTH', 'KTOS', 'US30Y'
+const DASHBOARD_THEMES = [
+    { id: 'mag7', label: 'MAG 7 STOCKS', symbols: ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOG', 'META', 'TSLA'], priority: true },
+    { id: 'drones', label: 'DRONE STOCKS', symbols: ['AVAV', 'KTOS', 'RCAT', 'UMAC', 'ONDS'] },
+    { id: 'market', label: 'INDEXES & MARKET DATA', symbols: ['SPY', 'IWM', 'QQQ', 'VIX', 'GLD', 'BTC'], priority: true },
+    { id: 'ai', label: 'AI TRADE', symbols: ['AMD', 'AVGO', 'VRT', 'NBIS', 'INTC', 'MU', 'PLTR', 'BOTZ', 'CRWD', 'PANW'] },
+    { id: 'space', label: 'SPACE STOCKS', symbols: ['RKLB', 'ASTS', 'RDW', 'LUNR', 'PL', 'BKSY', 'SPCE'] },
+    { id: 'financials', label: 'FINANCIALS', symbols: ['JPM', 'GS', 'BAC', 'COIN', 'HOOD'] },
+    { id: 'other', label: 'OTHER', symbols: [] }
 ]
 
-const ROW_PATTERNS = [
-    [4, 4, 4, 4, 4, 4],
-    [3, 3, 4, 4, 3, 3],
-    [3, 3, 3, 3, 3, 3, 3],
-    [5, 4, 4, 4, 4],
-    [3, 3, 3, 3, 3, 3],
-    [4, 4, 4, 4, 4, 4]
-]
+const THEME_BY_ID = Object.fromEntries(DASHBOARD_THEMES.map((theme) => [theme.id, theme]))
+const themeHeaderId = (themeId) => `theme-heading-${themeId}`
 
 const makeId = () => `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -51,44 +45,38 @@ const displaySymbol = (symbol) => {
     return normalized === 'BINANCE:BTCUSDT' ? 'BTC' : normalized
 }
 
-const createDefaultWidgets = () => DEFAULT_SYMBOLS.map((symbol, index) => ({
-    id: `diagnostic-${index + 1}`,
-    symbol
-}))
+const createDefaultWidgets = () => DASHBOARD_THEMES.flatMap((theme) => theme.symbols.map((symbol, index) => ({
+    id: `diagnostic-${theme.id}-${index + 1}`,
+    symbol,
+    themeId: theme.id,
+    priority: Boolean(theme.priority)
+})))
 
 const createGodelLayout = (widgets) => {
     const layout = []
-    let widgetIndex = 0
-    let rowIndex = 0
     let y = 0
-
-    while (widgetIndex < widgets.length) {
-        const pattern = ROW_PATTERNS[rowIndex % ROW_PATTERNS.length]
-        const widths = pattern.slice(0, Math.min(pattern.length, widgets.length - widgetIndex))
-        const totalWidth = widths.reduce((sum, width) => sum + width, 0)
-        let x = Math.max(0, Math.floor((24 - totalWidth) / 2))
-        const rowHeight = rowIndex % 4 === 3 ? 3 : 2
-
-        widths.forEach((width) => {
-            const widget = widgets[widgetIndex]
+    DASHBOARD_THEMES.forEach((theme) => {
+        const themedWidgets = widgets.filter((widget) => widget.themeId === theme.id)
+        if (themedWidgets.length === 0) return
+        layout.push({ i: themeHeaderId(theme.id), x: 0, y, w: 24, h: 1, static: true })
+        y += 1
+        themedWidgets.forEach((widget, index) => {
+            const column = index % 8
+            const row = Math.floor(index / 8)
             layout.push({
                 i: widget.id,
-                x,
-                y,
-                w: width,
-                h: rowHeight,
+                x: column * 3,
+                y: y + row * 2,
+                w: 3,
+                h: 2,
                 minW: 2,
                 minH: 2,
-                maxW: 10,
-                maxH: 6
+                maxW: 8,
+                maxH: 5
             })
-            x += width
-            widgetIndex += 1
         })
-
-        y += rowHeight + 1
-        rowIndex += 1
-    }
+        y += Math.ceil(themedWidgets.length / 8) * 2 + 1
+    })
 
     return layout
 }
@@ -103,10 +91,19 @@ const loadSavedDashboard = () => {
 
         const widgets = saved.widgets
             .filter((widget) => widget && typeof widget.id === 'string' && cleanSymbol(widget.symbol))
-            .map((widget) => ({ id: widget.id, symbol: cleanSymbol(widget.symbol) }))
+            .map((widget) => ({
+                id: widget.id,
+                symbol: cleanSymbol(widget.symbol),
+                themeId: THEME_BY_ID[widget.themeId] ? widget.themeId : 'other',
+                priority: Boolean(widget.priority)
+            }))
         if (widgets.length === 0) return { widgets: defaults, layouts: { lg: createGodelLayout(defaults) } }
 
-        const validIds = new Set(widgets.map((widget) => widget.id))
+        const activeThemeIds = new Set(widgets.map((widget) => widget.themeId))
+        const validIds = new Set([
+            ...widgets.map((widget) => widget.id),
+            ...[...activeThemeIds].map(themeHeaderId)
+        ])
         const layouts = saved.layouts && typeof saved.layouts === 'object'
             ? Object.fromEntries(Object.entries(saved.layouts).map(([breakpoint, layout]) => [
                 breakpoint,
@@ -114,7 +111,8 @@ const loadSavedDashboard = () => {
             ]))
             : { lg: createGodelLayout(widgets) }
 
-        if (!layouts.lg || layouts.lg.length !== widgets.length) layouts.lg = createGodelLayout(widgets)
+        const expectedLayoutItems = widgets.length + activeThemeIds.size
+        if (!layouts.lg || layouts.lg.length !== expectedLayoutItems) layouts.lg = createGodelLayout(widgets)
         return { widgets, layouts }
     } catch {
         return { widgets: defaults, layouts: { lg: createGodelLayout(defaults) } }
@@ -160,6 +158,18 @@ const loadCachedQuotes = () => {
     return quotes
 }
 
+const loadRememberedSubscriptionCap = () => {
+    try {
+        const saved = JSON.parse(localStorage.getItem(SUBSCRIPTION_CAP_KEY) || 'null')
+        const cap = Number(saved?.cap)
+        const detectedAt = Number(saved?.detectedAt)
+        if (Number.isInteger(cap) && cap > 0 && Date.now() - detectedAt < SUBSCRIPTION_CAP_MAX_AGE_MS) return cap
+    } catch {
+        // An invalid or expired result simply triggers a fresh one-time probe.
+    }
+    return null
+}
+
 const formatPrice = (value) => {
     if (!Number.isFinite(value)) return '—'
     if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -172,7 +182,7 @@ const formatSigned = (value, digits = 2) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
 }
 
-const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabled, editing, onBeginEdit, onCancelEdit, onSaveEdit, onRemove }) {
+const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabled, editing, onBeginEdit, onCancelEdit, onSaveEdit, onTogglePriority, onRemove }) {
     const [draft, setDraft] = useState(widget.symbol)
     const price = quote?.price
     const change = quote?.change
@@ -218,11 +228,20 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
                         {displaySymbol(widget.symbol)}
                     </button>
                 )}
-                <div className="quote-widget-actions quote-action">
+                <div className={`quote-widget-actions quote-action ${widget.priority ? 'has-priority' : ''}`}>
                     {editing ? (<>
                         <button type="button" onClick={save} title="Save symbol" aria-label="Save symbol">✓</button>
                         <button type="button" onClick={onCancelEdit} title="Cancel editing" aria-label="Cancel editing">×</button>
                     </>) : (<>
+                        <button
+                            type="button"
+                            className={widget.priority ? 'is-priority' : ''}
+                            onClick={() => onTogglePriority(widget.id)}
+                            title={widget.priority ? 'Remove live-stream priority' : 'Prioritize for live streaming'}
+                            aria-label={`${widget.priority ? 'Remove' : 'Add'} live-stream priority for ${displaySymbol(widget.symbol)}`}
+                        >
+                            {widget.priority ? '★' : '☆'}
+                        </button>
                         <button type="button" onClick={beginEdit} title="Edit symbol" aria-label={`Edit ${displaySymbol(widget.symbol)}`}>✎</button>
                         <button type="button" onClick={() => onRemove(widget.id)} title="Remove widget" aria-label={`Remove ${displaySymbol(widget.symbol)}`}>×</button>
                     </>)}
@@ -257,6 +276,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
 export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false, onExit }) {
     const [initial] = useState(() => loadSavedDashboard())
     const [initialQuotes] = useState(() => loadCachedQuotes())
+    const [initialSubscriptionCap] = useState(() => loadRememberedSubscriptionCap())
     const [widgets, setWidgets] = useState(initial.widgets)
     const [layouts, setLayouts] = useState(initial.layouts)
     const [connectionState, setConnectionState] = useState('disconnected')
@@ -265,6 +285,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const [quotes, setQuotes] = useState(initialQuotes)
     const [editingWidgetId, setEditingWidgetId] = useState(null)
     const [newSymbol, setNewSymbol] = useState('')
+    const [newThemeId, setNewThemeId] = useState('other')
     const [layoutLocked, setLayoutLocked] = useState(false)
     const [streamPaused, setStreamPaused] = useState(false)
     const [streamedSymbols, setStreamedSymbols] = useState([])
@@ -280,10 +301,11 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const peakPerSecondRef = useRef(0)
     const pausedRef = useRef(false)
     const reconnectTimerRef = useRef(null)
-    const snapshotLoadedRef = useRef(new Set())
+    const snapshotRequestTimesRef = useRef({})
+    const lastSnapshotRequestAtRef = useRef(0)
     const subscriptionTimerRef = useRef(null)
     const lastSubscriptionAttemptRef = useRef('')
-    const subscriptionCapRef = useRef(null)
+    const subscriptionCapRef = useRef(initialSubscriptionCap)
 
     const symbolKey = useMemo(() => widgets.map((widget) => providerSymbol(widget.symbol)).sort().join('|'), [widgets])
 
@@ -369,7 +391,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
             setSubscriptionNotice('')
             setStreamedSymbols([])
             subscribedSymbolsRef.current = new Set()
-            subscriptionCapRef.current = null
+            subscriptionCapRef.current = loadRememberedSubscriptionCap()
             lastSubscriptionAttemptRef.current = ''
             if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
             const socket = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`)
@@ -393,6 +415,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                             if (rejectedSymbol) subscribedSymbolsRef.current.delete(rejectedSymbol)
                             const accepted = [...subscribedSymbolsRef.current]
                             subscriptionCapRef.current = accepted.length
+                            localStorage.setItem(SUBSCRIPTION_CAP_KEY, JSON.stringify({ cap: accepted.length, detectedAt: Date.now() }))
                             setStreamedSymbols(accepted)
                             setSubscriptionNotice(`Finnhub accepted ${accepted.length} simultaneous symbols on this API key. The remaining widgets will continue with paced snapshots.`)
                             setConnectionError('')
@@ -452,7 +475,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
             socketRef.current = null
             if (socket) socket.close()
             subscribedSymbolsRef.current = new Set()
-            subscriptionCapRef.current = null
             lastSubscriptionAttemptRef.current = ''
         }
     }, [apiKey])
@@ -460,29 +482,47 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     useEffect(() => {
         const socket = socketRef.current
         if (!socket || socket.readyState !== WebSocket.OPEN) return
-        const wanted = new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter(Boolean))
+        const orderedSymbols = []
+        const seenSymbols = new Set()
+        const orderedWidgets = [...widgets.filter((widget) => widget.priority), ...widgets.filter((widget) => !widget.priority)]
+        orderedWidgets.forEach((widget) => {
+            const symbol = providerSymbol(widget.symbol)
+            if (symbol && !seenSymbols.has(symbol)) {
+                seenSymbols.add(symbol)
+                orderedSymbols.push(symbol)
+            }
+        })
+        const wanted = new Set(orderedSymbols)
         const subscribed = subscribedSymbolsRef.current
+        const knownCap = subscriptionCapRef.current
+        const desiredSymbols = knownCap === null ? orderedSymbols : orderedSymbols.slice(0, knownCap)
+        const desired = new Set(desiredSymbols)
 
         if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
 
         subscribed.forEach((symbol) => {
-            if (!wanted.has(symbol)) {
+            if (!desired.has(symbol)) {
                 socket.send(JSON.stringify({ type: 'unsubscribe', symbol }))
                 subscribed.delete(symbol)
             }
         })
         setStreamedSymbols([...subscribed])
 
-        const missing = [...wanted].filter((symbol) => !subscribed.has(symbol))
-        const knownCap = subscriptionCapRef.current
-        const availableSlots = knownCap === null ? missing.length : Math.max(0, knownCap - subscribed.size)
-        const queue = missing.slice(0, availableSlots)
+        const queue = desiredSymbols.filter((symbol) => !subscribed.has(symbol))
 
         if (knownCap !== null) {
-            const snapshotOnlyCount = Math.max(0, wanted.size - Math.min(wanted.size, knownCap))
+            const snapshotOnlyCount = Math.max(0, wanted.size - desired.size)
             setSubscriptionNotice(snapshotOnlyCount
                 ? `Finnhub accepted ${knownCap} simultaneous symbols on this API key. ${snapshotOnlyCount} widget${snapshotOnlyCount === 1 ? '' : 's'} will use paced snapshots.`
                 : '')
+
+            queue.forEach((symbol) => {
+                lastSubscriptionAttemptRef.current = symbol
+                socket.send(JSON.stringify({ type: 'subscribe', symbol }))
+                subscribed.add(symbol)
+            })
+            setStreamedSymbols([...subscribed])
+            return undefined
         }
 
         const subscribeNext = () => {
@@ -505,11 +545,38 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
         if (!apiKey) return undefined
         const controller = new AbortController()
         const targets = [...new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter((symbol) => symbol && !symbol.includes(':')))]
-            .filter((symbol) => !snapshotLoadedRef.current.has(symbol))
+        const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
         const loadSnapshots = async () => {
-            for (const symbol of targets) {
+            while (!controller.signal.aborted) {
+                const now = Date.now()
+                const eligible = targets.filter((symbol) => {
+                    const quote = quotesRef.current[symbol] || {}
+                    const hasPrice = Number.isFinite(quote.price) && quote.price > 0
+                    const hasBaseline = Number.isFinite(quote.previousClose) && quote.previousClose > 0
+                    const needsInitialData = !hasPrice || !hasBaseline
+                    const attemptedAt = snapshotRequestTimesRef.current[symbol] || 0
+                    if (needsInitialData && now - attemptedAt < 60000) return false
+                    return needsInitialData || !subscribedSymbolsRef.current.has(symbol)
+                }).sort((a, b) => {
+                    const aHasPrice = Number.isFinite(quotesRef.current[a]?.price) && quotesRef.current[a].price > 0
+                    const bHasPrice = Number.isFinite(quotesRef.current[b]?.price) && quotesRef.current[b].price > 0
+                    if (aHasPrice !== bHasPrice) return aHasPrice ? 1 : -1
+                    return (snapshotRequestTimesRef.current[a] || 0) - (snapshotRequestTimesRef.current[b] || 0)
+                })
+
+                if (eligible.length === 0) {
+                    await wait(1000)
+                    continue
+                }
+
+                const rateLimitDelay = Math.max(0, SNAPSHOT_INTERVAL_MS - (Date.now() - lastSnapshotRequestAtRef.current))
+                if (rateLimitDelay) await wait(rateLimitDelay)
                 if (controller.signal.aborted) return
+
+                const symbol = eligible[0]
+                snapshotRequestTimesRef.current[symbol] = Date.now()
+                lastSnapshotRequestAtRef.current = Date.now()
                 try {
                     const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`, { signal: controller.signal })
                     if (response.ok) {
@@ -536,8 +603,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                 } catch (error) {
                     if (error?.name === 'AbortError') return
                 }
-                snapshotLoadedRef.current.add(symbol)
-                await new Promise((resolve) => setTimeout(resolve, 1250))
             }
         }
 
@@ -548,23 +613,33 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const addWidget = () => {
         const symbol = cleanSymbol(newSymbol)
         if (!symbol) return
-        const widget = { id: makeId(), symbol }
+        const themeId = THEME_BY_ID[newThemeId] ? newThemeId : 'other'
+        const themeAlreadyActive = widgets.some((widget) => widget.themeId === themeId)
+        const widget = { id: makeId(), symbol, themeId, priority: false }
         setWidgets((current) => [...current, widget])
         setLayouts((current) => {
             const next = { ...current }
             Object.keys(next).forEach((breakpoint) => {
-                next[breakpoint] = [...next[breakpoint], { i: widget.id, x: 0, y: 9999, w: 4, h: 2, minW: 2, minH: 2, maxW: 10, maxH: 6 }]
+                next[breakpoint] = [
+                    ...next[breakpoint],
+                    ...(!themeAlreadyActive ? [{ i: themeHeaderId(themeId), x: 0, y: 9998, w: 24, h: 1, static: true }] : []),
+                    { i: widget.id, x: 0, y: 9999, w: 3, h: 2, minW: 2, minH: 2, maxW: 8, maxH: 5 }
+                ]
             })
-            if (!next.lg) next.lg = [{ i: widget.id, x: 0, y: 9999, w: 4, h: 2, minW: 2, minH: 2, maxW: 10, maxH: 6 }]
+            if (!next.lg) next.lg = createGodelLayout([...widgets, widget])
             return next
         })
         setNewSymbol('')
     }
 
     const removeWidget = (widgetId) => {
+        const removedWidget = widgets.find((widget) => widget.id === widgetId)
+        const removesTheme = removedWidget && widgets.filter((widget) => widget.themeId === removedWidget.themeId).length === 1
         setWidgets((current) => current.filter((widget) => widget.id !== widgetId))
         setLayouts((current) => Object.fromEntries(
-            Object.entries(current).map(([breakpoint, layout]) => [breakpoint, layout.filter((item) => item.i !== widgetId)])
+            Object.entries(current).map(([breakpoint, layout]) => [breakpoint, layout.filter((item) => (
+                item.i !== widgetId && (!removesTheme || item.i !== themeHeaderId(removedWidget.themeId))
+            ))])
         ))
         if (editingWidgetId === widgetId) setEditingWidgetId(null)
     }
@@ -572,6 +647,12 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const saveWidgetSymbol = (widgetId, symbol) => {
         setWidgets((current) => current.map((widget) => widget.id === widgetId ? { ...widget, symbol } : widget))
         setEditingWidgetId(null)
+    }
+
+    const toggleWidgetPriority = (widgetId) => {
+        setWidgets((current) => current.map((widget) => (
+            widget.id === widgetId ? { ...widget, priority: !widget.priority } : widget
+        )))
     }
 
     const resetDashboard = () => {
@@ -585,6 +666,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const connectedClass = displayedConnectionState === 'connected' ? 'connected' : displayedConnectionState === 'connecting' || displayedConnectionState === 'reconnecting' ? 'connecting' : 'disconnected'
     const streamedSymbolSet = useMemo(() => new Set(streamedSymbols), [streamedSymbols])
     const uniqueSymbolCount = useMemo(() => new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter(Boolean)).size, [widgets])
+    const activeThemeIds = useMemo(() => new Set(widgets.map((widget) => widget.themeId)), [widgets])
 
     return (
         <section className={`finnhub-diagnostic-shell ${fullScreen ? 'is-fullscreen' : ''}`}>
@@ -631,12 +713,15 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                         placeholder="SYMBOL"
                         aria-label="Symbol for new diagnostic widget"
                     />
+                    <select value={newThemeId} onChange={(event) => setNewThemeId(event.target.value)} aria-label="Theme for new diagnostic widget">
+                        {DASHBOARD_THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+                    </select>
                     <button type="button" onClick={addWidget}>+ ADD WIDGET</button>
                 </div>
                 <div className="diagnostic-control-buttons">
                     <button type="button" className={streamPaused ? 'is-active' : ''} onClick={() => setStreamPaused((current) => !current)}>{streamPaused ? '▶ RESUME' : 'Ⅱ PAUSE'}</button>
                     <button type="button" className={layoutLocked ? 'is-active' : ''} onClick={() => setLayoutLocked((current) => !current)}>{layoutLocked ? 'UNLOCK LAYOUT' : 'LOCK LAYOUT'}</button>
-                    <button type="button" onClick={resetDashboard}>RESET 60</button>
+                    <button type="button" onClick={resetDashboard}>RESET GROUPS</button>
                 </div>
             </div>
 
@@ -652,9 +737,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     layouts={layouts}
                     breakpoints={{ lg: 1400, md: 1050, sm: 760, xs: 480, xxs: 0 }}
                     cols={{ lg: 24, md: 16, sm: 12, xs: 8, xxs: 4 }}
-                    rowHeight={34}
-                    margin={[8, 8]}
-                    containerPadding={[8, 8]}
+                    rowHeight={27}
+                    margin={[6, 6]}
+                    containerPadding={[6, 6]}
                     compactType={null}
                     preventCollision={false}
                     isDraggable={!layoutLocked}
@@ -664,6 +749,12 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     resizeHandles={['se', 'sw']}
                     onLayoutChange={(_layout, nextLayouts) => setLayouts(nextLayouts)}
                 >
+                    {DASHBOARD_THEMES.filter((theme) => activeThemeIds.has(theme.id)).map((theme) => (
+                        <div key={themeHeaderId(theme.id)} className="diagnostic-theme-heading">
+                            <span>{theme.label}</span>
+                            <span>{widgets.filter((widget) => widget.themeId === theme.id).length}</span>
+                        </div>
+                    ))}
                     {widgets.map((widget) => (
                         <div key={widget.id}>
                             <QuoteWidget
@@ -674,6 +765,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                                 onBeginEdit={setEditingWidgetId}
                                 onCancelEdit={() => setEditingWidgetId(null)}
                                 onSaveEdit={saveWidgetSymbol}
+                                onTogglePriority={toggleWidgetPriority}
                                 onRemove={removeWidget}
                             />
                         </div>
@@ -682,9 +774,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
             </div>
 
             <footer className="finnhub-diagnostic-footer">
-                <span>DOUBLE-CLICK A SYMBOL TO EDIT</span>
+                <span>★ PRIORITIZES A SYMBOL FOR LIVE STREAMING</span>
                 <span>DRAG ANY TILE · RESIZE FROM LOWER CORNERS</span>
-                <span>SNAPSHOTS LOAD AT 48/MIN · LIVE TICKS USE ONE WEBSOCKET</span>
+                <span>SNAPSHOT-ONLY TILES ROTATE AT 48/MIN · LIVE TICKS USE ONE WEBSOCKET</span>
             </footer>
         </section>
     )
