@@ -6,8 +6,8 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v5'
-const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v4'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v6'
+const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v5'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const MAX_SYMBOL_LENGTH = 24
@@ -22,7 +22,7 @@ const DASHBOARD_THEMES = [
     { id: 'ai', label: 'AI TRADE', symbols: ['AMD', 'AVGO', 'VRT', 'NBIS', 'INTC', 'MU', 'PLTR', 'BOTZ', 'CRWD', 'PANW'] },
     { id: 'space', label: 'SPACE STOCKS', symbols: ['RKLB', 'ASTS', 'RDW', 'LUNR', 'PL', 'BKSY', 'SPCE'] },
     { id: 'financials', label: 'FINANCIALS', symbols: ['JPM', 'GS', 'BAC', 'COIN', 'HOOD'] },
-    { id: 'nuclear', label: 'NUCLEAR', symbols: ['CCJ', 'CEG', 'VST', 'NEE'] },
+    { id: 'nuclear', label: 'NUCLEAR', symbols: ['CCJ', 'CEG', 'VST', 'NEE', 'NLR', 'URNM'] },
     { id: 'energy', label: 'ENERGY', symbols: ['EXE', 'DVN', 'EQT', 'XOM', 'UNG', 'CVX'] },
     { id: 'other', label: 'OTHER', symbols: [] }
 ]
@@ -120,7 +120,11 @@ const loadSavedDashboard = () => {
                 priority: Boolean(widget.priority)
             }))
         if (isPreviousVersion) {
-            const newThemeWidgets = defaults.filter((widget) => widget.themeId === 'nuclear' || widget.themeId === 'energy')
+            const migrationSymbols = new Set(['NLR', 'URNM'])
+            const existingSymbols = new Set(widgets.map((widget) => providerSymbol(widget.symbol)))
+            const newThemeWidgets = defaults.filter((widget) => (
+                migrationSymbols.has(widget.symbol) && !existingSymbols.has(providerSymbol(widget.symbol))
+            ))
             widgets = [...widgets, ...newThemeWidgets]
             return { widgets, layouts: createDashboardLayouts(widgets) }
         }
