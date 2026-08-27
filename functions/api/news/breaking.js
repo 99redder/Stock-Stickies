@@ -18,8 +18,7 @@ const FEEDS = [
     { source: 'MarketWatch', url: 'https://feeds.content.dowjones.io/public/rss/mw_bulletins' },          // Breaking bulletins
     { source: 'MarketWatch', url: 'https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines' },
     { source: 'CNBC', url: 'https://www.cnbc.com/id/20910258/device/rss/rss.html' },                       // Markets
-    { source: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },                      // Top News
-    { source: 'MarketWatch', url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories' }
+    { source: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' }                       // Top News
 ]
 
 const FEED_USER_AGENT = 'Mozilla/5.0 (compatible; StockStickiesNewsTicker/1.0; +https://stockstickies.com)'
@@ -37,15 +36,29 @@ const SOFT_ADVICE = /^(i|i.?m|my|am i|should i|can i|is it|dear|we.?re|i.?ve)\b|
 
 const SOFT_LIFESTYLE = /\b(recipe|horoscope|zodiac|dating|wedding|vacation|travel tips)\b/i
 
+// The breaking ticker is intentionally narrower than a general finance-news
+// feed. Questions, personal-finance columns, and hypothetical policy takes are
+// useful reading, but they are not concrete market-moving events.
+const SOFT_QUESTION = /\?/
+const SOFT_PERSONAL_FINANCE = /\b(asking for a friend|beneficiar(?:y|ies)|inherit(?:ance|s|ed|ing)?|wealth manager|financial adviser|retirement|retiree|401\(?k\)?|social security|medicare|mortgage|credit score|student loans?|estate planning|tax return|personal finance)\b/i
+const SOFT_HYPOTHETICAL = /\b(would|should)\s+(help|hurt|make|mean|be|save|cost|boost|reduce|shrink|raise|lower)\b/i
+
 const IMPORTANT_SIGNAL = /\b(fed|fomc|powell|rate (hike|cut|decision|hikes|cuts)|interest rates?|inflation|cpi|ppi|pce|\bpmi\b|consumer prices|wholesale prices|producer prices|retail sales|jobless claims|nonfarm|payrolls?|jobs report|unemployment|housing starts|durable goods|home sales|gdp|recession|tariffs?|sanctions?|treasury|yields?|debt|deficit|stimulus|central bank|bank of (england|japan|korea|canada|mexico)|\becb\b|earnings|beats?|misses?|guidance|forecasts?|warns?|profit|revenue|downgrade[sd]?|upgrade[sd]?|mergers?|acquir\w+|buyout|takeover|\bipo\b|bankrupt\w+|layoffs?|recalls?|halt(ed|s)?|\bsec\b|\bdoj\b|lawsuits?|settle[sd]?|settlement|fraud|probe|investigation|fine[sd]?|resign\w*|steps down|\bceo\b|activist|dividend|buyback|stock split|delist\w*|default|outage|breach|hack\w*|strikes?|surges?|soars?|plunges?|tumbles?|plummets?|crash\w*|jumps?|sinks?|rall(y|ies)|sell-?off|spikes?|slumps?|slides?|rebounds?|pops?|rockets?|tanks?|climbs?|stocks? (surge|plunge|jump|fall|drop|rise|slide|retreat|climb)|\bdow\b|s&p|nasdaq|russell|\bvix\b|breaking|just in)\b/i
 
 // A percentage move (e.g. "rose 0.1%", "surges 8%") is its own strong signal.
 // Kept separate from IMPORTANT_SIGNAL because a trailing \b can't follow "%".
 const PERCENT_MOVE = /\d+(\.\d+)?\s?%/
 
-const isImportantHeadline = (title) => {
+export const isImportantHeadline = (title) => {
     const lead = stripLead(title)
-    if (SOFT_EXPLAINER.test(lead) || SOFT_ADVICE.test(lead) || SOFT_LIFESTYLE.test(lead)) return false
+    if (
+        SOFT_EXPLAINER.test(lead)
+        || SOFT_ADVICE.test(lead)
+        || SOFT_LIFESTYLE.test(lead)
+        || SOFT_QUESTION.test(lead)
+        || SOFT_PERSONAL_FINANCE.test(lead)
+        || SOFT_HYPOTHETICAL.test(lead)
+    ) return false
     return IMPORTANT_SIGNAL.test(title) || PERCENT_MOVE.test(title)
 }
 
