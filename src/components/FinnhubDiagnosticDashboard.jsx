@@ -6,8 +6,8 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v6'
-const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v5'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v7'
+const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v6'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const MAX_SYMBOL_LENGTH = 24
@@ -18,7 +18,7 @@ const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 const DASHBOARD_THEMES = [
     { id: 'mag7', label: 'MAG 7 STOCKS', symbols: ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOG', 'META', 'TSLA'], priority: true },
     { id: 'drones', label: 'DRONE STOCKS', symbols: ['AVAV', 'KTOS', 'RCAT', 'UMAC', 'ONDS'] },
-    { id: 'market', label: 'INDEXES & MARKET DATA', symbols: ['SPY', 'IWM', 'QQQ', 'VIX', 'GLD', 'BTC'], priority: true },
+    { id: 'market', label: 'INDEXES & MARKET DATA', symbols: ['SPY', 'IWM', 'QQQ', 'VIX', 'GLD', 'BTC', 'DGS30'], priority: true },
     { id: 'ai', label: 'AI TRADE', symbols: ['AMD', 'AVGO', 'VRT', 'NBIS', 'INTC', 'MU', 'PLTR', 'BOTZ', 'CRWD', 'PANW'] },
     { id: 'space', label: 'SPACE STOCKS', symbols: ['RKLB', 'ASTS', 'RDW', 'LUNR', 'PL', 'BKSY', 'SPCE'] },
     { id: 'financials', label: 'FINANCIALS', symbols: ['JPM', 'GS', 'BAC', 'COIN', 'HOOD'] },
@@ -44,6 +44,8 @@ const providerSymbol = (symbol) => {
     if (normalized === 'BTC' || normalized === 'BTCUSD') return 'BINANCE:BTCUSDT'
     return normalized
 }
+
+const isDailyMacroSymbol = (symbol) => providerSymbol(symbol) === 'DGS30'
 
 const displaySymbol = (symbol) => {
     const normalized = cleanSymbol(symbol)
@@ -120,7 +122,7 @@ const loadSavedDashboard = () => {
                 priority: Boolean(widget.priority)
             }))
         if (isPreviousVersion) {
-            const migrationSymbols = new Set(['NLR', 'URNM'])
+            const migrationSymbols = new Set(['DGS30'])
             const existingSymbols = new Set(widgets.map((widget) => providerSymbol(widget.symbol)))
             const newThemeWidgets = defaults.filter((widget) => (
                 migrationSymbols.has(widget.symbol) && !existingSymbols.has(providerSymbol(widget.symbol))
@@ -163,6 +165,8 @@ const loadCachedQuotes = () => {
             changePercent: Number.isFinite(Number(quote?.changePercent)) ? Number(quote.changePercent) : undefined,
             high: Number.isFinite(Number(quote?.high)) ? Number(quote.high) : undefined,
             low: Number.isFinite(Number(quote?.low)) ? Number(quote.low) : undefined,
+            daily: Boolean(quote?.daily || isDailyMacroSymbol(normalized)),
+            sourceDate: typeof quote?.sourceDate === 'string' ? quote.sourceDate : undefined,
             cachedAt: Number(cachedAt) || Date.now(),
             isFresh: false,
             events: 0
@@ -220,7 +224,10 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
     const changePercent = quote?.changePercent
     const direction = Number.isFinite(change) ? (change >= 0 ? 'up' : 'down') : 'flat'
     const isFresh = Boolean(quote?.isFresh)
-    const feedLabel = isFresh
+    const isDaily = Boolean(quote?.daily || isDailyMacroSymbol(widget.symbol))
+    const feedLabel = isDaily
+        ? 'DAILY'
+        : isFresh
         ? 'LIVE'
         : quote?.cachedAt
             ? 'LAST KNOWN'
@@ -274,9 +281,13 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
                 key={quote?.events || 'no-live-ticks'}
                 className={`quote-widget-reading ${quote?.events ? 'quote-tick-blink' : ''}`}
             >
-                <div className="quote-price">{Number.isFinite(price) ? `$${formatPrice(price)}` : 'WAITING'}</div>
+                <div className="quote-price">
+                    {Number.isFinite(price) ? (isDaily ? `${formatPrice(price)}%` : `$${formatPrice(price)}`) : 'WAITING'}
+                </div>
                 <div className="quote-change">
-                    {Number.isFinite(changePercent) && Number.isFinite(change)
+                    {isDaily && Number.isFinite(change)
+                        ? `${formatSigned(change * 100, 0)} BP${quote?.sourceDate ? ` · ${quote.sourceDate}` : ''}`
+                        : Number.isFinite(changePercent) && Number.isFinite(change)
                         ? `${formatSigned(changePercent)}% ${formatSigned(change)}`
                         : quote?.cachedAt ? 'LAST SAVED PRICE' : quote?.error || 'NO PRINT YET'}
                 </div>
@@ -284,15 +295,17 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
 
             <div className="quote-widget-footer">
                 <span className="quote-widget-status">
-                    <button
-                        type="button"
-                        className={`quote-priority-toggle quote-action ${widget.priority ? 'is-priority' : ''}`}
-                        onClick={() => onTogglePriority(widget.id)}
-                        title={widget.priority ? 'Remove live-stream priority' : 'Prioritize for live streaming'}
-                        aria-label={`${widget.priority ? 'Remove' : 'Add'} live-stream priority for ${displaySymbol(widget.symbol)}`}
-                    >
-                        {widget.priority ? '★' : '☆'}
-                    </button>
+                    {!isDaily && (
+                        <button
+                            type="button"
+                            className={`quote-priority-toggle quote-action ${widget.priority ? 'is-priority' : ''}`}
+                            onClick={() => onTogglePriority(widget.id)}
+                            title={widget.priority ? 'Remove live-stream priority' : 'Prioritize for live streaming'}
+                            aria-label={`${widget.priority ? 'Remove' : 'Add'} live-stream priority for ${displaySymbol(widget.symbol)}`}
+                        >
+                            {widget.priority ? '★' : '☆'}
+                        </button>
+                    )}
                     <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`}>{feedLabel}</span>
                 </span>
                 <span>{quote?.events ? `${quote.events.toLocaleString()} ticks` : ''}</span>
@@ -370,7 +383,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     change: quote.change,
                     changePercent: quote.changePercent,
                     high: quote.high,
-                    low: quote.low
+                    low: quote.low,
+                    daily: quote.daily,
+                    sourceDate: quote.sourceDate
                 }]))
             if (Object.keys(cacheableQuotes).length > 0) {
                 localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), quotes: cacheableQuotes }))
@@ -411,6 +426,55 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
         }, 1000)
         return () => clearInterval(timer)
     }, [])
+
+    useEffect(() => {
+        const hasDgs30Widget = widgets.some((widget) => isDailyMacroSymbol(widget.symbol))
+        if (!hasDgs30Widget) return undefined
+
+        let active = true
+        const controller = new AbortController()
+
+        const loadThirtyYearYield = async () => {
+            try {
+                const response = await fetch('/api/treasury/dgs30', { signal: controller.signal })
+                if (!response.ok) throw new Error('Treasury rate unavailable')
+                const data = await response.json()
+                const price = Number(data.value)
+                const previousClose = data.previousValue === null ? Number.NaN : Number(data.previousValue)
+                if (!active || !Number.isFinite(price)) return
+                const previous = quotesRef.current.DGS30 || {}
+                const change = Number.isFinite(previousClose) ? price - previousClose : undefined
+                const nextQuote = {
+                    ...previous,
+                    price,
+                    previousClose: Number.isFinite(previousClose) ? previousClose : undefined,
+                    change,
+                    changePercent: Number.isFinite(change) && previousClose !== 0 ? (change / previousClose) * 100 : undefined,
+                    daily: true,
+                    sourceDate: data.date,
+                    cachedAt: null,
+                    snapshotAt: Date.now(),
+                    error: null
+                }
+                quotesRef.current.DGS30 = nextQuote
+                setQuotes((current) => ({ ...current, DGS30: nextQuote }))
+            } catch (error) {
+                if (!active || error?.name === 'AbortError') return
+                const previous = quotesRef.current.DGS30 || {}
+                const nextQuote = { ...previous, daily: true, error: 'DAILY RATE UNAVAILABLE' }
+                quotesRef.current.DGS30 = nextQuote
+                setQuotes((current) => ({ ...current, DGS30: nextQuote }))
+            }
+        }
+
+        loadThirtyYearYield()
+        const refreshTimer = window.setInterval(loadThirtyYearYield, 4 * 60 * 60 * 1000)
+        return () => {
+            active = false
+            controller.abort()
+            window.clearInterval(refreshTimer)
+        }
+    }, [symbolKey, widgets])
 
     useEffect(() => {
         let active = true
@@ -518,7 +582,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
         if (!socket || socket.readyState !== WebSocket.OPEN) return
         const orderedSymbols = []
         const seenSymbols = new Set()
-        const orderedWidgets = [...widgets.filter((widget) => widget.priority), ...widgets.filter((widget) => !widget.priority)]
+        const streamableWidgets = widgets.filter((widget) => !isDailyMacroSymbol(widget.symbol))
+        const orderedWidgets = [...streamableWidgets.filter((widget) => widget.priority), ...streamableWidgets.filter((widget) => !widget.priority)]
         orderedWidgets.forEach((widget) => {
             const symbol = providerSymbol(widget.symbol)
             if (symbol && !seenSymbols.has(symbol)) {
@@ -578,7 +643,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     useEffect(() => {
         if (!apiKey) return undefined
         const controller = new AbortController()
-        const targets = [...new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter((symbol) => symbol && !symbol.includes(':')))]
+        const targets = [...new Set(widgets
+            .filter((widget) => !isDailyMacroSymbol(widget.symbol))
+            .map((widget) => providerSymbol(widget.symbol))
+            .filter((symbol) => symbol && !symbol.includes(':')))]
         const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
         const loadSnapshots = async () => {
@@ -691,7 +759,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const displayedConnectionState = apiKey ? connectionState : 'missing-key'
     const connectedClass = displayedConnectionState === 'connected' ? 'connected' : displayedConnectionState === 'connecting' || displayedConnectionState === 'reconnecting' ? 'connecting' : 'disconnected'
     const streamedSymbolSet = useMemo(() => new Set(streamedSymbols), [streamedSymbols])
-    const uniqueSymbolCount = useMemo(() => new Set(widgets.map((widget) => providerSymbol(widget.symbol)).filter(Boolean)).size, [widgets])
+    const uniqueSymbolCount = useMemo(() => new Set(widgets
+        .filter((widget) => !isDailyMacroSymbol(widget.symbol))
+        .map((widget) => providerSymbol(widget.symbol))
+        .filter(Boolean)).size, [widgets])
     const activeThemeIds = useMemo(() => new Set(widgets.map((widget) => widget.themeId)), [widgets])
 
     return (
