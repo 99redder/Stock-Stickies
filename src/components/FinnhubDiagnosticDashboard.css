@@ -25,14 +25,16 @@
 }
 
 .finnhub-diagnostic-toolbar {
-    display: grid;
-    grid-template-columns: minmax(220px, 1fr) auto auto auto;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 20px;
+    gap: 16px;
     padding: 11px 14px;
     border-bottom: 1px solid #444;
     background: #111;
 }
+
+.finnhub-diagnostic-shell.chrome-collapsed .finnhub-diagnostic-toolbar { padding: 7px 14px; }
 
 .diagnostic-kicker {
     color: #a46f20;
@@ -67,15 +69,46 @@
 .diagnostic-stats span { display: block; color: #777; font-size: 7px; font-weight: 800; letter-spacing: .11em; }
 .diagnostic-stats strong { display: block; margin-top: 1px; color: #d5d5d5; font-size: 12px; font-weight: 700; }
 
+.diagnostic-stats { overflow-x: auto; min-width: 0; }
+
 .diagnostic-connection {
     display: flex;
     align-items: center;
     gap: 7px;
+    margin-left: auto;
     color: #aaa;
     font-size: 9px;
     font-weight: 800;
     letter-spacing: .09em;
     white-space: nowrap;
+}
+
+.diagnostic-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.diagnostic-chrome-toggle {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 1px solid #555;
+    border-radius: 2px;
+    background: #181818;
+    color: #b9b9b9;
+    font: 700 12px/1 "SFMono-Regular", Consolas, monospace;
+    cursor: pointer;
+}
+
+.diagnostic-chrome-toggle:hover,
+.diagnostic-chrome-toggle:focus-visible {
+    border-color: #a46f20;
+    outline: none;
+    background: #211b12;
+    color: #d5a85f;
 }
 
 .diagnostic-exit {
@@ -360,8 +393,7 @@
 }
 
 @media (max-width: 1050px) {
-    .finnhub-diagnostic-toolbar { grid-template-columns: 1fr auto auto; }
-    .diagnostic-stats { grid-column: 1 / -1; order: 3; overflow-x: auto; }
+    .diagnostic-stats { order: 3; flex-basis: 100%; overflow-x: auto; }
     .diagnostic-stats > div { flex: 1; }
 }
 

@@ -7,7 +7,9 @@
 // issues and lets the edge cache one copy for every viewer.
 
 const EDGE_CACHE_SECONDS = 30
-const MAX_HEADLINE_AGE_MS = 12 * 60 * 60 * 1000
+// Only surface genuinely fresh, breaking headlines. Anything older than this is
+// dropped so the ticker never fills with stale news the user must click through.
+const MAX_HEADLINE_AGE_MS = 30 * 60 * 1000
 const MAX_HEADLINES = 25
 
 // Breaking, market-focused, free RSS feeds. Each is fetched independently and a
@@ -104,7 +106,8 @@ export async function onRequestGet(context) {
         const seen = new Set()
         const headlines = results
             .flat()
-            .filter((item) => item.publishedAt === null || now - item.publishedAt <= MAX_HEADLINE_AGE_MS)
+            // Require a real timestamp — an undateable item can't be proven fresh.
+            .filter((item) => Number.isFinite(item.publishedAt) && now - item.publishedAt <= MAX_HEADLINE_AGE_MS)
             .sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0))
             .filter((item) => {
                 const key = item.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()

@@ -11,8 +11,12 @@ const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v8'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const DISMISSED_NEWS_STORAGE_KEY = 'stock-stickies-dashboard-dismissed-news-v1'
+const CHROME_COLLAPSED_STORAGE_KEY = 'stock-stickies-dashboard-chrome-collapsed-v1'
 const NEWS_ENDPOINT = '/api/news/breaking'
 const NEWS_POLL_INTERVAL_MS = 45000
+// Headlines self-expire from the ticker after this long, whether the tab was open
+// or not, so a returning user never has to click through a stack of stale news.
+const NEWS_MAX_DISPLAY_AGE_MS = 30 * 60 * 1000
 const MAX_VISIBLE_HEADLINES = 5
 const MAX_REMEMBERED_DISMISSALS = 500
 const MAX_SYMBOL_LENGTH = 24
@@ -410,6 +414,7 @@ const formatHeadlineAge = (publishedAt) => {
 function BreakingNewsTicker() {
     const [headlines, setHeadlines] = useState([])
     const [dismissedIds, setDismissedIds] = useState(() => new Set(loadDismissedNewsIds()))
+    const [now, setNow] = useState(() => Date.now())
 
     useEffect(() => {
         let active = true
@@ -437,6 +442,13 @@ function BreakingNewsTicker() {
         }
     }, [])
 
+    // Re-evaluate the age window on its own cadence so headlines expire even
+    // between polls (e.g. when the stream is idle overnight).
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(Date.now()), 30000)
+        return () => window.clearInterval(timer)
+    }, [])
+
     const dismiss = (id) => {
         setDismissedIds((current) => {
             const next = [...current, id].slice(-MAX_REMEMBERED_DISMISSALS)
@@ -451,6 +463,7 @@ function BreakingNewsTicker() {
 
     const visible = headlines
         .filter((item) => !dismissedIds.has(item.id))
+        .filter((item) => Number.isFinite(item.publishedAt) && now - item.publishedAt <= NEWS_MAX_DISPLAY_AGE_MS)
         .slice(0, MAX_VISIBLE_HEADLINES)
 
     if (visible.length === 0) return null
@@ -505,6 +518,13 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const [streamedSymbols, setStreamedSymbols] = useState([])
     const [subscriptionNotice, setSubscriptionNotice] = useState('')
     const [stats, setStats] = useState({ totalEvents: 0, eventsPerMinute: 0, eventsPerSecond: 0, liveSymbols: 0, peakPerSecond: 0 })
+    const [chromeCollapsed, setChromeCollapsed] = useState(() => {
+        try { return localStorage.getItem(CHROME_COLLAPSED_STORAGE_KEY) === '1' } catch { return false }
+    })
+
+    useEffect(() => {
+        try { localStorage.setItem(CHROME_COLLAPSED_STORAGE_KEY, chromeCollapsed ? '1' : '0') } catch { /* best-effort */ }
+    }, [chromeCollapsed])
 
     const socketRef = useRef(null)
     const subscribedSymbolsRef = useRef(new Set())
@@ -957,40 +977,55 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const activeThemeIds = useMemo(() => new Set(widgets.map((widget) => widget.themeId)), [widgets])
 
     return (
-        <section className={`finnhub-diagnostic-shell ${fullScreen ? 'is-fullscreen' : ''}`}>
+        <section className={`finnhub-diagnostic-shell ${fullScreen ? 'is-fullscreen' : ''} ${chromeCollapsed ? 'chrome-collapsed' : ''}`}>
             <header className="finnhub-diagnostic-toolbar">
                 <div className="diagnostic-brand">
                     <div className="diagnostic-kicker">FINNHUB // STREAM DIAGNOSTIC</div>
                     <div className="diagnostic-title">STOCK STICKIES TERMINAL</div>
                 </div>
 
-                <div className="diagnostic-stats">
-                    <div><span>WIDGETS</span><strong>{widgets.length}</strong></div>
-                    <div><span>STREAMED</span><strong>{streamedSymbols.length}/{uniqueSymbolCount}</strong></div>
-                    <div><span>LIVE ≤5S</span><strong>{stats.liveSymbols}</strong></div>
-                    <div><span>EVENTS/MIN</span><strong>{stats.eventsPerMinute.toLocaleString()}</strong></div>
-                    <div><span>EVENTS/SEC</span><strong>{stats.eventsPerSecond.toLocaleString()}</strong></div>
-                    <div><span>PEAK/SEC</span><strong>{stats.peakPerSecond.toLocaleString()}</strong></div>
-                    <div><span>TOTAL</span><strong>{stats.totalEvents.toLocaleString()}</strong></div>
-                </div>
+                {!chromeCollapsed && (
+                    <div className="diagnostic-stats">
+                        <div><span>WIDGETS</span><strong>{widgets.length}</strong></div>
+                        <div><span>STREAMED</span><strong>{streamedSymbols.length}/{uniqueSymbolCount}</strong></div>
+                        <div><span>LIVE ≤5S</span><strong>{stats.liveSymbols}</strong></div>
+                        <div><span>EVENTS/MIN</span><strong>{stats.eventsPerMinute.toLocaleString()}</strong></div>
+                        <div><span>EVENTS/SEC</span><strong>{stats.eventsPerSecond.toLocaleString()}</strong></div>
+                        <div><span>PEAK/SEC</span><strong>{stats.peakPerSecond.toLocaleString()}</strong></div>
+                        <div><span>TOTAL</span><strong>{stats.totalEvents.toLocaleString()}</strong></div>
+                    </div>
+                )}
 
                 <div className="diagnostic-connection">
                     <span className={`connection-light ${connectedClass}`} />
                     <span>{displayedConnectionState.replace('-', ' ').toUpperCase()}</span>
                 </div>
-                {onExit && (
+                <div className="diagnostic-toolbar-actions">
                     <button
                         type="button"
-                        className="diagnostic-exit"
-                        onClick={onExit}
-                        title="Return to Stock Stickies"
-                        aria-label="Close Live Dashboard and return to Stock Stickies"
+                        className="diagnostic-chrome-toggle"
+                        onClick={() => setChromeCollapsed((current) => !current)}
+                        title={chromeCollapsed ? 'Show toolbar and controls' : 'Minimize toolbar for more widget space'}
+                        aria-label={chromeCollapsed ? 'Expand dashboard toolbar' : 'Minimize dashboard toolbar'}
+                        aria-pressed={chromeCollapsed}
                     >
-                        ×
+                        {chromeCollapsed ? '▾' : '▴'}
                     </button>
-                )}
+                    {onExit && (
+                        <button
+                            type="button"
+                            className="diagnostic-exit"
+                            onClick={onExit}
+                            title="Return to Stock Stickies"
+                            aria-label="Close Live Dashboard and return to Stock Stickies"
+                        >
+                            ×
+                        </button>
+                    )}
+                </div>
             </header>
 
+            {!chromeCollapsed && (
             <div className="finnhub-diagnostic-controls">
                 <div className="diagnostic-add-control">
                     <input
@@ -1019,6 +1054,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     <button type="button" onClick={resetDashboard}>RESET GROUPS</button>
                 </div>
             </div>
+            )}
 
             {!apiKey && (
                 <div className="diagnostic-alert">Add your Finnhub API key in the Stock Stickies header to start the diagnostic stream.</div>
