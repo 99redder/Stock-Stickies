@@ -373,3 +373,99 @@
     .diagnostic-control-buttons button { flex: 1; }
     .diagnostic-stats > div { min-width: 70px; }
 }
+
+/* Breaking-news alerts — Godel-terminal style: red panel, black text, bottom-right. */
+.dashboard-news-ticker {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(380px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+.dashboard-news-item {
+    pointer-events: auto;
+    background: #e10600;
+    color: #0a0a0a;
+    border: 1px solid #7d0500;
+    border-radius: 3px;
+    padding: 8px 10px 9px;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 45%);
+    animation: dashboard-news-in 160ms ease-out;
+}
+
+@keyframes dashboard-news-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.dashboard-news-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 3px;
+}
+
+.dashboard-news-flag {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: #0a0a0a;
+    background: rgb(0 0 0 / 12%);
+    padding: 1px 5px;
+    border-radius: 2px;
+}
+
+.dashboard-news-source {
+    flex: 1;
+    min-width: 0;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: rgb(0 0 0 / 65%);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dashboard-news-dismiss {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+    color: #0a0a0a;
+    background: transparent;
+    border: 0;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.dashboard-news-dismiss:hover {
+    background: rgb(0 0 0 / 18%);
+}
+
+.dashboard-news-headline {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #0a0a0a;
+    text-decoration: none;
+}
+
+a.dashboard-news-headline:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 700px) {
+    .dashboard-news-ticker { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
+}

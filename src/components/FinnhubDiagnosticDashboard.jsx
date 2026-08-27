@@ -6,10 +6,15 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v8'
-const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v7'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v9'
+const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v8'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
+const DISMISSED_NEWS_STORAGE_KEY = 'stock-stickies-dashboard-dismissed-news-v1'
+const NEWS_ENDPOINT = '/api/news/breaking'
+const NEWS_POLL_INTERVAL_MS = 45000
+const MAX_VISIBLE_HEADLINES = 5
+const MAX_REMEMBERED_DISMISSALS = 500
 const MAX_SYMBOL_LENGTH = 24
 const SUBSCRIPTION_PROBE_DELAY_MS = 350
 const SNAPSHOT_INTERVAL_MS = 1250
@@ -25,13 +30,14 @@ const DASHBOARD_THEMES = [
     { id: 'financials', label: 'FINANCIALS', symbols: ['JPM', 'GS', 'BAC', 'COIN', 'HOOD'] },
     { id: 'nuclear', label: 'NUCLEAR', symbols: ['CCJ', 'CEG', 'VST', 'NEE', 'NLR', 'URNM'] },
     { id: 'energy', label: 'ENERGY', symbols: ['EXE', 'DVN', 'EQT', 'XOM', 'UNG', 'CVX'] },
+    { id: 'china', label: 'CHINA', symbols: ['BABA', 'BIDU', 'TCEHY', 'XIACY', 'KWEB', 'KSTR'] },
     { id: 'other', label: 'OTHER', symbols: [] }
 ]
 
 const THEME_BY_ID = Object.fromEntries(DASHBOARD_THEMES.map((theme) => [theme.id, theme]))
 const themeHeaderId = (themeId) => `theme-heading-${themeId}`
 const GRID_COLUMNS = { lg: 30, md: 24, sm: 18, xs: 12, xxs: 6 }
-const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'robotics', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'other']
+const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'robotics', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'china', 'other']
 
 const makeId = () => `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -177,12 +183,9 @@ const loadSavedDashboard = () => {
                 priority: Boolean(widget.priority)
             }))
         if (isPreviousVersion) {
-            const migrationSymbols = new Set(['OUST', 'BOT', 'CCXI', 'RR', 'SERV'])
-            widgets = widgets.map((widget) => (
-                migrationSymbols.has(providerSymbol(widget.symbol))
-                    ? { ...widget, themeId: 'robotics' }
-                    : widget
-            ))
+            // Additively introduce the newly shipped China cluster without disturbing the
+            // user's existing tiles, and only for symbols they don't already have.
+            const migrationSymbols = new Set(['BABA', 'BIDU', 'TCEHY', 'XIACY', 'KWEB', 'KSTR'])
             const existingSymbols = new Set(widgets.map((widget) => providerSymbol(widget.symbol)))
             const newThemeWidgets = defaults.filter((widget) => (
                 migrationSymbols.has(widget.symbol) && !existingSymbols.has(providerSymbol(widget.symbol))
@@ -382,6 +385,105 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
     && previous.editing === next.editing
     && previous.highlighted === next.highlighted
 ))
+
+const loadDismissedNewsIds = () => {
+    try {
+        const saved = JSON.parse(localStorage.getItem(DISMISSED_NEWS_STORAGE_KEY) || 'null')
+        return Array.isArray(saved) ? saved.filter((id) => typeof id === 'string') : []
+    } catch {
+        return []
+    }
+}
+
+const formatHeadlineAge = (publishedAt) => {
+    if (!Number.isFinite(publishedAt)) return ''
+    const minutes = Math.floor((Date.now() - publishedAt) / 60000)
+    if (minutes < 1) return 'JUST NOW'
+    if (minutes < 60) return `${minutes}M AGO`
+    return `${Math.floor(minutes / 60)}H AGO`
+}
+
+// Bottom-right breaking-news alerts, Godel-terminal style: red background, black
+// text, each headline individually dismissible. Dismissed headlines are remembered
+// in localStorage so an X'd-out story never comes back. Only polls while the
+// dashboard is mounted (owner-only), every NEWS_POLL_INTERVAL_MS.
+function BreakingNewsTicker() {
+    const [headlines, setHeadlines] = useState([])
+    const [dismissedIds, setDismissedIds] = useState(() => new Set(loadDismissedNewsIds()))
+
+    useEffect(() => {
+        let active = true
+        const controller = new AbortController()
+        const loadHeadlines = async () => {
+            try {
+                const response = await fetch(NEWS_ENDPOINT, { signal: controller.signal, cache: 'no-store' })
+                if (!response.ok) return
+                const data = await response.json()
+                if (!active || !Array.isArray(data?.headlines)) return
+                setHeadlines(data.headlines.filter((item) => item && typeof item.id === 'string' && item.title))
+            } catch {
+                // A failed poll simply keeps the last headlines on screen.
+            }
+        }
+        loadHeadlines()
+        const timer = window.setInterval(loadHeadlines, NEWS_POLL_INTERVAL_MS)
+        const onVisibility = () => { if (document.visibilityState === 'visible') loadHeadlines() }
+        document.addEventListener('visibilitychange', onVisibility)
+        return () => {
+            active = false
+            controller.abort()
+            window.clearInterval(timer)
+            document.removeEventListener('visibilitychange', onVisibility)
+        }
+    }, [])
+
+    const dismiss = (id) => {
+        setDismissedIds((current) => {
+            const next = [...current, id].slice(-MAX_REMEMBERED_DISMISSALS)
+            try {
+                localStorage.setItem(DISMISSED_NEWS_STORAGE_KEY, JSON.stringify(next))
+            } catch {
+                // Persistence is best-effort; the dismissal still applies this session.
+            }
+            return new Set(next)
+        })
+    }
+
+    const visible = headlines
+        .filter((item) => !dismissedIds.has(item.id))
+        .slice(0, MAX_VISIBLE_HEADLINES)
+
+    if (visible.length === 0) return null
+
+    return (
+        <div className="dashboard-news-ticker" role="region" aria-label="Breaking market news">
+            {visible.map((item) => (
+                <article key={item.id} className="dashboard-news-item">
+                    <div className="dashboard-news-meta">
+                        <span className="dashboard-news-flag">BREAKING</span>
+                        <span className="dashboard-news-source">
+                            {item.source}{item.publishedAt ? ` · ${formatHeadlineAge(item.publishedAt)}` : ''}
+                        </span>
+                        <button
+                            type="button"
+                            className="dashboard-news-dismiss quote-action"
+                            onClick={() => dismiss(item.id)}
+                            title="Dismiss this headline"
+                            aria-label={`Dismiss headline: ${item.title}`}
+                        >
+                            ×
+                        </button>
+                    </div>
+                    {item.url ? (
+                        <a className="dashboard-news-headline" href={item.url} target="_blank" rel="noopener noreferrer">{item.title}</a>
+                    ) : (
+                        <span className="dashboard-news-headline">{item.title}</span>
+                    )}
+                </article>
+            ))}
+        </div>
+    )
+}
 
 export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false, onExit }) {
     const [initial] = useState(() => loadSavedDashboard())
@@ -972,6 +1074,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                 <span>DRAG ANY TILE · RESIZE FROM LOWER CORNERS</span>
                 <span>SNAPSHOT-ONLY TILES ROTATE AT 48/MIN · LIVE TICKS USE ONE WEBSOCKET</span>
             </footer>
+
+            <BreakingNewsTicker />
         </section>
     )
 }

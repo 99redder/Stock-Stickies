@@ -4793,7 +4793,7 @@ const firebaseConfig = {
                 );
             }
 
-            if (mainTab === 'dashboard') {
+            if (mainTab === 'dashboard' && isOwnerPortfolioUser) {
                 return (
                     <FinnhubDiagnosticDashboard
                         apiKey={finnhubApiKey}
@@ -6331,6 +6331,7 @@ const firebaseConfig = {
                             >
                                 Portfolio {portfolioData.length > 0 && `(${portfolioData.length})`}
                             </button>
+                            {isOwnerPortfolioUser && (
                             <button
                                 onClick={() => setMainTab('dashboard')}
                                 className={`flex-1 py-2 px-3 sm:px-6 rounded-lg border font-semibold shadow-sm transition-all ${
@@ -6341,6 +6342,7 @@ const firebaseConfig = {
                             >
                                 Live Dashboard
                             </button>
+                            )}
                         </div>
 
                         {mainTab === 'dashboard' ? (
