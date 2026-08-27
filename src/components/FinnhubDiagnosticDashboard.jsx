@@ -6,8 +6,8 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v9'
-const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v8'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v10'
+const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v9'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const DISMISSED_NEWS_STORAGE_KEY = 'stock-stickies-dashboard-dismissed-news-v1'
@@ -34,6 +34,7 @@ const DASHBOARD_THEMES = [
     { id: 'financials', label: 'FINANCIALS', symbols: ['JPM', 'GS', 'BAC', 'COIN', 'HOOD'] },
     { id: 'nuclear', label: 'NUCLEAR', symbols: ['CCJ', 'CEG', 'VST', 'NEE', 'NLR', 'URNM'] },
     { id: 'energy', label: 'ENERGY', symbols: ['EXE', 'DVN', 'EQT', 'XOM', 'UNG', 'CVX'] },
+    { id: 'defensive', label: 'DEFENSIVE', symbols: ['WM', 'MCD', 'JNJ', 'SCHD', 'KO', 'PG', 'WMT', 'XLU', 'DUK'] },
     { id: 'china', label: 'CHINA', symbols: ['BABA', 'BIDU', 'TCEHY', 'XIACY', 'KWEB', 'KSTR'] },
     { id: 'other', label: 'OTHER', symbols: [] }
 ]
@@ -41,7 +42,7 @@ const DASHBOARD_THEMES = [
 const THEME_BY_ID = Object.fromEntries(DASHBOARD_THEMES.map((theme) => [theme.id, theme]))
 const themeHeaderId = (themeId) => `theme-heading-${themeId}`
 const GRID_COLUMNS = { lg: 30, md: 24, sm: 18, xs: 12, xxs: 6 }
-const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'robotics', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'china', 'other']
+const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'robotics', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'defensive', 'china', 'other']
 
 const makeId = () => `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -187,9 +188,12 @@ const loadSavedDashboard = () => {
                 priority: Boolean(widget.priority)
             }))
         if (isPreviousVersion) {
-            // Additively introduce the newly shipped China cluster without disturbing the
-            // user's existing tiles, and only for symbols they don't already have.
-            const migrationSymbols = new Set(['BABA', 'BIDU', 'TCEHY', 'XIACY', 'KWEB', 'KSTR'])
+            const migrationSymbols = new Set(['WM', 'MCD', 'JNJ', 'SCHD', 'KO', 'PG', 'WMT', 'XLU', 'DUK'])
+            widgets = widgets.map((widget) => (
+                migrationSymbols.has(providerSymbol(widget.symbol))
+                    ? { ...widget, themeId: 'defensive' }
+                    : widget
+            ))
             const existingSymbols = new Set(widgets.map((widget) => providerSymbol(widget.symbol)))
             const newThemeWidgets = defaults.filter((widget) => (
                 migrationSymbols.has(widget.symbol) && !existingSymbols.has(providerSymbol(widget.symbol))
