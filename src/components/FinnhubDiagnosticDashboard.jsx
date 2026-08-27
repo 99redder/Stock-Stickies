@@ -6,7 +6,8 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v4'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v5'
+const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v4'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const MAX_SYMBOL_LENGTH = 24
@@ -21,13 +22,15 @@ const DASHBOARD_THEMES = [
     { id: 'ai', label: 'AI TRADE', symbols: ['AMD', 'AVGO', 'VRT', 'NBIS', 'INTC', 'MU', 'PLTR', 'BOTZ', 'CRWD', 'PANW'] },
     { id: 'space', label: 'SPACE STOCKS', symbols: ['RKLB', 'ASTS', 'RDW', 'LUNR', 'PL', 'BKSY', 'SPCE'] },
     { id: 'financials', label: 'FINANCIALS', symbols: ['JPM', 'GS', 'BAC', 'COIN', 'HOOD'] },
+    { id: 'nuclear', label: 'NUCLEAR', symbols: ['CCJ', 'CEG', 'VST', 'NEE'] },
+    { id: 'energy', label: 'ENERGY', symbols: ['EXE', 'DVN', 'EQT', 'XOM', 'UNG', 'CVX'] },
     { id: 'other', label: 'OTHER', symbols: [] }
 ]
 
 const THEME_BY_ID = Object.fromEntries(DASHBOARD_THEMES.map((theme) => [theme.id, theme]))
 const themeHeaderId = (themeId) => `theme-heading-${themeId}`
 const GRID_COLUMNS = { lg: 30, md: 24, sm: 18, xs: 12, xxs: 6 }
-const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'ai', 'space', 'market', 'financials', 'other']
+const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'other']
 
 const makeId = () => `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -100,12 +103,15 @@ const createDashboardLayouts = (widgets) => Object.fromEntries(
 const loadSavedDashboard = () => {
     const defaults = createDefaultWidgets()
     try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+        const currentSaved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+        const previousSaved = currentSaved ? null : JSON.parse(localStorage.getItem(PREVIOUS_STORAGE_KEY) || 'null')
+        const saved = currentSaved || previousSaved
+        const isPreviousVersion = Boolean(!currentSaved && previousSaved)
         if (!saved || !Array.isArray(saved.widgets) || saved.widgets.length === 0) {
             return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
         }
 
-        const widgets = saved.widgets
+        let widgets = saved.widgets
             .filter((widget) => widget && typeof widget.id === 'string' && cleanSymbol(widget.symbol))
             .map((widget) => ({
                 id: widget.id,
@@ -113,6 +119,11 @@ const loadSavedDashboard = () => {
                 themeId: THEME_BY_ID[widget.themeId] ? widget.themeId : 'other',
                 priority: Boolean(widget.priority)
             }))
+        if (isPreviousVersion) {
+            const newThemeWidgets = defaults.filter((widget) => widget.themeId === 'nuclear' || widget.themeId === 'energy')
+            widgets = [...widgets, ...newThemeWidgets]
+            return { widgets, layouts: createDashboardLayouts(widgets) }
+        }
         if (widgets.length === 0) return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
 
         const activeThemeIds = new Set(widgets.map((widget) => widget.themeId))
