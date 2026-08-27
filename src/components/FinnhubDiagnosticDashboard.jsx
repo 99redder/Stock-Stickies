@@ -411,9 +411,10 @@ const formatHeadlineAge = (publishedAt) => {
 // text, each headline individually dismissible. Dismissed headlines are remembered
 // in localStorage so an X'd-out story never comes back. Only polls while the
 // dashboard is mounted (owner-only), every NEWS_POLL_INTERVAL_MS.
-function BreakingNewsTicker() {
+function BreakingNewsTicker({ systemAlerts = [] }) {
     const [headlines, setHeadlines] = useState([])
     const [dismissedIds, setDismissedIds] = useState(() => new Set(loadDismissedNewsIds()))
+    const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set())
     const [now, setNow] = useState(() => Date.now())
 
     useEffect(() => {
@@ -461,15 +462,39 @@ function BreakingNewsTicker() {
         })
     }
 
+    // Dismissal is keyed by the alert text, so an alert whose message changes
+    // (e.g. a new connection error) reappears rather than staying hidden.
+    const dismissAlert = (text) => setDismissedAlerts((current) => new Set(current).add(text))
+
+    const visibleAlerts = systemAlerts.filter((alert) => alert.text && !dismissedAlerts.has(alert.text))
+
     const visible = headlines
         .filter((item) => !dismissedIds.has(item.id))
         .filter((item) => Number.isFinite(item.publishedAt) && now - item.publishedAt <= NEWS_MAX_DISPLAY_AGE_MS)
         .slice(0, MAX_VISIBLE_HEADLINES)
 
-    if (visible.length === 0) return null
+    if (visible.length === 0 && visibleAlerts.length === 0) return null
 
     return (
-        <div className="dashboard-news-ticker" role="region" aria-label="Breaking market news">
+        <div className="dashboard-news-ticker" role="region" aria-label="Breaking market news and dashboard alerts">
+            {visibleAlerts.map((alert) => (
+                <article key={alert.id} className="dashboard-news-item is-system">
+                    <div className="dashboard-news-meta">
+                        <span className="dashboard-news-flag">NOTICE</span>
+                        <span className="dashboard-news-source">DASHBOARD</span>
+                        <button
+                            type="button"
+                            className="dashboard-news-dismiss quote-action"
+                            onClick={() => dismissAlert(alert.text)}
+                            title="Dismiss this alert"
+                            aria-label={`Dismiss alert: ${alert.text}`}
+                        >
+                            ×
+                        </button>
+                    </div>
+                    <span className="dashboard-news-headline">{alert.text}</span>
+                </article>
+            ))}
             {visible.map((item) => (
                 <article key={item.id} className="dashboard-news-item">
                     <div className="dashboard-news-meta">
@@ -976,6 +1001,17 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
         .filter(Boolean)).size, [widgets])
     const activeThemeIds = useMemo(() => new Set(widgets.map((widget) => widget.themeId)), [widgets])
 
+    // Dashboard status messages now surface as dismissable amber toasts in the
+    // bottom-right stack (alongside the red breaking-news headlines) instead of
+    // full-width bars that push the widget grid down.
+    const systemAlerts = useMemo(() => {
+        const alerts = []
+        if (!apiKey) alerts.push({ id: 'missing-key', text: 'Add your Finnhub API key in the Stock Stickies header to start the diagnostic stream.' })
+        if (connectionError) alerts.push({ id: 'connection-error', text: connectionError })
+        if (subscriptionNotice) alerts.push({ id: 'subscription', text: subscriptionNotice })
+        return alerts
+    }, [apiKey, connectionError, subscriptionNotice])
+
     return (
         <section className={`finnhub-diagnostic-shell ${fullScreen ? 'is-fullscreen' : ''} ${chromeCollapsed ? 'chrome-collapsed' : ''}`}>
             <header className="finnhub-diagnostic-toolbar">
@@ -1056,12 +1092,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
             </div>
             )}
 
-            {!apiKey && (
-                <div className="diagnostic-alert">Add your Finnhub API key in the Stock Stickies header to start the diagnostic stream.</div>
-            )}
-            {connectionError && <div className="diagnostic-alert diagnostic-alert-error">{connectionError}</div>}
-            {subscriptionNotice && <div className="diagnostic-alert diagnostic-alert-cap">{subscriptionNotice}</div>}
-
             <div className="finnhub-grid-canvas">
                 <ResponsiveGridLayout
                     className="finnhub-responsive-grid"
@@ -1111,7 +1141,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                 <span>SNAPSHOT-ONLY TILES ROTATE AT 48/MIN · LIVE TICKS USE ONE WEBSOCKET</span>
             </footer>
 
-            <BreakingNewsTicker />
+            <BreakingNewsTicker systemAlerts={systemAlerts} />
         </section>
     )
 }

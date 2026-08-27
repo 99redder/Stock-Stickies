@@ -53,6 +53,22 @@ const firstMatch = (block, pattern) => {
     return match ? decodeEntities(match[1]) : ''
 }
 
+// Headlines counted as the same story when their word sets overlap this much.
+// Catches lightly-reworded republishes (e.g. "the AI startup" vs "the
+// open-source AI startup") while leaving genuinely different headlines apart.
+const DUPLICATE_SIMILARITY = 0.6
+
+const titleTokens = (title) => new Set(
+    String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
+)
+
+const tokenSimilarity = (a, b) => {
+    if (a.size === 0 || b.size === 0) return 0
+    let intersection = 0
+    for (const token of a) if (b.has(token)) intersection += 1
+    return intersection / (a.size + b.size - intersection)
+}
+
 const parseFeed = (xml, source) => {
     const items = []
     for (const match of String(xml || '').matchAll(/<item[\s\S]*?<\/item>/g)) {
@@ -103,27 +119,30 @@ export async function onRequestGet(context) {
     try {
         const results = await Promise.all(FEEDS.map((feed) => loadFeed(feed, controller.signal)))
         const now = Date.now()
-        const seen = new Set()
-        const headlines = results
+        const fresh = results
             .flat()
             // Require a real timestamp — an undateable item can't be proven fresh.
             .filter((item) => Number.isFinite(item.publishedAt) && now - item.publishedAt <= MAX_HEADLINE_AGE_MS)
             .sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0))
-            .filter((item) => {
-                const key = item.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-                if (!key || seen.has(key)) return false
-                seen.add(key)
-                return true
-            })
-            .slice(0, MAX_HEADLINES)
-            .map((item) => ({
-                // A stable id so the client can remember which headlines were dismissed.
-                id: (item.url || item.title).slice(0, 240),
-                title: item.title,
-                url: item.url,
-                source: item.source,
-                publishedAt: item.publishedAt
-            }))
+
+        // Newest-first pass that drops near-duplicate rewordings, keeping the freshest.
+        const accepted = []
+        for (const item of fresh) {
+            const tokens = titleTokens(item.title)
+            if (tokens.size === 0) continue
+            if (accepted.some((prev) => tokenSimilarity(prev.tokens, tokens) >= DUPLICATE_SIMILARITY)) continue
+            accepted.push({ item, tokens })
+            if (accepted.length >= MAX_HEADLINES) break
+        }
+
+        const headlines = accepted.map(({ item }) => ({
+            // A stable id so the client can remember which headlines were dismissed.
+            id: (item.url || item.title).slice(0, 240),
+            title: item.title,
+            url: item.url,
+            source: item.source,
+            publishedAt: item.publishedAt
+        }))
 
         const response = jsonResponse({ fetchedAt: now, headlines })
         context.waitUntil(cache.put(cacheKey, response.clone()))

@@ -181,16 +181,6 @@
 }
 .finnhub-diagnostic-controls button:hover, .finnhub-diagnostic-controls button.is-active { border-color: #a46f20; color: #d5a85f; background: #211b12; }
 
-.diagnostic-alert {
-    margin: 10px 12px 0;
-    border: 1px solid #8b692f;
-    background: #2b2317;
-    color: #dfb96d;
-    padding: 9px 11px;
-    font-size: 10px;
-}
-.diagnostic-alert-error { border-color: #78323a; background: #2a1719; color: #ef7783; }
-.diagnostic-alert-cap { border-color: #8b692f; background: #2b2317; color: #dfb96d; }
 
 .finnhub-grid-canvas {
     min-height: 720px;
@@ -428,6 +418,12 @@
     padding: 8px 10px 9px;
     box-shadow: 0 10px 24px rgb(0 0 0 / 45%);
     animation: dashboard-news-in 160ms ease-out;
+}
+
+/* Dashboard status notices — amber, to read as distinct from red breaking news. */
+.dashboard-news-item.is-system {
+    background: #e0a52e;
+    border-color: #6f4e12;
 }
 
 @keyframes dashboard-news-in {
