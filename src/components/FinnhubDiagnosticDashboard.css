@@ -307,7 +307,8 @@
     position: absolute;
     right: 7px;
     bottom: 2px;
-    left: 7px;
+    /* Clear react-grid-layout's invisible 20px southwest resize handle. */
+    left: 24px;
     display: flex;
     justify-content: space-between;
     color: #4e4e4e;
@@ -318,6 +319,10 @@
 
 .quote-widget-status { display: flex; min-width: 0; align-items: center; gap: 4px; }
 .quote-priority-toggle {
+    display: grid;
+    width: 16px;
+    height: 16px;
+    place-items: center;
     border: 0;
     background: transparent;
     color: #555;
