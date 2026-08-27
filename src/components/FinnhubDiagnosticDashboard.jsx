@@ -319,6 +319,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const [editingWidgetId, setEditingWidgetId] = useState(null)
     const [newSymbol, setNewSymbol] = useState('')
     const [newThemeId, setNewThemeId] = useState('other')
+    const [addWidgetError, setAddWidgetError] = useState('')
     const [layoutLocked, setLayoutLocked] = useState(false)
     const [streamPaused, setStreamPaused] = useState(false)
     const [streamedSymbols, setStreamedSymbols] = useState([])
@@ -645,12 +646,16 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
 
     const addWidget = () => {
         const symbol = cleanSymbol(newSymbol)
-        if (!symbol) return
+        if (!symbol) {
+            setAddWidgetError('Enter a symbol first.')
+            return
+        }
         const themeId = THEME_BY_ID[newThemeId] ? newThemeId : 'other'
         const widget = { id: makeId(), symbol, themeId, priority: false }
         setWidgets((current) => [...current, widget])
         setLayouts(createDashboardLayouts([...widgets, widget]))
         setNewSymbol('')
+        setAddWidgetError('')
     }
 
     const removeWidget = (widgetId) => {
@@ -729,15 +734,22 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     <input
                         value={newSymbol}
                         maxLength={MAX_SYMBOL_LENGTH}
-                        onChange={(event) => setNewSymbol(cleanSymbol(event.target.value))}
+                        onChange={(event) => {
+                            setNewSymbol(cleanSymbol(event.target.value))
+                            if (addWidgetError) setAddWidgetError('')
+                        }}
                         onKeyDown={(event) => event.key === 'Enter' && addWidget()}
                         placeholder="SYMBOL"
                         aria-label="Symbol for new diagnostic widget"
+                        aria-invalid={Boolean(addWidgetError)}
+                        aria-describedby={addWidgetError ? 'diagnostic-add-error' : undefined}
+                        className={addWidgetError ? 'has-error' : ''}
                     />
                     <select value={newThemeId} onChange={(event) => setNewThemeId(event.target.value)} aria-label="Theme for new diagnostic widget">
                         {DASHBOARD_THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
                     </select>
                     <button type="button" onClick={addWidget}>+ ADD WIDGET</button>
+                    {addWidgetError && <span id="diagnostic-add-error" className="diagnostic-add-error" role="alert">{addWidgetError}</span>}
                 </div>
                 <div className="diagnostic-control-buttons">
                     <button type="button" className={streamPaused ? 'is-active' : ''} onClick={() => setStreamPaused((current) => !current)}>{streamPaused ? '▶ RESUME' : 'Ⅱ PAUSE'}</button>

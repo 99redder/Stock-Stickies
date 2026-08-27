@@ -133,6 +133,8 @@
 
 .diagnostic-add-control input:focus,
 .diagnostic-add-control select:focus { border-color: #a46f20; box-shadow: 0 0 0 1px #a46f20; }
+.diagnostic-add-control input.has-error { border-color: var(--terminal-red); box-shadow: 0 0 0 1px rgb(223 64 80 / 45%); }
+.diagnostic-add-error { color: #ef7783; font-size: 9px; font-weight: 800; white-space: nowrap; }
 .finnhub-diagnostic-controls button {
     height: 28px;
     border: 1px solid #4a4a4a;
