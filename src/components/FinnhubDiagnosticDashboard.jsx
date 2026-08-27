@@ -11,6 +11,7 @@ const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v9'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const DISMISSED_NEWS_STORAGE_KEY = 'stock-stickies-dashboard-dismissed-news-v1'
+const DISMISSED_ALERTS_STORAGE_KEY = 'stock-stickies-dashboard-dismissed-alerts-v1'
 const CHROME_COLLAPSED_STORAGE_KEY = 'stock-stickies-dashboard-chrome-collapsed-v1'
 const NEWS_ENDPOINT = '/api/news/breaking'
 const NEWS_POLL_INTERVAL_MS = 45000
@@ -403,6 +404,19 @@ const loadDismissedNewsIds = () => {
     }
 }
 
+const loadDismissedAlertKeys = () => {
+    try {
+        const saved = JSON.parse(localStorage.getItem(DISMISSED_ALERTS_STORAGE_KEY) || 'null')
+        return Array.isArray(saved) ? saved.filter((key) => typeof key === 'string') : []
+    } catch {
+        return []
+    }
+}
+
+const getAlertDismissalKey = (alert) => (
+    alert.id === 'subscription' ? alert.id : `${alert.id}:${alert.text}`
+)
+
 const formatHeadlineAge = (publishedAt) => {
     if (!Number.isFinite(publishedAt)) return ''
     const minutes = Math.floor((Date.now() - publishedAt) / 60000)
@@ -418,7 +432,7 @@ const formatHeadlineAge = (publishedAt) => {
 function BreakingNewsTicker({ systemAlerts = [] }) {
     const [headlines, setHeadlines] = useState([])
     const [dismissedIds, setDismissedIds] = useState(() => new Set(loadDismissedNewsIds()))
-    const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set())
+    const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set(loadDismissedAlertKeys()))
     const [now, setNow] = useState(() => Date.now())
 
     useEffect(() => {
@@ -466,11 +480,21 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
         })
     }
 
-    // Dismissal is keyed by the alert text, so an alert whose message changes
-    // (e.g. a new connection error) reappears rather than staying hidden.
-    const dismissAlert = (text) => setDismissedAlerts((current) => new Set(current).add(text))
+    // Persist dashboard-alert dismissals across reconnects and remounts. The
+    // subscription-cap notice uses its stable id so widget-count changes do not
+    // make the same informational notice reappear; errors include their text so
+    // a genuinely different problem can still surface.
+    const dismissAlert = (alert) => setDismissedAlerts((current) => {
+        const next = [...current, getAlertDismissalKey(alert)].slice(-MAX_REMEMBERED_DISMISSALS)
+        try {
+            localStorage.setItem(DISMISSED_ALERTS_STORAGE_KEY, JSON.stringify(next))
+        } catch {
+            // Persistence is best-effort; the dismissal still applies this session.
+        }
+        return new Set(next)
+    })
 
-    const visibleAlerts = systemAlerts.filter((alert) => alert.text && !dismissedAlerts.has(alert.text))
+    const visibleAlerts = systemAlerts.filter((alert) => alert.text && !dismissedAlerts.has(getAlertDismissalKey(alert)))
 
     const visible = headlines
         .filter((item) => !dismissedIds.has(item.id))
@@ -489,7 +513,7 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
                         <button
                             type="button"
                             className="dashboard-news-dismiss quote-action"
-                            onClick={() => dismissAlert(alert.text)}
+                            onClick={() => dismissAlert(alert)}
                             title="Dismiss this alert"
                             aria-label={`Dismiss alert: ${alert.text}`}
                         >
