@@ -103,6 +103,60 @@ const createDashboardLayouts = (widgets) => Object.fromEntries(
     Object.entries(GRID_COLUMNS).map(([breakpoint, columns]) => [breakpoint, createGodelLayout(widgets, columns)])
 )
 
+const layoutItemsCollide = (item, other) => (
+    item.i !== other.i
+    && item.x < other.x + other.w
+    && item.x + item.w > other.x
+    && item.y < other.y + other.h
+    && item.y + item.h > other.y
+)
+
+const layoutHasCollisions = (layout) => Array.isArray(layout) && layout.some((item, index) => (
+    layout.slice(index + 1).some((other) => layoutItemsCollide(item, other))
+))
+
+const appendWidgetToLayouts = (currentLayouts, existingWidgets, widget) => Object.fromEntries(
+    Object.entries(GRID_COLUMNS).map(([breakpoint, columns]) => {
+        const layout = Array.isArray(currentLayouts?.[breakpoint]) ? currentLayouts[breakpoint] : createGodelLayout(existingWidgets, columns)
+        const nextLayout = [...layout]
+        let header = nextLayout.find((item) => item.i === themeHeaderId(widget.themeId))
+
+        if (!header) {
+            const clusterColumns = columns >= 24 ? 3 : columns >= 12 ? 2 : 1
+            const clusterGap = 1
+            const clusterWidth = Math.floor((columns - clusterGap * (clusterColumns - 1)) / clusterColumns)
+            const bottom = nextLayout.reduce((maximum, item) => Math.max(maximum, item.y + item.h), 0)
+            header = { i: themeHeaderId(widget.themeId), x: 0, y: bottom + 1, w: clusterWidth, h: 1, static: true }
+            nextLayout.push(header)
+        }
+
+        const themeWidgetIds = new Set(existingWidgets.filter((item) => item.themeId === widget.themeId).map((item) => item.id))
+        const themeLayoutItems = nextLayout.filter((item) => themeWidgetIds.has(item.i))
+        const template = themeLayoutItems[0]
+        const width = Math.min(template?.w || Math.max(2, Math.floor(header.w / (header.w >= 9 ? 3 : header.w >= 6 ? 2 : 1))), header.w)
+        const height = template?.h || 2
+        const maxCandidateY = nextLayout.reduce((maximum, item) => Math.max(maximum, item.y + item.h), header.y + 1) + height + 2
+        let placement = null
+
+        for (let y = header.y + 1; y <= maxCandidateY && !placement; y += height) {
+            for (let x = header.x; x + width <= header.x + header.w; x += width) {
+                const candidate = { i: widget.id, x, y, w: width, h: height, minW: 2, minH: 2, maxW: 8, maxH: 5 }
+                if (!nextLayout.some((item) => layoutItemsCollide(candidate, item))) {
+                    placement = candidate
+                    break
+                }
+            }
+        }
+
+        if (!placement) {
+            const bottom = nextLayout.reduce((maximum, item) => Math.max(maximum, item.y + item.h), 0)
+            placement = { i: widget.id, x: header.x, y: bottom + 1, w: width, h: height, minW: 2, minH: 2, maxW: 8, maxH: 5 }
+        }
+        nextLayout.push(placement)
+        return [breakpoint, nextLayout]
+    })
+)
+
 const loadSavedDashboard = () => {
     const defaults = createDefaultWidgets()
     try {
@@ -151,7 +205,10 @@ const loadSavedDashboard = () => {
             : createDashboardLayouts(widgets)
 
         const expectedLayoutItems = widgets.length + activeThemeIds.size
-        if (!layouts.lg || layouts.lg.length !== expectedLayoutItems) return { widgets, layouts: createDashboardLayouts(widgets) }
+        const hasUnsafeLayout = Object.values(layouts).some(layoutHasCollisions)
+        if (!layouts.lg || layouts.lg.length !== expectedLayoutItems || hasUnsafeLayout) {
+            return { widgets, layouts: createDashboardLayouts(widgets) }
+        }
         return { widgets, layouts }
     } catch {
         return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
@@ -223,7 +280,7 @@ const formatSigned = (value, digits = 2) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
 }
 
-const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabled, editing, onBeginEdit, onCancelEdit, onSaveEdit, onTogglePriority, onRemove }) {
+const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabled, editing, highlighted, onBeginEdit, onCancelEdit, onSaveEdit, onTogglePriority, onRemove }) {
     const [draft, setDraft] = useState(widget.symbol)
     const price = quote?.price
     const change = quote?.change
@@ -252,7 +309,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
     }
 
     return (
-        <div className={`finnhub-quote-widget quote-drag-handle quote-${direction}`}>
+        <div className={`finnhub-quote-widget quote-drag-handle quote-${direction} ${highlighted ? 'is-highlighted' : ''}`}>
             <div className="quote-widget-topline">
                 {editing ? (
                     <input
@@ -323,6 +380,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
     && previous.quote === next.quote
     && previous.streamEnabled === next.streamEnabled
     && previous.editing === next.editing
+    && previous.highlighted === next.highlighted
 ))
 
 export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false, onExit }) {
@@ -336,6 +394,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const [socketEpoch, setSocketEpoch] = useState(0)
     const [quotes, setQuotes] = useState(initialQuotes)
     const [editingWidgetId, setEditingWidgetId] = useState(null)
+    const [highlightedWidgetId, setHighlightedWidgetId] = useState(null)
     const [newSymbol, setNewSymbol] = useState('')
     const [newThemeId, setNewThemeId] = useState('other')
     const [addWidgetError, setAddWidgetError] = useState('')
@@ -359,6 +418,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const subscriptionTimerRef = useRef(null)
     const lastSubscriptionAttemptRef = useRef('')
     const subscriptionCapRef = useRef(initialSubscriptionCap)
+    const highlightTimerRef = useRef(null)
 
     const symbolKey = useMemo(() => widgets.map((widget) => providerSymbol(widget.symbol)).sort().join('|'), [widgets])
 
@@ -369,6 +429,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     useEffect(() => {
         pausedRef.current = streamPaused
     }, [streamPaused])
+
+    useEffect(() => () => {
+        if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
+    }, [])
 
     useEffect(() => {
         if (!onExit) return undefined
@@ -724,10 +788,19 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
             setAddWidgetError('Enter a symbol first.')
             return
         }
+        const normalized = providerSymbol(symbol)
+        const existingWidget = widgets.find((widget) => providerSymbol(widget.symbol) === normalized)
+        if (existingWidget) {
+            setAddWidgetError(`${displaySymbol(symbol)} is already on the dashboard.`)
+            setHighlightedWidgetId(existingWidget.id)
+            if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
+            highlightTimerRef.current = window.setTimeout(() => setHighlightedWidgetId(null), 1800)
+            return
+        }
         const themeId = THEME_BY_ID[newThemeId] ? newThemeId : 'other'
         const widget = { id: makeId(), symbol, themeId, priority: false }
         setWidgets((current) => [...current, widget])
-        setLayouts(createDashboardLayouts([...widgets, widget]))
+        setLayouts((current) => appendWidgetToLayouts(current, widgets, widget))
         setNewSymbol('')
         setAddWidgetError('')
     }
@@ -745,7 +818,17 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     }
 
     const saveWidgetSymbol = (widgetId, symbol) => {
+        const normalized = providerSymbol(symbol)
+        const existingWidget = widgets.find((widget) => widget.id !== widgetId && providerSymbol(widget.symbol) === normalized)
+        if (existingWidget) {
+            setAddWidgetError(`${displaySymbol(symbol)} is already on the dashboard.`)
+            setHighlightedWidgetId(existingWidget.id)
+            if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
+            highlightTimerRef.current = window.setTimeout(() => setHighlightedWidgetId(null), 1800)
+            return
+        }
         setWidgets((current) => current.map((widget) => widget.id === widgetId ? { ...widget, symbol } : widget))
+        setAddWidgetError('')
         setEditingWidgetId(null)
     }
 
@@ -851,7 +934,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     margin={[6, 6]}
                     containerPadding={[6, 6]}
                     compactType={null}
-                    preventCollision={false}
+                    preventCollision={true}
                     isDraggable={!layoutLocked}
                     isResizable={!layoutLocked}
                     draggableHandle=".quote-drag-handle"
@@ -872,6 +955,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                                 quote={quotes[providerSymbol(widget.symbol)]}
                                 streamEnabled={streamedSymbolSet.has(providerSymbol(widget.symbol))}
                                 editing={editingWidgetId === widget.id}
+                                highlighted={highlightedWidgetId === widget.id}
                                 onBeginEdit={setEditingWidgetId}
                                 onCancelEdit={() => setEditingWidgetId(null)}
                                 onSaveEdit={saveWidgetSymbol}

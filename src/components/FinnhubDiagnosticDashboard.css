@@ -204,6 +204,11 @@
 .finnhub-quote-widget:active { cursor: grabbing; }
 .finnhub-quote-widget:hover { border-color: #686868; box-shadow: 0 0 0 1px rgb(255 255 255 / 4%), 0 4px 12px rgb(0 0 0 / 45%); }
 
+.finnhub-quote-widget.is-highlighted {
+    border-color: #d8a23f;
+    animation: quote-existing-widget 600ms ease-out 3;
+}
+
 .quote-widget-topline {
     position: absolute;
     inset: 0 0 auto;
@@ -344,8 +349,14 @@
     100% { background: transparent; filter: brightness(1); }
 }
 
+@keyframes quote-existing-widget {
+    0%, 100% { box-shadow: 0 0 0 1px rgb(216 162 63 / 20%); }
+    50% { box-shadow: 0 0 0 2px #d8a23f, 0 0 18px rgb(216 162 63 / 70%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .quote-widget-reading.quote-tick-blink { animation: none !important; }
+    .quote-widget-reading.quote-tick-blink,
+    .finnhub-quote-widget.is-highlighted { animation: none !important; }
 }
 
 @media (max-width: 1050px) {
