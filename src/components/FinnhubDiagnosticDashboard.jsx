@@ -6,8 +6,8 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v7'
-const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v6'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v8'
+const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v7'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const MAX_SYMBOL_LENGTH = 24
@@ -18,6 +18,7 @@ const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 const DASHBOARD_THEMES = [
     { id: 'mag7', label: 'MAG 7 STOCKS', symbols: ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOG', 'META', 'TSLA'], priority: true },
     { id: 'drones', label: 'DRONE STOCKS', symbols: ['AVAV', 'KTOS', 'RCAT', 'UMAC', 'ONDS'] },
+    { id: 'robotics', label: 'ROBOTICS', symbols: ['OUST', 'BOT', 'CCXI', 'RR', 'SERV'] },
     { id: 'market', label: 'INDEXES & MARKET DATA', symbols: ['SPY', 'IWM', 'QQQ', 'VIX', 'GLD', 'BTC', 'DGS30'], priority: true },
     { id: 'ai', label: 'AI TRADE', symbols: ['AMD', 'AVGO', 'VRT', 'NBIS', 'INTC', 'MU', 'PLTR', 'BOTZ', 'CRWD', 'PANW'] },
     { id: 'space', label: 'SPACE STOCKS', symbols: ['RKLB', 'ASTS', 'RDW', 'LUNR', 'PL', 'BKSY', 'SPCE'] },
@@ -30,7 +31,7 @@ const DASHBOARD_THEMES = [
 const THEME_BY_ID = Object.fromEntries(DASHBOARD_THEMES.map((theme) => [theme.id, theme]))
 const themeHeaderId = (themeId) => `theme-heading-${themeId}`
 const GRID_COLUMNS = { lg: 30, md: 24, sm: 18, xs: 12, xxs: 6 }
-const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'other']
+const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'robotics', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'other']
 
 const makeId = () => `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -122,7 +123,12 @@ const loadSavedDashboard = () => {
                 priority: Boolean(widget.priority)
             }))
         if (isPreviousVersion) {
-            const migrationSymbols = new Set(['DGS30'])
+            const migrationSymbols = new Set(['OUST', 'BOT', 'CCXI', 'RR', 'SERV'])
+            widgets = widgets.map((widget) => (
+                migrationSymbols.has(providerSymbol(widget.symbol))
+                    ? { ...widget, themeId: 'robotics' }
+                    : widget
+            ))
             const existingSymbols = new Set(widgets.map((widget) => providerSymbol(widget.symbol)))
             const newThemeWidgets = defaults.filter((widget) => (
                 migrationSymbols.has(widget.symbol) && !existingSymbols.has(providerSymbol(widget.symbol))
