@@ -6,7 +6,7 @@ import './FinnhubDiagnosticDashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v3'
+const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v4'
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const MAX_SYMBOL_LENGTH = 24
@@ -26,6 +26,8 @@ const DASHBOARD_THEMES = [
 
 const THEME_BY_ID = Object.fromEntries(DASHBOARD_THEMES.map((theme) => [theme.id, theme]))
 const themeHeaderId = (themeId) => `theme-heading-${themeId}`
+const GRID_COLUMNS = { lg: 30, md: 24, sm: 18, xs: 12, xxs: 6 }
+const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'ai', 'space', 'market', 'financials', 'other']
 
 const makeId = () => `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -52,22 +54,32 @@ const createDefaultWidgets = () => DASHBOARD_THEMES.flatMap((theme) => theme.sym
     priority: Boolean(theme.priority)
 })))
 
-const createGodelLayout = (widgets) => {
+const createGodelLayout = (widgets, totalColumns) => {
     const layout = []
-    let y = 0
-    DASHBOARD_THEMES.forEach((theme) => {
+    const clusterColumns = totalColumns >= 24 ? 3 : totalColumns >= 12 ? 2 : 1
+    const clusterGap = 1
+    const clusterWidth = Math.floor((totalColumns - clusterGap * (clusterColumns - 1)) / clusterColumns)
+    const yByColumn = Array(clusterColumns).fill(0)
+
+    CLUSTER_THEME_ORDER.forEach((themeId, themeIndex) => {
+        const theme = THEME_BY_ID[themeId]
         const themedWidgets = widgets.filter((widget) => widget.themeId === theme.id)
         if (themedWidgets.length === 0) return
-        layout.push({ i: themeHeaderId(theme.id), x: 0, y, w: 24, h: 1, static: true })
-        y += 1
+        const clusterColumn = themeIndex % clusterColumns
+        const clusterX = clusterColumn * (clusterWidth + clusterGap)
+        const clusterY = yByColumn[clusterColumn]
+        const widgetColumns = clusterWidth >= 9 ? 3 : clusterWidth >= 6 ? 2 : 1
+        const widgetWidth = Math.max(2, Math.floor(clusterWidth / widgetColumns))
+
+        layout.push({ i: themeHeaderId(theme.id), x: clusterX, y: clusterY, w: clusterWidth, h: 1, static: true })
         themedWidgets.forEach((widget, index) => {
-            const column = index % 8
-            const row = Math.floor(index / 8)
+            const column = index % widgetColumns
+            const row = Math.floor(index / widgetColumns)
             layout.push({
                 i: widget.id,
-                x: column * 3,
-                y: y + row * 2,
-                w: 3,
+                x: clusterX + column * widgetWidth,
+                y: clusterY + 1 + row * 2,
+                w: widgetWidth,
                 h: 2,
                 minW: 2,
                 minH: 2,
@@ -75,18 +87,22 @@ const createGodelLayout = (widgets) => {
                 maxH: 5
             })
         })
-        y += Math.ceil(themedWidgets.length / 8) * 2
+        yByColumn[clusterColumn] += 1 + Math.ceil(themedWidgets.length / widgetColumns) * 2 + 1
     })
 
     return layout
 }
+
+const createDashboardLayouts = (widgets) => Object.fromEntries(
+    Object.entries(GRID_COLUMNS).map(([breakpoint, columns]) => [breakpoint, createGodelLayout(widgets, columns)])
+)
 
 const loadSavedDashboard = () => {
     const defaults = createDefaultWidgets()
     try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
         if (!saved || !Array.isArray(saved.widgets) || saved.widgets.length === 0) {
-            return { widgets: defaults, layouts: { lg: createGodelLayout(defaults) } }
+            return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
         }
 
         const widgets = saved.widgets
@@ -97,7 +113,7 @@ const loadSavedDashboard = () => {
                 themeId: THEME_BY_ID[widget.themeId] ? widget.themeId : 'other',
                 priority: Boolean(widget.priority)
             }))
-        if (widgets.length === 0) return { widgets: defaults, layouts: { lg: createGodelLayout(defaults) } }
+        if (widgets.length === 0) return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
 
         const activeThemeIds = new Set(widgets.map((widget) => widget.themeId))
         const validIds = new Set([
@@ -109,13 +125,13 @@ const loadSavedDashboard = () => {
                 breakpoint,
                 Array.isArray(layout) ? layout.filter((item) => validIds.has(item?.i)) : []
             ]))
-            : { lg: createGodelLayout(widgets) }
+            : createDashboardLayouts(widgets)
 
         const expectedLayoutItems = widgets.length + activeThemeIds.size
-        if (!layouts.lg || layouts.lg.length !== expectedLayoutItems) layouts.lg = createGodelLayout(widgets)
+        if (!layouts.lg || layouts.lg.length !== expectedLayoutItems) return { widgets, layouts: createDashboardLayouts(widgets) }
         return { widgets, layouts }
     } catch {
-        return { widgets: defaults, layouts: { lg: createGodelLayout(defaults) } }
+        return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
     }
 }
 
@@ -228,20 +244,11 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
                         {displaySymbol(widget.symbol)}
                     </button>
                 )}
-                <div className={`quote-widget-actions quote-action ${widget.priority ? 'has-priority' : ''}`}>
+                <div className="quote-widget-actions quote-action">
                     {editing ? (<>
                         <button type="button" onClick={save} title="Save symbol" aria-label="Save symbol">✓</button>
                         <button type="button" onClick={onCancelEdit} title="Cancel editing" aria-label="Cancel editing">×</button>
                     </>) : (<>
-                        <button
-                            type="button"
-                            className={widget.priority ? 'is-priority' : ''}
-                            onClick={() => onTogglePriority(widget.id)}
-                            title={widget.priority ? 'Remove live-stream priority' : 'Prioritize for live streaming'}
-                            aria-label={`${widget.priority ? 'Remove' : 'Add'} live-stream priority for ${displaySymbol(widget.symbol)}`}
-                        >
-                            {widget.priority ? '★' : '☆'}
-                        </button>
                         <button type="button" onClick={beginEdit} title="Edit symbol" aria-label={`Edit ${displaySymbol(widget.symbol)}`}>✎</button>
                         <button type="button" onClick={() => onRemove(widget.id)} title="Remove widget" aria-label={`Remove ${displaySymbol(widget.symbol)}`}>×</button>
                     </>)}
@@ -261,7 +268,18 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
             </div>
 
             <div className="quote-widget-footer">
-                <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`}>{feedLabel}</span>
+                <span className="quote-widget-status">
+                    <button
+                        type="button"
+                        className={`quote-priority-toggle quote-action ${widget.priority ? 'is-priority' : ''}`}
+                        onClick={() => onTogglePriority(widget.id)}
+                        title={widget.priority ? 'Remove live-stream priority' : 'Prioritize for live streaming'}
+                        aria-label={`${widget.priority ? 'Remove' : 'Add'} live-stream priority for ${displaySymbol(widget.symbol)}`}
+                    >
+                        {widget.priority ? '★' : '☆'}
+                    </button>
+                    <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`}>{feedLabel}</span>
+                </span>
                 <span>{quote?.events ? `${quote.events.toLocaleString()} ticks` : ''}</span>
             </div>
         </div>
@@ -614,21 +632,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
         const symbol = cleanSymbol(newSymbol)
         if (!symbol) return
         const themeId = THEME_BY_ID[newThemeId] ? newThemeId : 'other'
-        const themeAlreadyActive = widgets.some((widget) => widget.themeId === themeId)
         const widget = { id: makeId(), symbol, themeId, priority: false }
         setWidgets((current) => [...current, widget])
-        setLayouts((current) => {
-            const next = { ...current }
-            Object.keys(next).forEach((breakpoint) => {
-                next[breakpoint] = [
-                    ...next[breakpoint],
-                    ...(!themeAlreadyActive ? [{ i: themeHeaderId(themeId), x: 0, y: 9998, w: 24, h: 1, static: true }] : []),
-                    { i: widget.id, x: 0, y: 9999, w: 3, h: 2, minW: 2, minH: 2, maxW: 8, maxH: 5 }
-                ]
-            })
-            if (!next.lg) next.lg = createGodelLayout([...widgets, widget])
-            return next
-        })
+        setLayouts(createDashboardLayouts([...widgets, widget]))
         setNewSymbol('')
     }
 
@@ -658,7 +664,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const resetDashboard = () => {
         const nextWidgets = createDefaultWidgets()
         setWidgets(nextWidgets)
-        setLayouts({ lg: createGodelLayout(nextWidgets) })
+        setLayouts(createDashboardLayouts(nextWidgets))
         setEditingWidgetId(null)
     }
 
@@ -736,7 +742,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     className="finnhub-responsive-grid"
                     layouts={layouts}
                     breakpoints={{ lg: 1400, md: 1050, sm: 760, xs: 480, xxs: 0 }}
-                    cols={{ lg: 24, md: 16, sm: 12, xs: 8, xxs: 4 }}
+                    cols={GRID_COLUMNS}
                     rowHeight={27}
                     margin={[6, 6]}
                     containerPadding={[6, 6]}

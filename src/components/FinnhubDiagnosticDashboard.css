@@ -239,9 +239,6 @@
 }
 
 .quote-widget-actions { display: flex; opacity: 0; transition: opacity 120ms ease; }
-.quote-widget-actions.has-priority { opacity: 1; }
-.quote-widget-actions.has-priority button:not(.is-priority) { opacity: 0; pointer-events: none; }
-.finnhub-quote-widget:hover .quote-widget-actions.has-priority button { opacity: 1; pointer-events: auto; }
 .finnhub-quote-widget:hover .quote-widget-actions, .quote-widget-actions:focus-within { opacity: 1; }
 .quote-widget-actions button {
     display: grid;
@@ -256,7 +253,6 @@
     cursor: pointer;
 }
 .quote-widget-actions button:hover { color: #ddd; background: #252525; }
-.quote-widget-actions button.is-priority { color: #d8a23f; }
 
 .quote-widget-reading {
     display: flex;
@@ -289,6 +285,19 @@
     font-weight: 800;
     letter-spacing: .08em;
 }
+
+.quote-widget-status { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.quote-priority-toggle {
+    border: 0;
+    background: transparent;
+    color: #555;
+    padding: 0;
+    font: 700 10px/1 sans-serif;
+    cursor: pointer;
+}
+.quote-priority-toggle:hover,
+.quote-priority-toggle:focus-visible,
+.quote-priority-toggle.is-priority { color: #d8a23f; outline: none; }
 
 .quote-freshness.is-live { color: #2d7958; }
 .finnhub-responsive-grid .react-resizable-handle { opacity: 0; transition: opacity 120ms ease; }
