@@ -23,6 +23,9 @@ const MAX_REMEMBERED_DISMISSALS = 500
 const MAX_SYMBOL_LENGTH = 24
 const SUBSCRIPTION_PROBE_DELAY_MS = 350
 const SNAPSHOT_INTERVAL_MS = 1250
+const STALE_STREAM_AFTER_MS = 15000
+const STALE_STREAM_SNAPSHOT_INTERVAL_MS = 60000
+const BASELINE_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000
 const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 const DASHBOARD_THEMES = [
@@ -904,7 +907,13 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     const needsInitialData = !hasPrice || !hasBaseline
                     const attemptedAt = snapshotRequestTimesRef.current[symbol] || 0
                     if (needsInitialData && now - attemptedAt < 60000) return false
-                    return needsInitialData || !subscribedSymbolsRef.current.has(symbol)
+                    const isSubscribed = subscribedSymbolsRef.current.has(symbol)
+                    const lastEventAt = Number(quote.lastEventAt) || 0
+                    const snapshotAt = Number(quote.snapshotAt) || 0
+                    const streamIsStale = isSubscribed && (!lastEventAt || now - lastEventAt >= STALE_STREAM_AFTER_MS)
+                    const staleSnapshotIsDue = streamIsStale && now - attemptedAt >= STALE_STREAM_SNAPSHOT_INTERVAL_MS
+                    const baselineSnapshotIsDue = now - snapshotAt >= BASELINE_SNAPSHOT_INTERVAL_MS
+                    return needsInitialData || !isSubscribed || staleSnapshotIsDue || baselineSnapshotIsDue
                 }).sort((a, b) => {
                     const aHasPrice = Number.isFinite(quotesRef.current[a]?.price) && quotesRef.current[a].price > 0
                     const bHasPrice = Number.isFinite(quotesRef.current[b]?.price) && quotesRef.current[b].price > 0
