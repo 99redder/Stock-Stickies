@@ -295,7 +295,8 @@
     flex-direction: column;
     align-items: flex-end;
     justify-content: center;
-    padding: 16px 8px 8px;
+    /* Keep the return row clear of the source/timestamp footer. */
+    padding: 16px 8px 34px;
     text-align: right;
 }
 
@@ -323,6 +324,12 @@
 }
 
 .quote-widget-status { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.quote-freshness {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .quote-priority-toggle {
     display: grid;
     width: 16px;
@@ -362,7 +369,7 @@
 
 @container (max-height: 56px) {
     .quote-widget-footer { display: none; }
-    .quote-widget-reading { padding-top: 17px; }
+    .quote-widget-reading { padding: 17px 8px 8px; }
 }
 
 @keyframes terminal-pulse {

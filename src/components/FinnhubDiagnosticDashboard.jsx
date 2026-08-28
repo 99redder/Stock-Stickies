@@ -399,7 +399,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
                 : quote?.lastEventAt
                     ? `STREAM IDLE · ${formatQuoteTime(liveTimestamp)}`
                     : quote?.snapshotAt
-                        ? `SNAPSHOT · ${formatQuoteTime(quote.snapshotAt)}${streamEnabled ? ' / STREAM' : ''}`
+                        ? `SNAPSHOT · ${formatQuoteTime(quote.snapshotAt)}`
                         : streamEnabled ? 'STREAM READY' : 'QUEUED'
 
     const save = () => {
