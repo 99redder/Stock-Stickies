@@ -398,6 +398,16 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
     const isFresh = Boolean(quote?.isFresh)
     const isDaily = Boolean(quote?.daily || isDailyMacroSymbol(widget.symbol))
     const liveTimestamp = quote?.providerTimestamp || quote?.lastEventAt
+    const hasCalculatedChange = Number.isFinite(changePercent) && Number.isFinite(change)
+    const changeLabel = isDaily && Number.isFinite(change)
+        ? `${formatSigned(change * 100, 0)} BP${quote?.sourceDate ? ` · ${quote.sourceDate}` : ''}`
+        : hasCalculatedChange
+            ? `${formatSigned(changePercent)}% ${formatSigned(change)}`
+            : quote?.cachedAt
+                ? 'LAST SAVED PRICE'
+                : Number.isFinite(price)
+                    ? 'CHANGE N/A'
+                    : quote?.error || 'NO PRINT YET'
     const feedLabel = isDaily
         ? `DAILY${quote?.sourceDate ? ` · ${quote.sourceDate}` : ''}`
         : isFresh
@@ -459,12 +469,11 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
                 <div className="quote-price">
                     {Number.isFinite(price) ? (isDaily ? `${formatPrice(price)}%` : `$${formatPrice(price)}`) : 'WAITING'}
                 </div>
-                <div className="quote-change">
-                    {isDaily && Number.isFinite(change)
-                        ? `${formatSigned(change * 100, 0)} BP${quote?.sourceDate ? ` · ${quote.sourceDate}` : ''}`
-                        : Number.isFinite(changePercent) && Number.isFinite(change)
-                        ? `${formatSigned(changePercent)}% ${formatSigned(change)}`
-                        : quote?.cachedAt ? 'LAST SAVED PRICE' : quote?.error || 'NO PRINT YET'}
+                <div
+                    className="quote-change"
+                    title={changeLabel === 'CHANGE N/A' ? 'Live price received; previous-close baseline unavailable' : undefined}
+                >
+                    {changeLabel}
                 </div>
             </div>
 
