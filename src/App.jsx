@@ -854,6 +854,7 @@ const firebaseConfig = {
             const [hideLegendPanel, setHideLegendPanel] = useState(false);
             const [hideToolbarPanel, setHideToolbarPanel] = useState(false);
             const [sharesPrivacyMode, setSharesPrivacyMode] = useState('show'); // 'show' | 'hide'
+            const [diagnosticDashboard, setDiagnosticDashboard] = useState(null);
             const [draggingCategory, setDraggingCategory] = useState(null);
             const [dragOverCategory, setDragOverCategory] = useState(null);
             const chartRef = useRef(null);
@@ -1008,7 +1009,10 @@ const firebaseConfig = {
                                 portfolioDonutIncludesCash: data.portfolioDonutIncludesCash !== false,
                                 hideLegendPanel: data.hideLegendPanel || false,
                                 hideToolbarPanel: data.hideToolbarPanel || false,
-                                sharesPrivacyMode: data.sharesPrivacyMode || 'show'
+                                sharesPrivacyMode: data.sharesPrivacyMode || 'show',
+                                diagnosticDashboard: data.diagnosticDashboard && typeof data.diagnosticDashboard === 'object'
+                                    ? data.diagnosticDashboard
+                                    : null
                             };
                             const incomingKey = JSON.stringify(incoming);
                             if (incomingKey === lastAppliedSnapshotRef.current) {
@@ -1045,6 +1049,7 @@ const firebaseConfig = {
                             setHideLegendPanel(incoming.hideLegendPanel);
                             setHideToolbarPanel(incoming.hideToolbarPanel);
                             setSharesPrivacyMode(incoming.sharesPrivacyMode);
+                            setDiagnosticDashboard(incoming.diagnosticDashboard);
 
                             // Reset loading flag after state updates settle
                             setTimeout(() => { isLoadingRef.current = false; }, 200);
@@ -1129,6 +1134,7 @@ const firebaseConfig = {
                             hideLegendPanel,
                             hideToolbarPanel,
                             sharesPrivacyMode,
+                            diagnosticDashboard,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         };
 
@@ -1173,7 +1179,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1210,6 +1216,7 @@ const firebaseConfig = {
                             hideLegendPanel,
                             hideToolbarPanel,
                             sharesPrivacyMode,
+                            diagnosticDashboard,
                             // Store as plain text — async encryption cannot run in beforeunload
                             finnhubApiKey: finnhubApiKey || null,
                             marketauxApiKey: marketauxApiKey || null,
@@ -1222,7 +1229,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1444,6 +1451,7 @@ const firebaseConfig = {
                         hideLegendPanel,
                         hideToolbarPanel,
                         sharesPrivacyMode,
+                        diagnosticDashboard,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
 
@@ -4804,6 +4812,8 @@ const firebaseConfig = {
                     <Suspense fallback={dashboardLoadingFallback}>
                         <FinnhubDiagnosticDashboard
                             apiKey={finnhubApiKey}
+                            persistedDashboard={diagnosticDashboard}
+                            onDashboardChange={setDiagnosticDashboard}
                             fullScreen
                             onExit={() => setMainTab('notes')}
                         />
@@ -6355,7 +6365,11 @@ const firebaseConfig = {
 
                         {mainTab === 'dashboard' ? (
                             <Suspense fallback={dashboardLoadingFallback}>
-                                <FinnhubDiagnosticDashboard apiKey={finnhubApiKey} />
+                                <FinnhubDiagnosticDashboard
+                                    apiKey={finnhubApiKey}
+                                    persistedDashboard={diagnosticDashboard}
+                                    onDashboardChange={setDiagnosticDashboard}
+                                />
                             </Suspense>
                         ) : mainTab === 'notes' ? (
                         <>

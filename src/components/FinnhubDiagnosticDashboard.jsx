@@ -172,13 +172,14 @@ const appendWidgetToLayouts = (currentLayouts, existingWidgets, widget) => Objec
     })
 )
 
-const loadSavedDashboard = () => {
+const loadSavedDashboard = (persistedDashboard) => {
     const defaults = createDefaultWidgets()
     try {
         const currentSaved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
         const previousSaved = currentSaved ? null : JSON.parse(localStorage.getItem(PREVIOUS_STORAGE_KEY) || 'null')
-        const saved = currentSaved || previousSaved
-        const isPreviousVersion = Boolean(!currentSaved && previousSaved)
+        const hasPersistedDashboard = persistedDashboard && typeof persistedDashboard === 'object'
+        const saved = hasPersistedDashboard ? persistedDashboard : currentSaved || previousSaved
+        const isPreviousVersion = Boolean(!hasPersistedDashboard && !currentSaved && previousSaved)
         if (!saved || !Array.isArray(saved.widgets) || saved.widgets.length === 0) {
             return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
         }
@@ -646,8 +647,8 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
     )
 }
 
-export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false, onExit }) {
-    const [initial] = useState(() => loadSavedDashboard())
+export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit }) {
+    const [initial] = useState(() => loadSavedDashboard(persistedDashboard))
     const [initialQuotes] = useState(() => loadCachedQuotes())
     const [initialSubscriptionCap] = useState(() => loadRememberedSubscriptionCap())
     const [widgets, setWidgets] = useState(initial.widgets)
@@ -693,8 +694,16 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const symbolKey = useMemo(() => widgets.map((widget) => providerSymbol(widget.symbol)).sort().join('|'), [widgets])
 
     useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ widgets, layouts }))
-    }, [widgets, layouts])
+        // JSON round-tripping strips any undefined layout metadata before this
+        // object reaches Firestore, which rejects undefined nested values.
+        const dashboard = JSON.parse(JSON.stringify({ widgets, layouts, savedAt: Date.now() }))
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dashboard))
+        } catch {
+            // Account sync remains available when browser storage is blocked/full.
+        }
+        onDashboardChange?.(dashboard)
+    }, [widgets, layouts, onDashboardChange])
 
     useEffect(() => {
         pausedRef.current = streamPaused
