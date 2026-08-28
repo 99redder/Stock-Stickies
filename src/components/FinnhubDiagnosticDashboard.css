@@ -37,7 +37,7 @@
 .finnhub-diagnostic-shell.chrome-collapsed .finnhub-diagnostic-toolbar { padding: 7px 14px; }
 
 .diagnostic-kicker {
-    color: #a46f20;
+    color: #c58b34;
     font-size: 9px;
     font-weight: 800;
     letter-spacing: .18em;
@@ -66,10 +66,11 @@
 }
 
 .diagnostic-stats > div:last-child { border-right: 0; }
-.diagnostic-stats span { display: block; color: #777; font-size: 7px; font-weight: 800; letter-spacing: .11em; }
+.diagnostic-stats span { display: block; color: #a0a0a0; font-size: 8px; font-weight: 800; letter-spacing: .11em; }
 .diagnostic-stats strong { display: block; margin-top: 1px; color: #d5d5d5; font-size: 12px; font-weight: 700; }
 
 .diagnostic-stats { overflow-x: auto; min-width: 0; }
+.diagnostic-stats.is-hidden { display: none; }
 
 .diagnostic-connection {
     display: flex;
@@ -192,7 +193,11 @@
 }
 
 .finnhub-responsive-grid { min-height: 720px; }
-.finnhub-responsive-grid > .react-grid-item { transition: none; }
+.finnhub-responsive-grid > .react-grid-item {
+    transition: none;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 60px;
+}
 .finnhub-responsive-grid > .react-grid-placeholder { border: 1px dashed #d49837; background: rgb(164 111 32 / 22%); opacity: 1; }
 
 .diagnostic-theme-heading {
@@ -208,7 +213,7 @@
     cursor: default;
 }
 
-.diagnostic-theme-heading span:last-child { color: #665942; font-size: 8px; }
+.diagnostic-theme-heading span:last-child { color: #a18c68; font-size: 8px; }
 
 .finnhub-quote-widget {
     container-type: size;
@@ -299,7 +304,7 @@
 .quote-flat .quote-widget-reading.quote-tick-blink { animation: quote-tick-flat 420ms ease-out; }
 
 .quote-price { color: #989898; font-size: clamp(12px, 9cqw, 20px); font-weight: 700; letter-spacing: -.05em; white-space: nowrap; }
-.quote-change { margin-top: 4px; color: #696969; font-size: clamp(8px, 5.4cqw, 12px); font-weight: 700; white-space: nowrap; }
+.quote-change { margin-top: 4px; color: #8a8a8a; font-size: clamp(8px, 5.4cqw, 12px); font-weight: 700; white-space: nowrap; }
 .quote-up .quote-price, .quote-up .quote-change { color: var(--terminal-green); }
 .quote-down .quote-price, .quote-down .quote-change { color: var(--terminal-red); }
 
@@ -311,8 +316,8 @@
     left: 24px;
     display: flex;
     justify-content: space-between;
-    color: #4e4e4e;
-    font-size: 6px;
+    color: #929292;
+    font-size: 7px;
     font-weight: 800;
     letter-spacing: .08em;
 }
@@ -334,7 +339,7 @@
 .quote-priority-toggle:focus-visible,
 .quote-priority-toggle.is-priority { color: #d8a23f; outline: none; }
 
-.quote-freshness.is-live { color: #2d7958; }
+.quote-freshness.is-live { color: #55b98a; }
 .finnhub-responsive-grid .react-resizable-handle { opacity: 0; transition: opacity 120ms ease; }
 .finnhub-responsive-grid .react-grid-item:hover .react-resizable-handle { opacity: 1; }
 .finnhub-responsive-grid .react-resizable-handle::after { border-color: #9f7531; }
@@ -352,6 +357,8 @@
     font-weight: 700;
     letter-spacing: .07em;
 }
+
+.finnhub-diagnostic-footer > span { color: #929292; }
 
 @container (max-height: 56px) {
     .quote-widget-footer { display: none; }

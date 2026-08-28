@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -295,23 +295,112 @@ const formatSigned = (value, digits = 2) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
 }
 
-const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabled, editing, highlighted, onBeginEdit, onCancelEdit, onSaveEdit, onTogglePriority, onRemove }) {
+const formatQuoteTime = (value) => {
+    const timestamp = Number(value)
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return ''
+    return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+}
+
+const createQuoteStore = (initialQuotes) => {
+    const publishedQuotes = { ...initialQuotes }
+    const listeners = new Map()
+    return {
+        getSnapshot(symbol) {
+            return publishedQuotes[symbol]
+        },
+        publish(symbol, quote) {
+            if (!symbol || publishedQuotes[symbol] === quote) return
+            publishedQuotes[symbol] = quote
+            listeners.get(symbol)?.forEach((listener) => listener())
+        },
+        subscribe(symbol, listener) {
+            if (!listeners.has(symbol)) listeners.set(symbol, new Set())
+            const symbolListeners = listeners.get(symbol)
+            symbolListeners.add(listener)
+            return () => {
+                symbolListeners.delete(listener)
+                if (symbolListeners.size === 0) listeners.delete(symbol)
+            }
+        }
+    }
+}
+
+const DashboardStats = React.memo(function DashboardStats({ hidden, widgetCount, streamedCount, uniqueSymbolCount, quotesRef, quoteStore, totalEventsRef, eventsThisSecondRef, documentVisibleRef }) {
+    const [stats, setStats] = useState({ totalEvents: 0, eventsPerMinute: 0, eventsPerSecond: 0, liveSymbols: 0, peakPerSecond: 0 })
+    const eventsHistoryRef = useRef([])
+    const peakPerSecondRef = useRef(0)
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            if (!documentVisibleRef.current) {
+                eventsThisSecondRef.current = 0
+                return
+            }
+
+            const now = Date.now()
+            const thisSecond = eventsThisSecondRef.current
+            eventsThisSecondRef.current = 0
+            eventsHistoryRef.current = [...eventsHistoryRef.current.slice(-59), thisSecond]
+            peakPerSecondRef.current = Math.max(peakPerSecondRef.current, thisSecond)
+            let liveSymbols = 0
+
+            Object.entries(quotesRef.current).forEach(([symbol, quote]) => {
+                const isFresh = Boolean(quote.lastEventAt && now - quote.lastEventAt < 5000)
+                const nextQuote = quote.isFresh === isFresh ? quote : { ...quote, isFresh }
+                if (nextQuote !== quote) quotesRef.current[symbol] = nextQuote
+                if (isFresh) liveSymbols += 1
+                quoteStore.publish(symbol, nextQuote)
+            })
+
+            const nextStats = {
+                totalEvents: totalEventsRef.current,
+                eventsPerMinute: eventsHistoryRef.current.reduce((sum, count) => sum + count, 0),
+                eventsPerSecond: thisSecond,
+                liveSymbols,
+                peakPerSecond: peakPerSecondRef.current
+            }
+            setStats((current) => Object.keys(nextStats).every((key) => current[key] === nextStats[key]) ? current : nextStats)
+        }, 1000)
+        return () => window.clearInterval(timer)
+    }, [documentVisibleRef, eventsThisSecondRef, quoteStore, quotesRef, totalEventsRef])
+
+    return (
+        <div className={`diagnostic-stats ${hidden ? 'is-hidden' : ''}`} aria-hidden={hidden}>
+            <div><span>WIDGETS</span><strong>{widgetCount}</strong></div>
+            <div><span>STREAMED</span><strong>{streamedCount}/{uniqueSymbolCount}</strong></div>
+            <div><span>LIVE ≤5S</span><strong>{stats.liveSymbols}</strong></div>
+            <div><span>EVENTS/MIN</span><strong>{stats.eventsPerMinute.toLocaleString()}</strong></div>
+            <div><span>EVENTS/SEC</span><strong>{stats.eventsPerSecond.toLocaleString()}</strong></div>
+            <div><span>PEAK/SEC</span><strong>{stats.peakPerSecond.toLocaleString()}</strong></div>
+            <div><span>TOTAL</span><strong>{stats.totalEvents.toLocaleString()}</strong></div>
+        </div>
+    )
+})
+
+const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, streamEnabled, editing, highlighted, onBeginEdit, onCancelEdit, onSaveEdit, onTogglePriority, onRemove }) {
     const [draft, setDraft] = useState(widget.symbol)
+    const symbol = providerSymbol(widget.symbol)
+    const subscribe = useCallback((listener) => quoteStore.subscribe(symbol, listener), [quoteStore, symbol])
+    const getSnapshot = useCallback(() => quoteStore.getSnapshot(symbol), [quoteStore, symbol])
+    const quote = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
     const price = quote?.price
     const change = quote?.change
     const changePercent = quote?.changePercent
     const direction = Number.isFinite(change) ? (change >= 0 ? 'up' : 'down') : 'flat'
     const isFresh = Boolean(quote?.isFresh)
     const isDaily = Boolean(quote?.daily || isDailyMacroSymbol(widget.symbol))
+    const liveTimestamp = quote?.providerTimestamp || quote?.lastEventAt
     const feedLabel = isDaily
-        ? 'DAILY'
+        ? `DAILY${quote?.sourceDate ? ` · ${quote.sourceDate}` : ''}`
         : isFresh
-        ? 'LIVE'
-        : quote?.cachedAt
-            ? 'LAST KNOWN'
-        : streamEnabled
-            ? (quote?.snapshotAt ? 'SNAPSHOT / STREAM' : 'STREAM READY')
-            : (quote?.snapshotAt ? 'SNAPSHOT ONLY' : 'QUEUED')
+            ? `LIVE · ${formatQuoteTime(liveTimestamp)}`
+            : quote?.cachedAt
+                ? `CACHED · ${formatQuoteTime(quote.cachedAt)}`
+                : quote?.lastEventAt
+                    ? `STREAM IDLE · ${formatQuoteTime(liveTimestamp)}`
+                    : quote?.snapshotAt
+                        ? `SNAPSHOT · ${formatQuoteTime(quote.snapshotAt)}${streamEnabled ? ' / STREAM' : ''}`
+                        : streamEnabled ? 'STREAM READY' : 'QUEUED'
 
     const save = () => {
         const next = cleanSymbol(draft)
@@ -392,7 +481,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quote, streamEnabl
     )
 }, (previous, next) => (
     previous.widget === next.widget
-    && previous.quote === next.quote
+    && previous.quoteStore === next.quoteStore
     && previous.streamEnabled === next.streamEnabled
     && previous.editing === next.editing
     && previous.highlighted === next.highlighted
@@ -442,6 +531,7 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
         let active = true
         const controller = new AbortController()
         const loadHeadlines = async () => {
+            if (document.visibilityState !== 'visible') return
             try {
                 const response = await fetch(NEWS_ENDPOINT, { signal: controller.signal, cache: 'no-store' })
                 if (!response.ok) return
@@ -467,7 +557,9 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
     // Re-evaluate the age window on its own cadence so headlines expire even
     // between polls (e.g. when the stream is idle overnight).
     useEffect(() => {
-        const timer = window.setInterval(() => setNow(Date.now()), 30000)
+        const timer = window.setInterval(() => {
+            if (document.visibilityState === 'visible') setNow(Date.now())
+        }, 30000)
         return () => window.clearInterval(timer)
     }, [])
 
@@ -563,7 +655,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const [connectionState, setConnectionState] = useState('disconnected')
     const [connectionError, setConnectionError] = useState('')
     const [socketEpoch, setSocketEpoch] = useState(0)
-    const [quotes, setQuotes] = useState(initialQuotes)
     const [editingWidgetId, setEditingWidgetId] = useState(null)
     const [highlightedWidgetId, setHighlightedWidgetId] = useState(null)
     const [newSymbol, setNewSymbol] = useState('')
@@ -573,7 +664,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     const [streamPaused, setStreamPaused] = useState(false)
     const [streamedSymbols, setStreamedSymbols] = useState([])
     const [subscriptionNotice, setSubscriptionNotice] = useState('')
-    const [stats, setStats] = useState({ totalEvents: 0, eventsPerMinute: 0, eventsPerSecond: 0, liveSymbols: 0, peakPerSecond: 0 })
     const [chromeCollapsed, setChromeCollapsed] = useState(() => {
         try { return localStorage.getItem(CHROME_COLLAPSED_STORAGE_KEY) === '1' } catch { return false }
     })
@@ -583,12 +673,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     }, [chromeCollapsed])
 
     const socketRef = useRef(null)
+    const quoteStoreRef = useRef(null)
+    if (!quoteStoreRef.current) quoteStoreRef.current = createQuoteStore(initialQuotes)
+    const quoteStore = quoteStoreRef.current
     const subscribedSymbolsRef = useRef(new Set())
     const quotesRef = useRef(initialQuotes)
     const totalEventsRef = useRef(0)
     const eventsThisSecondRef = useRef(0)
-    const eventsHistoryRef = useRef([])
-    const peakPerSecondRef = useRef(0)
+    const documentVisibleRef = useRef(typeof document === 'undefined' || document.visibilityState === 'visible')
     const pausedRef = useRef(false)
     const reconnectTimerRef = useRef(null)
     const snapshotRequestTimesRef = useRef({})
@@ -607,6 +699,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
     useEffect(() => {
         pausedRef.current = streamPaused
     }, [streamPaused])
+
+    useEffect(() => {
+        const updateVisibility = () => {
+            documentVisibleRef.current = document.visibilityState === 'visible'
+        }
+        document.addEventListener('visibilitychange', updateVisibility)
+        return () => document.removeEventListener('visibilitychange', updateVisibility)
+    }, [])
 
     useEffect(() => () => {
         if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
@@ -640,39 +740,15 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
             }
         }
 
-        const timer = window.setInterval(saveQuoteCache, 10000)
+        const timer = window.setInterval(() => {
+            if (documentVisibleRef.current) saveQuoteCache()
+        }, 10000)
         window.addEventListener('pagehide', saveQuoteCache)
         return () => {
             window.clearInterval(timer)
             window.removeEventListener('pagehide', saveQuoteCache)
             saveQuoteCache()
         }
-    }, [])
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            const now = Date.now()
-            const thisSecond = eventsThisSecondRef.current
-            eventsThisSecondRef.current = 0
-            eventsHistoryRef.current = [...eventsHistoryRef.current.slice(-59), thisSecond]
-            peakPerSecondRef.current = Math.max(peakPerSecondRef.current, thisSecond)
-            const nextQuotes = Object.fromEntries(Object.entries(quotesRef.current).map(([symbol, quote]) => {
-                const isFresh = Boolean(quote.lastEventAt && now - quote.lastEventAt < 5000)
-                if (quote.isFresh === isFresh) return [symbol, quote]
-                const nextQuote = { ...quote, isFresh }
-                quotesRef.current[symbol] = nextQuote
-                return [symbol, nextQuote]
-            }))
-            setQuotes(nextQuotes)
-            setStats({
-                totalEvents: totalEventsRef.current,
-                eventsPerMinute: eventsHistoryRef.current.reduce((sum, count) => sum + count, 0),
-                eventsPerSecond: thisSecond,
-                liveSymbols: Object.values(nextQuotes).filter((quote) => quote.isFresh).length,
-                peakPerSecond: peakPerSecondRef.current
-            })
-        }, 1000)
-        return () => clearInterval(timer)
     }, [])
 
     useEffect(() => {
@@ -683,6 +759,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
         const controller = new AbortController()
 
         const loadThirtyYearYield = async () => {
+            if (document.visibilityState !== 'visible') return
             try {
                 const response = await fetch('/api/treasury/dgs30', { signal: controller.signal })
                 if (!response.ok) throw new Error('Treasury rate unavailable')
@@ -705,24 +782,29 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     error: null
                 }
                 quotesRef.current.DGS30 = nextQuote
-                setQuotes((current) => ({ ...current, DGS30: nextQuote }))
+                quoteStore.publish('DGS30', nextQuote)
             } catch (error) {
                 if (!active || error?.name === 'AbortError') return
                 const previous = quotesRef.current.DGS30 || {}
                 const nextQuote = { ...previous, daily: true, error: 'DAILY RATE UNAVAILABLE' }
                 quotesRef.current.DGS30 = nextQuote
-                setQuotes((current) => ({ ...current, DGS30: nextQuote }))
+                quoteStore.publish('DGS30', nextQuote)
             }
         }
 
         loadThirtyYearYield()
         const refreshTimer = window.setInterval(loadThirtyYearYield, 4 * 60 * 60 * 1000)
+        const refreshWhenVisible = () => {
+            if (document.visibilityState === 'visible') loadThirtyYearYield()
+        }
+        document.addEventListener('visibilitychange', refreshWhenVisible)
         return () => {
             active = false
             controller.abort()
             window.clearInterval(refreshTimer)
+            document.removeEventListener('visibilitychange', refreshWhenVisible)
         }
-    }, [symbolKey, widgets])
+    }, [quoteStore, symbolKey, widgets])
 
     useEffect(() => {
         let active = true
@@ -899,6 +981,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
 
         const loadSnapshots = async () => {
             while (!controller.signal.aborted) {
+                if (!documentVisibleRef.current) {
+                    await wait(1000)
+                    continue
+                }
                 const now = Date.now()
                 const eligible = targets.filter((symbol) => {
                     const quote = quotesRef.current[symbol] || {}
@@ -1057,17 +1143,17 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                     <div className="diagnostic-title">STOCK STICKIES TERMINAL</div>
                 </div>
 
-                {!chromeCollapsed && (
-                    <div className="diagnostic-stats">
-                        <div><span>WIDGETS</span><strong>{widgets.length}</strong></div>
-                        <div><span>STREAMED</span><strong>{streamedSymbols.length}/{uniqueSymbolCount}</strong></div>
-                        <div><span>LIVE ≤5S</span><strong>{stats.liveSymbols}</strong></div>
-                        <div><span>EVENTS/MIN</span><strong>{stats.eventsPerMinute.toLocaleString()}</strong></div>
-                        <div><span>EVENTS/SEC</span><strong>{stats.eventsPerSecond.toLocaleString()}</strong></div>
-                        <div><span>PEAK/SEC</span><strong>{stats.peakPerSecond.toLocaleString()}</strong></div>
-                        <div><span>TOTAL</span><strong>{stats.totalEvents.toLocaleString()}</strong></div>
-                    </div>
-                )}
+                <DashboardStats
+                    hidden={chromeCollapsed}
+                    widgetCount={widgets.length}
+                    streamedCount={streamedSymbols.length}
+                    uniqueSymbolCount={uniqueSymbolCount}
+                    quotesRef={quotesRef}
+                    quoteStore={quoteStore}
+                    totalEventsRef={totalEventsRef}
+                    eventsThisSecondRef={eventsThisSecondRef}
+                    documentVisibleRef={documentVisibleRef}
+                />
 
                 <div className="diagnostic-connection">
                     <span className={`connection-light ${connectedClass}`} />
@@ -1157,7 +1243,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, fullScreen = false,
                         <div key={widget.id}>
                             <QuoteWidget
                                 widget={widget}
-                                quote={quotes[providerSymbol(widget.symbol)]}
+                                quoteStore={quoteStore}
                                 streamEnabled={streamedSymbolSet.has(providerSymbol(widget.symbol))}
                                 editing={editingWidgetId === widget.id}
                                 highlighted={highlightedWidgetId === widget.id}

@@ -59,7 +59,7 @@
 // export default StickyNotesApp  Line 3839
 // =============================================================================
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
@@ -72,7 +72,13 @@ import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
 import TodayAgenda from './components/TodayAgenda.jsx'
 import RobinhoodSync from './components/RobinhoodSync.jsx'
-import FinnhubDiagnosticDashboard from './components/FinnhubDiagnosticDashboard.jsx'
+
+const FinnhubDiagnosticDashboard = lazy(() => import('./components/FinnhubDiagnosticDashboard.jsx'))
+const dashboardLoadingFallback = (
+  <div className="min-h-[420px] flex items-center justify-center bg-neutral-950 text-xs font-bold tracking-[0.18em] text-amber-400">
+    LOADING LIVE DASHBOARD…
+  </div>
+)
 
 const OWNER_FIREBASE_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
 
@@ -4795,11 +4801,13 @@ const firebaseConfig = {
 
             if (mainTab === 'dashboard' && isOwnerPortfolioUser) {
                 return (
-                    <FinnhubDiagnosticDashboard
-                        apiKey={finnhubApiKey}
-                        fullScreen
-                        onExit={() => setMainTab('notes')}
-                    />
+                    <Suspense fallback={dashboardLoadingFallback}>
+                        <FinnhubDiagnosticDashboard
+                            apiKey={finnhubApiKey}
+                            fullScreen
+                            onExit={() => setMainTab('notes')}
+                        />
+                    </Suspense>
                 );
             }
 
@@ -6346,7 +6354,9 @@ const firebaseConfig = {
                         </div>
 
                         {mainTab === 'dashboard' ? (
-                            <FinnhubDiagnosticDashboard apiKey={finnhubApiKey} />
+                            <Suspense fallback={dashboardLoadingFallback}>
+                                <FinnhubDiagnosticDashboard apiKey={finnhubApiKey} />
+                            </Suspense>
                         ) : mainTab === 'notes' ? (
                         <>
                         {!hideLegendPanel && (

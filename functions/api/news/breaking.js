@@ -45,9 +45,10 @@ const SOFT_HYPOTHETICAL = /\b(would|should)\s+(help|hurt|make|mean|be|save|cost|
 
 const IMPORTANT_SIGNAL = /\b(fed|fomc|powell|rate (hike|cut|decision|hikes|cuts)|interest rates?|inflation|cpi|ppi|pce|\bpmi\b|consumer prices|wholesale prices|producer prices|retail sales|jobless claims|nonfarm|payrolls?|jobs report|unemployment|housing starts|durable goods|home sales|gdp|recession|tariffs?|sanctions?|treasury|yields?|debt|deficit|stimulus|central bank|bank of (england|japan|korea|canada|mexico)|\becb\b|earnings|beats?|misses?|guidance|forecasts?|warns?|profit|revenue|downgrade[sd]?|upgrade[sd]?|mergers?|acquir\w+|buyout|takeover|\bipo\b|bankrupt\w+|layoffs?|recalls?|halt(ed|s)?|\bsec\b|\bdoj\b|lawsuits?|settle[sd]?|settlement|fraud|probe|investigation|fine[sd]?|resign\w*|steps down|\bceo\b|activist|dividend|buyback|stock split|delist\w*|default|outage|breach|hack\w*|strikes?|surges?|soars?|plunges?|tumbles?|plummets?|crash\w*|jumps?|sinks?|rall(y|ies)|sell-?off|spikes?|slumps?|slides?|rebounds?|pops?|rockets?|tanks?|climbs?|stocks? (surge|plunge|jump|fall|drop|rise|slide|retreat|climb)|\bdow\b|s&p|nasdaq|russell|\bvix\b|breaking|just in)\b/i
 
-// A percentage move (e.g. "rose 0.1%", "surges 8%") is its own strong signal.
-// Kept separate from IMPORTANT_SIGNAL because a trailing \b can't follow "%".
-const PERCENT_MOVE = /\d+(\.\d+)?\s?%/
+// A percentage is important only when the headline describes an actual move.
+// A bare percentage also appears in surveys and lifestyle stories (for example,
+// "52% of Gen Z investors ..."), which are not breaking market events.
+const PERCENT_MARKET_MOVE = /^(?=[\s\S]*\d+(?:\.\d+)?\s?%)(?=[\s\S]*\b(?:advances?|climbs?|crash(?:es|ed)?|declines?|dips?|drops?|falls?|fell|gains?|gained|jumps?|plunges?|pops?|rall(?:y|ies|ied)|rebounds?|rises?|rose|rockets?|sinks?|slides?|slips?|slumps?|soars?|spikes?|surges?|tanks?|tumbles?|up|down)\b)/i
 
 export const isImportantHeadline = (title) => {
     const lead = stripLead(title)
@@ -59,7 +60,7 @@ export const isImportantHeadline = (title) => {
         || SOFT_PERSONAL_FINANCE.test(lead)
         || SOFT_HYPOTHETICAL.test(lead)
     ) return false
-    return IMPORTANT_SIGNAL.test(title) || PERCENT_MOVE.test(title)
+    return IMPORTANT_SIGNAL.test(title) || PERCENT_MARKET_MOVE.test(title)
 }
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), {
