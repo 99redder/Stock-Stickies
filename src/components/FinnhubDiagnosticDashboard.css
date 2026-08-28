@@ -323,11 +323,16 @@
     letter-spacing: .08em;
 }
 
-.quote-widget-status { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.quote-widget-status { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 4px; }
 .quote-freshness {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.quote-tick-count {
+    flex: 0 0 auto;
+    margin-left: 5px;
     white-space: nowrap;
 }
 .quote-priority-toggle {

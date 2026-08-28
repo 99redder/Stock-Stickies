@@ -302,6 +302,13 @@ const formatQuoteTime = (value) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
 }
 
+const formatTickCount = (value) => {
+    const count = Math.max(0, Math.floor(Number(value) || 0))
+    if (count >= 1000000) return `${(count / 1000000).toFixed(count < 10000000 ? 1 : 0).replace(/\.0$/, '')}MT`
+    if (count >= 1000) return `${(count / 1000).toFixed(count < 10000 ? 1 : 0).replace(/\.0$/, '')}KT`
+    return `${count}T`
+}
+
 const createQuoteStore = (initialQuotes) => {
     const publishedQuotes = { ...initialQuotes }
     const listeners = new Map()
@@ -476,7 +483,11 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
                     )}
                     <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`}>{feedLabel}</span>
                 </span>
-                <span>{quote?.events ? `${quote.events.toLocaleString()} ticks` : ''}</span>
+                {quote?.events ? (
+                    <span className="quote-tick-count" title={`${quote.events.toLocaleString()} live trade events`}>
+                        {formatTickCount(quote.events)}
+                    </span>
+                ) : null}
             </div>
         </div>
     )
