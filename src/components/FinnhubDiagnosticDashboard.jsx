@@ -309,6 +309,21 @@ const formatTickCount = (value) => {
     return `${count}T`
 }
 
+const easternMarketClock = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+})
+
+const isRegularUsMarketSession = (timestamp = Date.now()) => {
+    const parts = Object.fromEntries(easternMarketClock.formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]))
+    if (parts.weekday === 'Sat' || parts.weekday === 'Sun') return false
+    const minutes = (Number(parts.hour) * 60) + Number(parts.minute)
+    return minutes >= 570 && minutes < 960
+}
+
 const createQuoteStore = (initialQuotes) => {
     const publishedQuotes = { ...initialQuotes }
     const listeners = new Map()
@@ -385,7 +400,7 @@ const DashboardStats = React.memo(function DashboardStats({ hidden, widgetCount,
     )
 })
 
-const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, streamEnabled, editing, highlighted, onBeginEdit, onCancelEdit, onSaveEdit, onTogglePriority, onRemove }) {
+const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, streamEnabled, connectionState, streamPaused, editing, highlighted, onBeginEdit, onCancelEdit, onSaveEdit, onTogglePriority, onRemove }) {
     const [draft, setDraft] = useState(widget.symbol)
     const symbol = providerSymbol(widget.symbol)
     const subscribe = useCallback((listener) => quoteStore.subscribe(symbol, listener), [quoteStore, symbol])
@@ -397,6 +412,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
     const direction = Number.isFinite(change) ? (change >= 0 ? 'up' : 'down') : 'flat'
     const isFresh = Boolean(quote?.isFresh)
     const isDaily = Boolean(quote?.daily || isDailyMacroSymbol(widget.symbol))
+    const isCrypto = symbol.includes(':')
     const liveTimestamp = quote?.providerTimestamp || quote?.lastEventAt
     const hasCalculatedChange = Number.isFinite(changePercent) && Number.isFinite(change)
     const changeLabel = isDaily && Number.isFinite(change)
@@ -410,15 +426,25 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
                     : quote?.error || 'NO PRINT YET'
     const feedLabel = isDaily
         ? `DAILY${quote?.sourceDate ? ` · ${quote.sourceDate}` : ''}`
-        : isFresh
-            ? `LIVE · ${formatQuoteTime(liveTimestamp)}`
-            : quote?.cachedAt
-                ? `CACHED · ${formatQuoteTime(quote.cachedAt)}`
-                : quote?.lastEventAt
-                    ? `STREAM IDLE · ${formatQuoteTime(liveTimestamp)}`
-                    : quote?.snapshotAt
-                        ? `SNAPSHOT · ${formatQuoteTime(quote.snapshotAt)}`
-                        : streamEnabled ? 'STREAM READY' : 'QUEUED'
+        : streamPaused
+            ? 'STREAM PAUSED'
+            : quote?.error === 'RATE LIMITED'
+                ? 'RATE LIMITED'
+                : streamEnabled && (connectionState === 'connecting' || connectionState === 'reconnecting')
+                    ? 'RECONNECTING'
+                    : streamEnabled && connectionState === 'disconnected'
+                        ? 'STREAM OFFLINE'
+                        : isFresh
+                            ? `LIVE · ${formatQuoteTime(liveTimestamp)}`
+                            : quote?.cachedAt
+                                ? `CACHED · ${formatQuoteTime(quote.cachedAt)}`
+                                : quote?.lastEventAt
+                                    ? `${!isCrypto && !isRegularUsMarketSession() ? 'MARKET CLOSED' : 'STREAM IDLE'} · ${formatQuoteTime(liveTimestamp)}`
+                                    : quote?.snapshotAt
+                                        ? `${streamEnabled ? 'SNAPSHOT' : 'SNAPSHOT ONLY'} · ${formatQuoteTime(quote.snapshotAt)}`
+                                        : connectionState === 'missing-key'
+                                            ? 'API KEY NEEDED'
+                                            : streamEnabled ? 'STREAM READY' : 'QUEUED'
 
     const save = () => {
         const next = cleanSymbol(draft)
@@ -504,6 +530,8 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
     previous.widget === next.widget
     && previous.quoteStore === next.quoteStore
     && previous.streamEnabled === next.streamEnabled
+    && previous.connectionState === next.connectionState
+    && previous.streamPaused === next.streamPaused
     && previous.editing === next.editing
     && previous.highlighted === next.highlighted
 ))
@@ -900,6 +928,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                             cachedAt: null,
                             lastEventAt: Date.now(),
                             providerTimestamp: Number(trade.t) || null,
+                            error: null,
                             events: (previous.events || 0) + 1
                         }
                         totalEventsRef.current += 1
@@ -1050,6 +1079,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 lastSnapshotRequestAtRef.current = Date.now()
                 try {
                     const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`, { signal: controller.signal })
+                    if (response.status === 429) {
+                        const previous = quotesRef.current[symbol] || {}
+                        const nextQuote = { ...previous, error: 'RATE LIMITED', healthAt: Date.now() }
+                        quotesRef.current[symbol] = nextQuote
+                        quoteStore.publish(symbol, nextQuote)
+                        await wait(5000)
+                        continue
+                    }
                     if (response.ok) {
                         const data = await response.json()
                         const price = Number(data.c)
@@ -1067,7 +1104,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 high: Number(data.h) || null,
                                 low: Number(data.l) || null,
                                 cachedAt: null,
-                                snapshotAt: Date.now()
+                                snapshotAt: Date.now(),
+                                error: null
                             }
                         }
                     }
@@ -1079,7 +1117,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
         loadSnapshots()
         return () => controller.abort()
-    }, [apiKey, symbolKey, widgets])
+    }, [apiKey, quoteStore, symbolKey, widgets])
 
     const addWidget = () => {
         const symbol = cleanSymbol(newSymbol)
@@ -1274,6 +1312,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 widget={widget}
                                 quoteStore={quoteStore}
                                 streamEnabled={streamedSymbolSet.has(providerSymbol(widget.symbol))}
+                                connectionState={displayedConnectionState}
+                                streamPaused={streamPaused}
                                 editing={editingWidgetId === widget.id}
                                 highlighted={highlightedWidgetId === widget.id}
                                 onBeginEdit={setEditingWidgetId}

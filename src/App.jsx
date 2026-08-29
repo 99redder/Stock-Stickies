@@ -64,16 +64,32 @@ import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
 import 'firebase/compat/app-check'
-import { Chart } from 'chart.js/auto'
-import ChartDataLabels from 'chartjs-plugin-datalabels'
-import html2canvas from 'html2canvas-pro'
-import { copyYtdCardToClipboard, createYtdShareCard, fetchSpyYtdReturn, shareOrDownloadYtdCard } from './utils/ytdShareCard'
 import NoteCard from './components/NoteCard.jsx'
 import AskK from './components/AskK.jsx'
-import TodayAgenda from './components/TodayAgenda.jsx'
-import RobinhoodSync from './components/RobinhoodSync.jsx'
 
-const FinnhubDiagnosticDashboard = lazy(() => import('./components/FinnhubDiagnosticDashboard.jsx'))
+const TodayAgenda = lazy(() => import('./components/TodayAgenda.jsx'))
+const RobinhoodSync = lazy(() => import('./components/RobinhoodSync.jsx'))
+
+const loadFinnhubDiagnosticDashboard = () => import('./components/FinnhubDiagnosticDashboard.jsx')
+const FinnhubDiagnosticDashboard = lazy(loadFinnhubDiagnosticDashboard)
+let chartRuntimePromise
+const loadChartRuntime = () => {
+  if (!chartRuntimePromise) {
+    chartRuntimePromise = Promise.all([
+      import('chart.js/auto'),
+      import('chartjs-plugin-datalabels'),
+    ]).then(([chartModule, dataLabelsModule]) => ({
+      Chart: chartModule.Chart,
+      ChartDataLabels: dataLabelsModule.default,
+    }))
+  }
+  return chartRuntimePromise
+}
+let ytdShareToolsPromise
+const loadYtdShareTools = () => {
+  if (!ytdShareToolsPromise) ytdShareToolsPromise = import('./utils/ytdShareCard')
+  return ytdShareToolsPromise
+}
 const dashboardLoadingFallback = (
   <div className="min-h-[420px] flex items-center justify-center bg-neutral-950 text-xs font-bold tracking-[0.18em] text-amber-400">
     LOADING LIVE DASHBOARD…
@@ -870,6 +886,17 @@ const firebaseConfig = {
 
             // Owner-only brokerage integrations
             const isOwnerPortfolioUser = auth?.currentUser?.uid === OWNER_FIREBASE_UID;
+
+            useEffect(() => {
+                if (!currentUser || !isOwnerPortfolioUser) return undefined;
+                const prefetch = () => { loadFinnhubDiagnosticDashboard().catch(() => {}); };
+                if ('requestIdleCallback' in window) {
+                    const idleId = window.requestIdleCallback(prefetch, { timeout: 4000 });
+                    return () => window.cancelIdleCallback(idleId);
+                }
+                const timeoutId = window.setTimeout(prefetch, 1500);
+                return () => window.clearTimeout(timeoutId);
+            }, [currentUser, isOwnerPortfolioUser]);
 
             // Close API key help popovers on outside click / Escape
             useEffect(() => {
@@ -1891,6 +1918,7 @@ const firebaseConfig = {
                 const suggestedName = `portfolio${accountSlug}-${timestamp}.png`;
 
                 try {
+                    const { default: html2canvas } = await import('html2canvas-pro');
                     if (typeof html2canvas === 'function') {
                         const snapshotCanvas = await html2canvas(card, {
                             backgroundColor: '#ffffff',
@@ -2023,6 +2051,7 @@ const firebaseConfig = {
                 const displayName = nickname || currentUser?.split('@')[0] || 'Investor';
                 const accountSlug = portfolioAccountFilter === 'all' ? 'all-accounts' : portfolioAccountFilter;
                 try {
+                    const { fetchSpyYtdReturn, createYtdShareCard } = await loadYtdShareTools();
                     const spyReturnPercent = await fetchSpyYtdReturn(finnhubApiKey, year);
                     const cardData = {
                         year,
@@ -2066,6 +2095,7 @@ const firebaseConfig = {
                 setYtdCardUpdating(true);
                 setYtdCopyStatus('Updating preview…');
                 try {
+                    const { createYtdShareCard } = await loadYtdShareTools();
                     const cardData = { ...ytdSharePreview.cardData, displayMode };
                     const blob = await createYtdShareCard(cardData);
                     const url = URL.createObjectURL(blob);
@@ -2091,6 +2121,7 @@ const firebaseConfig = {
             const handleCopyYtdImage = async () => {
                 if (!ytdSharePreview?.blob) return;
                 try {
+                    const { copyYtdCardToClipboard } = await loadYtdShareTools();
                     await copyYtdCardToClipboard(ytdSharePreview.blob);
                     setYtdCopyStatus('Copied!');
                 } catch (error) {
@@ -2102,6 +2133,7 @@ const firebaseConfig = {
             const handleShareOrDownloadYtdImage = async () => {
                 if (!ytdSharePreview?.blob) return;
                 try {
+                    const { shareOrDownloadYtdCard } = await loadYtdShareTools();
                     const result = await shareOrDownloadYtdCard(
                         ytdSharePreview.blob,
                         ytdSharePreview.filename,
@@ -4078,7 +4110,10 @@ const firebaseConfig = {
                 }
 
                 // Small delay to ensure canvas is mounted in DOM
-                const timeoutId = setTimeout(() => {
+                let cancelled = false;
+                const timeoutId = setTimeout(async () => {
+                    const { Chart, ChartDataLabels } = await loadChartRuntime();
+                    if (cancelled) return;
                     if (!chartRef.current) {
                         if (chartInstance.current) {
                             chartInstance.current.destroy();
@@ -4389,6 +4424,7 @@ const firebaseConfig = {
                 }, 50);
 
                 return () => {
+                    cancelled = true;
                     clearTimeout(timeoutId);
                 };
                 // colorLabelsKey (not colorLabels) — depend on content, not object identity.
@@ -4443,7 +4479,10 @@ const firebaseConfig = {
                     return;
                 }
 
-                const timeoutId = setTimeout(() => {
+                let cancelled = false;
+                const timeoutId = setTimeout(async () => {
+                    const { Chart, ChartDataLabels } = await loadChartRuntime();
+                    if (cancelled) return;
                     if (!sectorChartRef.current) {
                         if (sectorChartInstance.current) {
                             sectorChartInstance.current.destroy();
@@ -4556,7 +4595,10 @@ const firebaseConfig = {
                     }
                 }, 50);
 
-                return () => clearTimeout(timeoutId);
+                return () => {
+                    cancelled = true;
+                    clearTimeout(timeoutId);
+                };
                 // eslint-disable-next-line react-hooks/exhaustive-deps
             }, [mainTab, portfolioViewMode, sectorChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible]);
 
@@ -6286,32 +6328,36 @@ const firebaseConfig = {
                                     </div>
                                 )}
                                 {isOwnerPortfolioUser && (
-                                    <TodayAgenda
-                                        key={auth?.currentUser?.uid || 'signed-out'}
-                                        authUser={auth?.currentUser || null}
-                                    />
+                                    <Suspense fallback={null}>
+                                        <TodayAgenda
+                                            key={auth?.currentUser?.uid || 'signed-out'}
+                                            authUser={auth?.currentUser || null}
+                                        />
+                                    </Suspense>
                                 )}
                                 <div className="fixed top-5 right-5 z-40 flex items-center gap-3">
                                     {isOwnerPortfolioUser && (
-                                        <RobinhoodSync
-                                            authUser={auth?.currentUser || null}
-                                            notes={notes}
-                                            cashSecuredPuts={cashSecuredPuts}
-                                            ready={userDataReady}
-                                            darkMode={darkMode}
-                                            onApply={applyRobinhoodReconciliation}
-                                            onRefreshPrices={async (targetNotes) => {
-                                                const [portfolioResult] = await Promise.all([
-                                                    refreshPortfolioPrices(
-                                                        targetNotes,
-                                                        { showNotices: false, cacheReason: 'position-sync' }
-                                                    ),
-                                                    refreshRadarQuotes()
-                                                ]);
-                                                return portfolioResult;
-                                            }}
-                                            onPerformanceChange={setRobinhoodPerformance}
-                                        />
+                                        <Suspense fallback={null}>
+                                            <RobinhoodSync
+                                                authUser={auth?.currentUser || null}
+                                                notes={notes}
+                                                cashSecuredPuts={cashSecuredPuts}
+                                                ready={userDataReady}
+                                                darkMode={darkMode}
+                                                onApply={applyRobinhoodReconciliation}
+                                                onRefreshPrices={async (targetNotes) => {
+                                                    const [portfolioResult] = await Promise.all([
+                                                        refreshPortfolioPrices(
+                                                            targetNotes,
+                                                            { showNotices: false, cacheReason: 'position-sync' }
+                                                        ),
+                                                        refreshRadarQuotes()
+                                                    ]);
+                                                    return portfolioResult;
+                                                }}
+                                                onPerformanceChange={setRobinhoodPerformance}
+                                            />
+                                        </Suspense>
                                     )}
                                     <button
                                         type="button"
@@ -6352,6 +6398,8 @@ const firebaseConfig = {
                             {isOwnerPortfolioUser && (
                             <button
                                 onClick={() => setMainTab('dashboard')}
+                                onMouseEnter={loadFinnhubDiagnosticDashboard}
+                                onFocus={loadFinnhubDiagnosticDashboard}
                                 className={`flex-1 py-2 px-3 sm:px-6 rounded-lg border font-semibold shadow-sm transition-all ${
                                     mainTab === 'dashboard'
                                         ? 'bg-gray-950 text-green-400 border-green-500/60 ring-1 ring-green-500/50'
