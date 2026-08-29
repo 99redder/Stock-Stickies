@@ -10,7 +10,7 @@
 // CONSTANTS (colors, limits)     Lines  68–99
 // VALIDATION HELPERS             Lines 100–169
 // UTILITY FUNCTIONS              Lines 170–329
-//   └─ buildApiUrl, sleep, fetchWithRetry, stock/news fetch helpers
+//   └─ buildApiUrl and stock/news fetch helpers
 //
 // StickyNotesApp (function start) Line  330
 //
@@ -60,15 +60,42 @@
 // =============================================================================
 
 import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import firebase from 'firebase/compat/app'
-import 'firebase/compat/auth'
-import 'firebase/compat/firestore'
-import 'firebase/compat/app-check'
+import { getApp, getApps, initializeApp } from 'firebase/app'
+import {
+  createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
+  getAuth,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth'
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  getFirestore,
+  initializeFirestore,
+  limit,
+  onSnapshot,
+  orderBy,
+  persistentLocalCache,
+  persistentSingleTabManager,
+  query,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore'
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check'
 import NoteCard from './components/NoteCard.jsx'
-import AskK from './components/AskK.jsx'
+import { clearFinnhubQuoteCache, fetchFinnhubQuote } from './utils/finnhubQuoteCache.js'
 
 const TodayAgenda = lazy(() => import('./components/TodayAgenda.jsx'))
 const RobinhoodSync = lazy(() => import('./components/RobinhoodSync.jsx'))
+const AskK = lazy(() => import('./components/AskK.jsx'))
 
 const loadFinnhubDiagnosticDashboard = () => import('./components/FinnhubDiagnosticDashboard.jsx')
 const FinnhubDiagnosticDashboard = lazy(loadFinnhubDiagnosticDashboard)
@@ -114,28 +141,30 @@ const firebaseConfig = {
         let db = null;
         let auth = null;
         try {
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-            }
+            const isNewFirebaseApp = getApps().length === 0;
+            const firebaseApp = isNewFirebaseApp ? initializeApp(firebaseConfig) : getApp();
 
             // Initialize App Check with reCAPTCHA v3 (public site key)
             const appCheckSiteKey = import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY || '';
             if (appCheckSiteKey) {
-                const appCheck = firebase.appCheck();
-                appCheck.activate(appCheckSiteKey, false);
+                try {
+                    initializeAppCheck(firebaseApp, {
+                        provider: new ReCaptchaV3Provider(appCheckSiteKey),
+                        isTokenAutoRefreshEnabled: false
+                    });
+                } catch (appCheckError) {
+                    if (appCheckError?.code !== 'appCheck/already-initialized') throw appCheckError;
+                }
             }
 
-            db = firebase.firestore();
-            auth = firebase.auth();
-
-            // Buffer writes locally in IndexedDB so data survives tab closes / network hiccups
-            db.enablePersistence({ cache: 'owning-tab' }).catch((err) => {
-                if (err.code === 'failed-precondition') {
-                    console.warn('Firestore persistence unavailable (multiple tabs open)');
-                } else if (err.code === 'unimplemented') {
-                    console.warn('Firestore persistence not supported in this browser');
-                }
-            });
+            db = isNewFirebaseApp
+                ? initializeFirestore(firebaseApp, {
+                    localCache: persistentLocalCache({
+                        tabManager: persistentSingleTabManager({ forceOwnership: true })
+                    })
+                })
+                : getFirestore(firebaseApp);
+            auth = getAuth(firebaseApp);
         } catch (error) {
             console.error("Firebase initialization error:", error);
         }
@@ -381,49 +410,6 @@ const firebaseConfig = {
                 }
             });
             return url.toString();
-        };
-
-        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-        const fetchWithRetry = async (url, options = {}, { retries = 3, backoffMs = 700, timeoutMs = 12000 } = {}) => {
-            let lastError = null;
-
-            for (let attempt = 0; attempt <= retries; attempt++) {
-                const controller = new AbortController();
-                const timer = setTimeout(() => controller.abort(), timeoutMs);
-                try {
-                    const response = await fetch(url, {
-                        ...options,
-                        signal: controller.signal
-                    });
-                    clearTimeout(timer);
-
-                    if (response.status === 429 && attempt < retries) {
-                        await sleep(backoffMs * Math.pow(2, attempt));
-                        continue;
-                    }
-
-                    if (!response.ok) {
-                        const retryable = response.status >= 500;
-                        if (retryable && attempt < retries) {
-                            await sleep(backoffMs * Math.pow(2, attempt));
-                            continue;
-                        }
-                        throw new Error(`Request failed (${response.status})`);
-                    }
-
-                    return response;
-                } catch (err) {
-                    clearTimeout(timer);
-                    lastError = err;
-                    if (attempt < retries) {
-                        await sleep(backoffMs * Math.pow(2, attempt));
-                        continue;
-                    }
-                }
-            }
-
-            throw lastError || new Error('Request failed after retries');
         };
 
         // API Key Encryption/Decryption using Web Crypto API
@@ -861,6 +847,8 @@ const firebaseConfig = {
             });
             const [portfolioLoading, setPortfolioLoading] = useState(false);
             const [mainTab, setMainTab] = useState('notes');
+            const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== 'hidden');
+            const [askKOpen, setAskKOpen] = useState(false);
             const [portfolioViewMode, setPortfolioViewMode] = useState('donut'); // 'donut' | 'sector' | 'map'
             const [portfolioAccountFilter, setPortfolioAccountFilter] = useState('all'); // 'all' | account id | 'unassigned'
             const [portfolioLegendVisible, setPortfolioLegendVisible] = useState(true);
@@ -886,6 +874,12 @@ const firebaseConfig = {
 
             // Owner-only brokerage integrations
             const isOwnerPortfolioUser = auth?.currentUser?.uid === OWNER_FIREBASE_UID;
+
+            useEffect(() => {
+                const handleVisibilityChange = () => setPageVisible(document.visibilityState !== 'hidden');
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+                return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }, []);
 
             useEffect(() => {
                 if (!currentUser || !isOwnerPortfolioUser) return undefined;
@@ -959,7 +953,7 @@ const firebaseConfig = {
 
             useEffect(() => {
                 if (!auth) return;
-                const unsubscribe = auth.onAuthStateChanged((user) => {
+                const unsubscribe = onAuthStateChanged(auth, (user) => {
                     if (user) {
                         setUserDataReady(false);
                         setCurrentUser(user.email);
@@ -991,8 +985,7 @@ const firebaseConfig = {
                 isSavingRef.current = false;
                 lastAppliedSnapshotRef.current = null;
 
-                const unsubscribe = db.collection('users').doc(userId)
-                    .onSnapshot((doc) => {
+                const unsubscribe = onSnapshot(doc(db, 'users', userId), (doc) => {
                         // New user — no Firestore doc yet. Seed Google avatar if available so
                         // they see their photo immediately; the auto-save will persist it shortly.
                         if (!doc.exists) {
@@ -1162,7 +1155,7 @@ const firebaseConfig = {
                             hideToolbarPanel,
                             sharesPrivacyMode,
                             diagnosticDashboard,
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                            updatedAt: serverTimestamp()
                         };
 
                         // Try to encrypt API keys, but fallback to plain text if encryption fails
@@ -1247,10 +1240,10 @@ const firebaseConfig = {
                             // Store as plain text — async encryption cannot run in beforeunload
                             finnhubApiKey: finnhubApiKey || null,
                             marketauxApiKey: marketauxApiKey || null,
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                            updatedAt: serverTimestamp()
                         });
                         // Fire-and-forget — Firestore persistence queues this to IndexedDB synchronously
-                        db.collection('users').doc(userId).set(updateData, { merge: false });
+                        void setDoc(doc(db, 'users', userId), updateData, { merge: false });
                     }
                 };
 
@@ -1273,7 +1266,7 @@ const firebaseConfig = {
                 try {
                     const normalizedLoginEmail = normalizeEmail(loginUsername);
                     if (isSignup) {
-                        const methods = await auth.fetchSignInMethodsForEmail(normalizedLoginEmail);
+                        const methods = await fetchSignInMethodsForEmail(auth, normalizedLoginEmail);
                         if (methods.includes('google.com')) {
                             setLoginError('That email already exists with Google sign-in. Use Continue with Google first, then link email/password from inside the account later.');
                             return;
@@ -1282,19 +1275,19 @@ const firebaseConfig = {
                             setLoginError(`That email already exists with a different sign-in method: ${methods.join(', ')}`);
                             return;
                         }
-                        await auth.createUserWithEmailAndPassword(normalizedLoginEmail, loginPassword);
+                        await createUserWithEmailAndPassword(auth, normalizedLoginEmail, loginPassword);
                     }
                     else if (isResettingPassword) {
-                        await auth.sendPasswordResetEmail(normalizedLoginEmail);
+                        await sendPasswordResetEmail(auth, normalizedLoginEmail);
                         setResetSuccess(true);
                         setIsResettingPassword(false);
                     } else {
-                        const methods = await auth.fetchSignInMethodsForEmail(normalizedLoginEmail);
+                        const methods = await fetchSignInMethodsForEmail(auth, normalizedLoginEmail);
                         if (methods.includes('google.com') && !methods.includes('password')) {
                             setLoginError('This email is set up with Google sign-in. Use Continue with Google.');
                             return;
                         }
-                        await auth.signInWithEmailAndPassword(normalizedLoginEmail, loginPassword);
+                        await signInWithEmailAndPassword(auth, normalizedLoginEmail, loginPassword);
                     }
                     setLoginUsername('');
                     setLoginPassword('');
@@ -1311,8 +1304,8 @@ const firebaseConfig = {
                     return;
                 }
                 try {
-                    const provider = new firebase.auth.GoogleAuthProvider();
-                    await auth.signInWithPopup(provider);
+                    const provider = new GoogleAuthProvider();
+                    await signInWithPopup(auth, provider);
                 } catch (error) {
                     if (error?.code === 'auth/account-exists-with-different-credential') {
                         setLoginError('That email already exists with email/password. Sign in with your password first, then we can link Google to the same account.');
@@ -1410,7 +1403,7 @@ const firebaseConfig = {
             const saveUserDoc = async (userId, email, data, options = {}) => {
                 const { reason = 'save', forceBackup = false, minIntervalMs = 10 * 60 * 1000 } = options;
                 const cleanData = sanitizeUserDocForSave(data);
-                await db.collection('users').doc(userId).set(cleanData, { merge: false });
+                await setDoc(doc(db, 'users', userId), cleanData, { merge: false });
 
                 const now = Date.now();
                 const signature = JSON.stringify({ notes: cleanData.notes, categories: cleanData.categories });
@@ -1422,10 +1415,10 @@ const firebaseConfig = {
                     lastBackupAtRef.current = now;
                     const snapshotData = {
                         ...cleanData,
-                        backupCreatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        backupCreatedAt: serverTimestamp(),
                         backupReason: reason
                     };
-                    await db.collection('users').doc(userId).collection('snapshots').add(snapshotData);
+                    await addDoc(collection(db, 'users', userId, 'snapshots'), snapshotData);
                 }
             };
 
@@ -1433,14 +1426,14 @@ const firebaseConfig = {
             const maybeAdoptCanonicalUserDoc = async (user) => {
                 if (!db || !user?.uid) return false;
                 try {
-                    const uidDoc = await db.collection('users').doc(user.uid).get();
+                    const uidDoc = await getDoc(doc(db, 'users', user.uid));
                     if (uidDoc.exists) return false;
                     if (!user.email) return false;
                     // Legacy docs were keyed by sanitized email (dots replaced with underscores)
                     const emailKey = normalizeEmail(user.email).replace(/\./g, '_');
-                    const emailDoc = await db.collection('users').doc(emailKey).get();
+                    const emailDoc = await getDoc(doc(db, 'users', emailKey));
                     if (!emailDoc.exists) return false;
-                    await db.collection('users').doc(user.uid).set(emailDoc.data(), { merge: false });
+                    await setDoc(doc(db, 'users', user.uid), emailDoc.data(), { merge: false });
                     return true;
                 } catch (err) {
                     console.warn('maybeAdoptCanonicalUserDoc error:', err);
@@ -1479,7 +1472,7 @@ const firebaseConfig = {
                         hideToolbarPanel,
                         sharesPrivacyMode,
                         diagnosticDashboard,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        updatedAt: serverTimestamp()
                     };
 
                     // Try to encrypt, but fallback to plain text if encryption fails
@@ -1645,12 +1638,7 @@ const firebaseConfig = {
                     try {
                         const results = await Promise.all(radarList.map(async (ticker) => {
                             try {
-                                const quoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                                    symbol: ticker,
-                                    token: finnhubApiKey
-                                });
-                                const response = await fetchWithRetry(quoteUrl, {}, { retries: 0, timeoutMs: 10000 });
-                                const data = await response.json();
+                                const data = await fetchFinnhubQuote(ticker, finnhubApiKey);
                                 const price = Number(data?.c);
                                 if (!Number.isFinite(price) || price <= 0) return [ticker, null];
                                 const previousClose = Number(data?.pc);
@@ -1694,6 +1682,7 @@ const firebaseConfig = {
                     radarQuoteLoadUserRef.current = null;
                     return;
                 }
+                if (!pageVisible || mainTab === 'dashboard') return;
                 if (!userDataReady || !userId || radarQuoteLoadUserRef.current === userId) return;
                 if (radarList.length === 0) {
                     radarQuoteLoadUserRef.current = userId;
@@ -1703,7 +1692,7 @@ const firebaseConfig = {
 
                 radarQuoteLoadUserRef.current = userId;
                 void refreshRadarQuotes();
-            }, [currentUser, userDataReady, radarList.length, finnhubApiKey, refreshRadarQuotes]);
+            }, [currentUser, userDataReady, radarList.length, finnhubApiKey, mainTab, pageVisible, refreshRadarQuotes]);
 
             const renderRadarSection = (idPrefix) => (
                 <section className={`border-y px-6 py-5 shadow-inner ${darkMode ? 'border-violet-500/50 bg-gradient-to-br from-violet-950 via-indigo-950 to-fuchsia-950/80' : 'border-violet-300 bg-gradient-to-br from-violet-100 via-fuchsia-50 to-indigo-100'}`}>
@@ -1846,12 +1835,7 @@ const firebaseConfig = {
                                 continue;
                             }
                             if (finnhubApiKey) {
-                                const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                                    symbol: ticker,
-                                    token: finnhubApiKey
-                                });
-                                const response = await fetch(portfolioQuoteUrl);
-                                const data = await response.json();
+                                const data = await fetchFinnhubQuote(ticker, finnhubApiKey);
                                 const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
                                 if (Number.isFinite(currentPrice) && currentPrice > 0) {
                                     prices[ticker] = currentPrice;
@@ -2158,7 +2142,7 @@ const firebaseConfig = {
                 // Logout resets state to defaults, so the next session must re-apply its
                 // first snapshot even if the payload is byte-identical to this one.
                 lastAppliedSnapshotRef.current = null;
-                if (auth) await auth.signOut();
+                if (auth) await signOut(auth);
                 setUserDataReady(false);
                 setCurrentUser(null);
                 setNotes([]);
@@ -2175,6 +2159,7 @@ const firebaseConfig = {
                 // Clear localStorage cache on logout
                 localStorage.removeItem('portfolio_prices_cache');
                 localStorage.removeItem('portfolio_sector_cache');
+                clearFinnhubQuoteCache();
                 setColorLabels(DEFAULT_COLOR_LABELS);
             };
 
@@ -2201,13 +2186,13 @@ const firebaseConfig = {
                 const synced = await syncNow();
                 if (!synced) throw new Error('Your current Stock Stickies data could not be backed up. Nothing else was changed.');
 
-                const userRef = db.collection('users').doc(auth.currentUser.uid);
-                const current = await userRef.get();
+                const userRef = doc(db, 'users', auth.currentUser.uid);
+                const current = await getDoc(userRef);
                 if (!current.exists) throw new Error('Your Stock Stickies account data was not found.');
                 const currentData = current.data() || {};
-                const snapshot = await userRef.collection('snapshots').add({
+                const snapshot = await addDoc(collection(userRef, 'snapshots'), {
                     ...currentData,
-                    backupCreatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    backupCreatedAt: serverTimestamp(),
                     backupReason: reason
                 });
                 return {
@@ -2223,8 +2208,8 @@ const firebaseConfig = {
                     clearTimeout(saveTimeoutRef.current);
                     saveTimeoutRef.current = null;
                 }
-                const userRef = db.collection('users').doc(auth.currentUser.uid);
-                const current = await userRef.get();
+                const userRef = doc(db, 'users', auth.currentUser.uid);
+                const current = await getDoc(userRef);
                 if (!current.exists) throw new Error('Your Stock Stickies account data was not found.');
 
                 const currentData = current.data() || {};
@@ -2397,12 +2382,12 @@ const firebaseConfig = {
                     importedNextId += 1;
                 }
 
-                await userRef.set({
+                await setDoc(userRef, {
                     ...currentData,
                     notes: updatedNotes,
                     cashSecuredPuts: updatedPuts,
                     nextId: importedNextId,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    updatedAt: serverTimestamp()
                 }, { merge: false });
                 isSavingRef.current = true;
                 setNotes(updatedNotes);
@@ -2429,11 +2414,11 @@ const firebaseConfig = {
                 if (!db || !auth?.currentUser) return;
                 setBackupsLoading(true);
                 try {
-                    const snap = await db.collection('users').doc(auth.currentUser.uid)
-                        .collection('snapshots')
-                        .orderBy('backupCreatedAt', 'desc')
-                        .limit(20)
-                        .get();
+                    const snap = await getDocs(query(
+                        collection(db, 'users', auth.currentUser.uid, 'snapshots'),
+                        orderBy('backupCreatedAt', 'desc'),
+                        limit(20)
+                    ));
                     const rows = snap.docs.map((docSnap) => {
                         const data = docSnap.data() || {};
                         return {
@@ -2461,8 +2446,8 @@ const firebaseConfig = {
                 if (!db || !auth?.currentUser || !snapshotId) return;
                 setRestoringBackupId(snapshotId);
                 try {
-                    const ref = db.collection('users').doc(auth.currentUser.uid).collection('snapshots').doc(snapshotId);
-                    const snap = await ref.get();
+                    const ref = doc(db, 'users', auth.currentUser.uid, 'snapshots', snapshotId);
+                    const snap = await getDoc(ref);
                     if (!snap.exists) throw new Error('Backup snapshot not found');
                     const data = snap.data() || {};
                     const restorePayload = sanitizeUserDocForSave({
@@ -2676,12 +2661,11 @@ const firebaseConfig = {
                 let cancelled = false;
                 void (async () => {
                     try {
-                        const backupQuery = await db.collection('users')
-                            .doc(auth.currentUser.uid)
-                            .collection('snapshots')
-                            .orderBy('backupCreatedAt', 'desc')
-                            .limit(20)
-                            .get();
+                        const backupQuery = await getDocs(query(
+                            collection(db, 'users', auth.currentUser.uid, 'snapshots'),
+                            orderBy('backupCreatedAt', 'desc'),
+                            limit(20)
+                        ));
                         const cutoff = Date.now() - (48 * 60 * 60 * 1000);
                         const recentBackup = backupQuery.docs
                             .map(docSnap => docSnap.data() || {})
@@ -2883,6 +2867,7 @@ const firebaseConfig = {
                 let isMounted = true;
 
                 const loadStockData = async () => {
+                    if (!pageVisible || mainTab === 'dashboard') return;
                     if (!activeTicker) {
                         if (isMounted) {
                             setStockData(null);
@@ -2943,17 +2928,7 @@ const firebaseConfig = {
                         }
 
                         // Fetch quote data from Finnhub - using URLSearchParams for safer URL construction
-                        const quoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                            symbol: activeTicker,
-                            token: finnhubApiKey
-                        });
-                        const quoteResponse = await fetch(quoteUrl);
-
-                        if (!quoteResponse.ok) {
-                            throw new Error('Failed to fetch quote data');
-                        }
-
-                        const quoteData = await quoteResponse.json();
+                        const quoteData = await fetchFinnhubQuote(activeTicker, finnhubApiKey);
 
                         if (!quoteData.c || quoteData.c === 0) {
                             if (isMounted) {
@@ -3038,13 +3013,14 @@ const firebaseConfig = {
                 return () => {
                     isMounted = false;
                 };
-            }, [activeTicker, expandedNote, finnhubApiKey]);
+            }, [activeTicker, expandedNote, finnhubApiKey, mainTab, pageVisible]);
 
             // News fetching effect
             useEffect(() => {
                 let isMounted = true;
 
                 const loadNewsData = async () => {
+                    if (!pageVisible || mainTab === 'dashboard') return;
                     if (!activeTicker) {
                         if (isMounted) setNewsData(null);
                         return;
@@ -3157,7 +3133,7 @@ const firebaseConfig = {
                 loadNewsData();
 
                 return () => { isMounted = false; };
-            }, [activeTicker, marketauxApiKey, finnhubApiKey]);
+            }, [activeTicker, marketauxApiKey, finnhubApiKey, mainTab, pageVisible]);
 
             // Derive portfolio from notes that have both a ticker (title) and shares
             const portfolioNotes = useMemo(() =>
@@ -3187,6 +3163,7 @@ const firebaseConfig = {
 
             // Portfolio price fetching effect - updates at 9:35am, 1pm, and 4:05pm EST
             useEffect(() => {
+                if (!pageVisible || mainTab === 'dashboard') return;
                 if (portfolioNotes.length === 0) return;
 
                 const nonUsdPortfolioNotes = portfolioNotes.filter(note =>
@@ -3283,12 +3260,7 @@ const firebaseConfig = {
                                 prices[ticker] = plaidCryptoPrice;
                                 continue;
                             }
-                            const portfolioQuoteUrl = buildApiUrl('https://finnhub.io/api/v1/quote', {
-                                symbol: ticker,
-                                token: finnhubApiKey
-                            });
-                            const response = await fetch(portfolioQuoteUrl);
-                            const data = await response.json();
+                            const data = await fetchFinnhubQuote(ticker, finnhubApiKey);
                             const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
                             if (ticker && Number.isFinite(currentPrice) && currentPrice > 0) prices[ticker] = currentPrice;
                         } catch (e) {
@@ -3310,7 +3282,7 @@ const firebaseConfig = {
 
                 fetchPrices();
                 return () => { isMounted = false; };
-            }, [portfolioTickerKey, finnhubApiKey]);
+            }, [portfolioTickerKey, finnhubApiKey, mainTab, pageVisible]);
 
             // Portfolio computed data - derived from notes.
             // Percentages are always relative to the set being shown, so the same builder
@@ -7759,8 +7731,26 @@ const firebaseConfig = {
                     </div>
                 </div>
 
-                {/* Ask K — portfolio analysis assistant */}
-                <AskK portfolio={askKPortfolio} darkMode={darkMode} />
+                {/* Keep the launcher tiny; load the full assistant only after the first click. */}
+                <button
+                    type="button"
+                    onClick={() => setAskKOpen(true)}
+                    aria-label="Ask K"
+                    className="fixed top-20 right-5 z-40 flex items-center gap-2 rounded-full bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-transform hover:scale-105 hover:bg-green-500"
+                >
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-bold text-green-700">K</span>
+                    <span className="hidden sm:inline">Ask K</span>
+                </button>
+                {askKOpen && (
+                    <Suspense fallback={null}>
+                        <AskK
+                            portfolio={askKPortfolio}
+                            darkMode={darkMode}
+                            open
+                            onClose={() => setAskKOpen(false)}
+                        />
+                    </Suspense>
+                )}
 
                 {ytdSharePreview && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8" role="dialog" aria-modal="true" aria-labelledby="ytd-share-title">

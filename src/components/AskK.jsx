@@ -20,8 +20,14 @@ function formatMessage(text) {
         .replace(/\n/g, '<br>')
 }
 
-export default function AskK({ portfolio, darkMode }) {
-    const [open, setOpen] = useState(false)
+export default function AskK({ portfolio, darkMode, open: controlledOpen, onClose }) {
+    const [internalOpen, setInternalOpen] = useState(false)
+    const isControlled = typeof controlledOpen === 'boolean'
+    const open = isControlled ? controlledOpen : internalOpen
+    const close = useCallback(() => {
+        if (isControlled) onClose?.()
+        else setInternalOpen(false)
+    }, [isControlled, onClose])
     const [messages, setMessages] = useState([])
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
@@ -39,10 +45,10 @@ export default function AskK({ portfolio, darkMode }) {
 
     useEffect(() => {
         if (!open) return
-        const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+        const onKey = (e) => { if (e.key === 'Escape') close() }
         document.addEventListener('keydown', onKey)
         return () => document.removeEventListener('keydown', onKey)
-    }, [open])
+    }, [close, open])
 
     useEffect(() => {
         if (open && messages.length === 0) {
@@ -98,20 +104,22 @@ export default function AskK({ portfolio, darkMode }) {
 
     return (
         <>
-            <button
-                type="button"
-                onClick={() => setOpen(true)}
-                aria-label="Ask K"
-                className={`fixed top-20 right-5 z-40 ${fabBg} text-white rounded-full shadow-lg flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-transform hover:scale-105`}
-            >
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white text-green-700 font-bold text-sm">K</span>
-                <span className="hidden sm:inline">Ask K</span>
-            </button>
+            {!isControlled && (
+                <button
+                    type="button"
+                    onClick={() => setInternalOpen(true)}
+                    aria-label="Ask K"
+                    className={`fixed top-20 right-5 z-40 ${fabBg} text-white rounded-full shadow-lg flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-transform hover:scale-105`}
+                >
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white text-green-700 font-bold text-sm">K</span>
+                    <span className="hidden sm:inline">Ask K</span>
+                </button>
+            )}
 
             {open && (
                 <div
                     className="fixed inset-0 z-50 bg-black/40"
-                    onClick={() => setOpen(false)}
+                    onClick={close}
                 />
             )}
 
@@ -128,7 +136,7 @@ export default function AskK({ portfolio, darkMode }) {
                     </div>
                     <button
                         type="button"
-                        onClick={() => setOpen(false)}
+                        onClick={close}
                         aria-label="Close"
                         className={`p-2 rounded ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-100'}`}
                     >

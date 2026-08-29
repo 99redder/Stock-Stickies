@@ -7,5 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
     assetsDir: 'static',
+    manifest: true,
+    chunkSizeWarningLimit: 900,
   },
 })

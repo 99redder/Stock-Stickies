@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
+import { fetchFinnhubQuote } from '../utils/finnhubQuoteCache.js'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import './FinnhubDiagnosticDashboard.css'
@@ -1078,39 +1079,36 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 snapshotRequestTimesRef.current[symbol] = Date.now()
                 lastSnapshotRequestAtRef.current = Date.now()
                 try {
-                    const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`, { signal: controller.signal })
-                    if (response.status === 429) {
+                    const data = await fetchFinnhubQuote(symbol, apiKey, { maxAgeMs: 5000 })
+                    if (controller.signal.aborted) return
+                    const price = Number(data.c)
+                    const previousClose = Number(data.pc)
+                    const validPrice = Number.isFinite(price) && price > 0
+                    const validPreviousClose = Number.isFinite(previousClose) && previousClose > 0
+                    if (validPrice || validPreviousClose) {
+                        const previous = quotesRef.current[symbol] || {}
+                        quotesRef.current[symbol] = {
+                            ...previous,
+                            price: validPrice ? price : previous.price,
+                            previousClose: validPreviousClose ? previousClose : previous.previousClose,
+                            change: Number.isFinite(Number(data.d)) ? Number(data.d) : previous.change,
+                            changePercent: Number.isFinite(Number(data.dp)) ? Number(data.dp) : previous.changePercent,
+                            high: Number(data.h) || null,
+                            low: Number(data.l) || null,
+                            cachedAt: null,
+                            snapshotAt: Date.now(),
+                            error: null
+                        }
+                    }
+                } catch (error) {
+                    if (error?.name === 'AbortError') return
+                    if (error?.status === 429) {
                         const previous = quotesRef.current[symbol] || {}
                         const nextQuote = { ...previous, error: 'RATE LIMITED', healthAt: Date.now() }
                         quotesRef.current[symbol] = nextQuote
                         quoteStore.publish(symbol, nextQuote)
                         await wait(5000)
-                        continue
                     }
-                    if (response.ok) {
-                        const data = await response.json()
-                        const price = Number(data.c)
-                        const previousClose = Number(data.pc)
-                        const validPrice = Number.isFinite(price) && price > 0
-                        const validPreviousClose = Number.isFinite(previousClose) && previousClose > 0
-                        if (validPrice || validPreviousClose) {
-                            const previous = quotesRef.current[symbol] || {}
-                            quotesRef.current[symbol] = {
-                                ...previous,
-                                price: validPrice ? price : previous.price,
-                                previousClose: validPreviousClose ? previousClose : previous.previousClose,
-                                change: Number.isFinite(Number(data.d)) ? Number(data.d) : previous.change,
-                                changePercent: Number.isFinite(Number(data.dp)) ? Number(data.dp) : previous.changePercent,
-                                high: Number(data.h) || null,
-                                low: Number(data.l) || null,
-                                cachedAt: null,
-                                snapshotAt: Date.now(),
-                                error: null
-                            }
-                        }
-                    }
-                } catch (error) {
-                    if (error?.name === 'AbortError') return
                 }
             }
         }
