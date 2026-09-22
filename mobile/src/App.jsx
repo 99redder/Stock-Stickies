@@ -1077,6 +1077,7 @@ export default function App() {
         gain: scopedYtdPerformance.gain,
         returnPercent: scopedYtdPerformance.returnPercent,
         spyReturnPercent,
+        risk: scopedYtdPerformance.risk || null,
         scopeLabel,
         displayName,
         profilePhoto: [profilePhoto, user.photoURL],
@@ -1486,7 +1487,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 38</strong></div>
+              <div><span>Version</span><strong>Build 39</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

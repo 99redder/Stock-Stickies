@@ -186,6 +186,56 @@ const drawAvatar = (ctx, image, initials, x, y, size) => {
   ctx.stroke()
 }
 
+const finiteOrNull = (value) => (value != null && Number.isFinite(Number(value)) ? Number(value) : null)
+
+const shortDate = (isoDate) => new Date(`${isoDate}T12:00:00Z`).toLocaleDateString('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+})
+
+// Sharpe, max drawdown, and beta as a row of tiles. Values stay neutral:
+// red/green is reserved for the gain/loss figures above.
+const drawRiskStats = (ctx, risk, y) => {
+  const sharpe = finiteOrNull(risk?.sharpeRatio)
+  const drawdown = finiteOrNull(risk?.maxDrawdownPercent)
+  const beta = finiteOrNull(risk?.beta)
+  const tiles = [
+    sharpe != null && { label: 'SHARPE RATIO', value: sharpe.toFixed(2) },
+    drawdown != null && { label: 'MAX DRAWDOWN', value: `${drawdown < 0 ? '−' : ''}${Math.abs(drawdown).toFixed(1)}%` },
+    beta != null && { label: `BETA VS ${risk?.benchmark || 'SPY'}`, value: beta.toFixed(2) },
+  ].filter(Boolean)
+  if (!tiles.length) return
+
+  const tileWidth = 200
+  const tileHeight = 76
+  const gap = 14
+  let x = 118
+  tiles.forEach((tile) => {
+    roundedRect(ctx, x, y, tileWidth, tileHeight, 16)
+    ctx.fillStyle = 'rgba(255,255,255,.045)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255,255,255,.11)'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#8794a7'
+    ctx.font = '800 14px Inter, ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText(tile.label, x + 20, y + 28)
+    ctx.fillStyle = '#e8edf4'
+    ctx.font = '850 30px Inter, ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText(tile.value, x + 20, y + 62)
+    x += tileWidth + gap
+  })
+
+  if (risk?.firstDate && risk?.lastDate) {
+    ctx.fillStyle = '#6f7c8f'
+    ctx.font = '600 17px Inter, ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText('From daily closes', x + 8, y + 33)
+    ctx.fillText(`${shortDate(risk.firstDate)} – ${shortDate(risk.lastDate)}`, x + 8, y + 58)
+  }
+}
+
 export async function createYtdShareCard({
   year,
   gain,
@@ -194,6 +244,7 @@ export async function createYtdShareCard({
   scopeLabel,
   displayName,
   profilePhoto,
+  risk = null,
   displayMode = 'full',
 }) {
   const hasReturnPercent = returnPercent != null && Number.isFinite(Number(returnPercent))
@@ -383,17 +434,25 @@ export async function createYtdShareCard({
   }
 
   const asOf = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  const riskY = hasSpyReturn
+    ? (percentOnly ? 652 : 692)
+    : (percentOnly ? 600 : 624)
+  drawRiskStats(ctx, risk, riskY)
+
+  ctx.textAlign = 'left'
   ctx.fillStyle = '#dce4ef'
-  ctx.font = '750 24px Inter, ui-sans-serif, system-ui, sans-serif'
-  ctx.fillText(scopeLabel || 'All Accounts', 122, 690)
+  ctx.font = '750 22px Inter, ui-sans-serif, system-ui, sans-serif'
+  const scopeText = scopeLabel || 'All Accounts'
+  ctx.fillText(scopeText, 122, 800)
+  const scopeWidth = ctx.measureText(scopeText).width
   ctx.fillStyle = '#7f8da1'
   ctx.font = '600 20px Inter, ui-sans-serif, system-ui, sans-serif'
-  ctx.fillText(`As of ${asOf}`, 122, 727)
+  ctx.fillText(`·   As of ${asOf}`, 122 + scopeWidth + 14, 800)
 
   ctx.textAlign = 'right'
   ctx.fillStyle = '#9aa7b8'
   ctx.font = '750 24px Inter, ui-sans-serif, system-ui, sans-serif'
-  ctx.fillText('www.stockstickies.com', 1482, 716)
+  ctx.fillText('www.stockstickies.com', 1482, 800)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Unable to create the YTD image.')), 'image/png', 1)

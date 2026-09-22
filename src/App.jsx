@@ -2042,6 +2042,7 @@ const firebaseConfig = {
                         gain: shownYtdPerformance.gain,
                         returnPercent: shownYtdPerformance.returnPercent,
                         spyReturnPercent,
+                        risk: shownYtdPerformance.risk || null,
                         scopeLabel,
                         displayName,
                         profilePhoto: [profilePhoto, auth.currentUser?.photoURL],
