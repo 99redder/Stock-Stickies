@@ -7,8 +7,6 @@ const YTD_REACTION_ASSETS = {
   trailingSpy: '/assets/ytd-reactions/trailing-spy-capybara.png',
   beatingSpy: '/assets/ytd-reactions/beating-spy-astronaut-bull.png',
 }
-const SPY_YTD_CACHE_KEY = 'stock-stickies-spy-ytd'
-const SPY_YTD_CACHE_MS = 12 * 60 * 60 * 1000
 
 const roundedRect = (ctx, x, y, width, height, radius) => {
   const r = Math.min(radius, width / 2, height / 2)
@@ -68,42 +66,6 @@ const loadImage = async (sources) => {
     }
   }
   return null
-}
-
-export async function fetchSpyYtdReturn(apiKey, year = new Date().getFullYear()) {
-  if (!apiKey) return null
-  try {
-    const cached = JSON.parse(localStorage.getItem(SPY_YTD_CACHE_KEY) || 'null')
-    if (
-      cached?.year === year &&
-      Number.isFinite(cached?.returnPercent) &&
-      Date.now() - Number(cached?.timestamp || 0) < SPY_YTD_CACHE_MS
-    ) {
-      return cached.returnPercent
-    }
-  } catch {
-    // A malformed cache should never prevent generating the share card.
-  }
-
-  try {
-    const token = encodeURIComponent(apiKey)
-    const response = await fetch(
-      `https://finnhub.io/api/v1/stock/metric?symbol=SPY&metric=all&token=${token}`
-    )
-    if (!response.ok) return null
-    const data = await response.json()
-    const returnPercent = Number(data?.metric?.yearToDatePriceReturnDaily)
-    if (!Number.isFinite(returnPercent)) return null
-
-    localStorage.setItem(SPY_YTD_CACHE_KEY, JSON.stringify({
-      year,
-      returnPercent,
-      timestamp: Date.now(),
-    }))
-    return returnPercent
-  } catch {
-    return null
-  }
 }
 
 const downloadBlob = (blob, filename) => {

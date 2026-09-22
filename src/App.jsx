@@ -2035,8 +2035,9 @@ const firebaseConfig = {
                 const displayName = nickname || currentUser?.split('@')[0] || 'Investor';
                 const accountSlug = portfolioAccountFilter === 'all' ? 'all-accounts' : portfolioAccountFilter;
                 try {
-                    const { fetchSpyYtdReturn, createYtdShareCard } = await loadYtdShareTools();
-                    const spyReturnPercent = await fetchSpyYtdReturn(finnhubApiKey, year);
+                    const { createYtdShareCard } = await loadYtdShareTools();
+                    // Same daily closes as the portfolio's own YTD and risk stats.
+                    const spyReturnPercent = robinhoodPerformance?.benchmark?.ytdReturnPercent ?? null;
                     const cardData = {
                         year,
                         gain: shownYtdPerformance.gain,
