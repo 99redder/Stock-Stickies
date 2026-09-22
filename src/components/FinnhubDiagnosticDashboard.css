@@ -518,6 +518,23 @@ a.dashboard-news-headline:hover {
     text-decoration: underline;
 }
 
+.dashboard-news-action {
+    margin-top: 7px;
+    padding: 4px 9px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #f5f5f5;
+    background: #0a0a0a;
+    border: 0;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.dashboard-news-action:hover {
+    background: #262626;
+}
+
 @media (max-width: 700px) {
     .dashboard-news-ticker { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
 }

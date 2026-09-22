@@ -902,7 +902,7 @@ const firebaseConfig = {
             useEffect(() => {
                 if (!currentUser || !userDataReady || !apiKeysChecked || onboardingShownRef.current) return;
                 onboardingShownRef.current = true;
-                if (!finnhubApiKey) setOnboardingOpen(true);
+                if (!finnhubApiKey) setOnboardingOpen('welcome');
             }, [currentUser, userDataReady, apiKeysChecked, finnhubApiKey]);
 
             // Close API key help popovers on outside click / Escape
@@ -4842,37 +4842,46 @@ const firebaseConfig = {
                 );
             }
 
+            // onboardingOpen: false | 'welcome' (first-run) | 'keys' (opened from the dashboard)
+            const onboardingModal = onboardingOpen ? (
+                <Suspense fallback={null}>
+                    <OnboardingWalkthrough
+                        finnhubApiKey={finnhubApiKey}
+                        marketauxApiKey={marketauxApiKey}
+                        startAtKeys={onboardingOpen === 'keys'}
+                        validateApiKey={validateApiKey}
+                        maxKeyLength={MAX_API_KEY_LENGTH}
+                        onSaveFinnhubKey={setFinnhubApiKey}
+                        onSaveMarketauxKey={setMarketauxApiKey}
+                        onClose={() => setOnboardingOpen(false)}
+                        onOpenQuickStart={() => { setOnboardingOpen(false); setQuickStartOpen(true); }}
+                        onOpenDashboard={() => { setOnboardingOpen(false); setMainTab('dashboard'); }}
+                    />
+                </Suspense>
+            ) : null;
+            const openKeySetup = () => setOnboardingOpen('keys');
+
             if (mainTab === 'dashboard') {
                 return (
-                    <Suspense fallback={dashboardLoadingFallback}>
-                        <FinnhubDiagnosticDashboard
-                            apiKey={finnhubApiKey}
-                            persistedDashboard={diagnosticDashboard}
-                            onDashboardChange={setDiagnosticDashboard}
-                            fullScreen
-                            onExit={() => setMainTab('notes')}
-                        />
-                    </Suspense>
+                    <>
+                        {onboardingModal}
+                        <Suspense fallback={dashboardLoadingFallback}>
+                            <FinnhubDiagnosticDashboard
+                                apiKey={finnhubApiKey}
+                                persistedDashboard={diagnosticDashboard}
+                                onDashboardChange={setDiagnosticDashboard}
+                                onSetupApiKeys={openKeySetup}
+                                fullScreen
+                                onExit={() => setMainTab('notes')}
+                            />
+                        </Suspense>
+                    </>
                 );
             }
 
             return (
                 <>
-                {onboardingOpen && (
-                    <Suspense fallback={null}>
-                        <OnboardingWalkthrough
-                            finnhubApiKey={finnhubApiKey}
-                            marketauxApiKey={marketauxApiKey}
-                            validateApiKey={validateApiKey}
-                            maxKeyLength={MAX_API_KEY_LENGTH}
-                            onSaveFinnhubKey={setFinnhubApiKey}
-                            onSaveMarketauxKey={setMarketauxApiKey}
-                            onClose={() => setOnboardingOpen(false)}
-                            onOpenQuickStart={() => { setOnboardingOpen(false); setQuickStartOpen(true); }}
-                            onOpenDashboard={() => { setOnboardingOpen(false); setMainTab('dashboard'); }}
-                        />
-                    </Suspense>
-                )}
+                {onboardingModal}
                 {quickStartOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
                         <div className="bg-gray-900 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
@@ -6423,6 +6432,7 @@ const firebaseConfig = {
                                     apiKey={finnhubApiKey}
                                     persistedDashboard={diagnosticDashboard}
                                     onDashboardChange={setDiagnosticDashboard}
+                                    onSetupApiKeys={openKeySetup}
                                 />
                             </Suspense>
                         ) : mainTab === 'notes' ? (

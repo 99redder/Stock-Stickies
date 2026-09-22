@@ -666,6 +666,11 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
                         </button>
                     </div>
                     <span className="dashboard-news-headline">{alert.text}</span>
+                    {alert.action && (
+                        <button type="button" className="dashboard-news-action" onClick={alert.action.onClick}>
+                            {alert.action.label}
+                        </button>
+                    )}
                 </article>
             ))}
             {visible.map((item) => (
@@ -696,7 +701,7 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
     )
 }
 
-export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit }) {
+export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit, onSetupApiKeys }) {
     const [initial] = useState(() => loadSavedDashboard(persistedDashboard))
     const [initialQuotes] = useState(() => loadCachedQuotes())
     const [initialSubscriptionCap] = useState(() => loadRememberedSubscriptionCap())
@@ -1194,11 +1199,17 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     // full-width bars that push the widget grid down.
     const systemAlerts = useMemo(() => {
         const alerts = []
-        if (!apiKey) alerts.push({ id: 'missing-key', text: 'Add your Finnhub API key in the Stock Stickies header to start the diagnostic stream.' })
+        if (!apiKey) {
+            alerts.push({
+                id: 'missing-key',
+                text: 'Add your free Finnhub API key to start the live stream — the setup walkthrough shows you how.',
+                action: onSetupApiKeys ? { label: 'Set up API keys →', onClick: onSetupApiKeys } : null,
+            })
+        }
         if (connectionError) alerts.push({ id: 'connection-error', text: connectionError })
         if (subscriptionNotice) alerts.push({ id: 'subscription', text: subscriptionNotice })
         return alerts
-    }, [apiKey, connectionError, subscriptionNotice])
+    }, [apiKey, connectionError, subscriptionNotice, onSetupApiKeys])
 
     return (
         <section className={`finnhub-diagnostic-shell ${fullScreen ? 'is-fullscreen' : ''} ${chromeCollapsed ? 'chrome-collapsed' : ''}`}>

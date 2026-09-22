@@ -55,6 +55,7 @@ async function testFinnhubKey(key) {
 export default function OnboardingWalkthrough({
     finnhubApiKey,
     marketauxApiKey,
+    startAtKeys = false,
     validateApiKey,
     maxKeyLength,
     onSaveFinnhubKey,
@@ -63,7 +64,7 @@ export default function OnboardingWalkthrough({
     onOpenDashboard,
     onOpenQuickStart,
 }) {
-    const [step, setStep] = useState(finnhubApiKey ? 2 : 0)
+    const [step, setStep] = useState(finnhubApiKey ? 2 : startAtKeys ? 1 : 0)
     const [finnhubDraft, setFinnhubDraft] = useState('')
     const [finnhubStatus, setFinnhubStatus] = useState('idle')
     const [marketauxDraft, setMarketauxDraft] = useState('')
@@ -108,7 +109,7 @@ export default function OnboardingWalkthrough({
     const inputClass = 'w-full rounded-lg border-2 border-gray-600 bg-gray-800 px-3 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400'
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
             <div
                 role="dialog"
                 aria-modal="true"
