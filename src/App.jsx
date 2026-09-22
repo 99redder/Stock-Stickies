@@ -96,6 +96,7 @@ import { clearFinnhubQuoteCache, fetchFinnhubQuote } from './utils/finnhubQuoteC
 const TodayAgenda = lazy(() => import('./components/TodayAgenda.jsx'))
 const RobinhoodSync = lazy(() => import('./components/RobinhoodSync.jsx'))
 const AskK = lazy(() => import('./components/AskK.jsx'))
+const OnboardingWalkthrough = lazy(() => import('./components/OnboardingWalkthrough.jsx'))
 
 const loadFinnhubDiagnosticDashboard = () => import('./components/FinnhubDiagnosticDashboard.jsx')
 const FinnhubDiagnosticDashboard = lazy(loadFinnhubDiagnosticDashboard)
@@ -712,6 +713,12 @@ const firebaseConfig = {
 
             // Quick Start Guide (logged-in only)
             const [quickStartOpen, setQuickStartOpen] = useState(false);
+            // First-run walkthrough: opens once per sign-in until a Finnhub key is saved.
+            // apiKeysChecked waits for the async key decryption so it never flashes for
+            // users who already have keys.
+            const [apiKeysChecked, setApiKeysChecked] = useState(false);
+            const [onboardingOpen, setOnboardingOpen] = useState(false);
+            const onboardingShownRef = useRef(false);
 
             // Login help (login page only)
             const [loginHelpOpen, setLoginHelpOpen] = useState(false);
@@ -882,7 +889,7 @@ const firebaseConfig = {
             }, []);
 
             useEffect(() => {
-                if (!currentUser || !isOwnerPortfolioUser) return undefined;
+                if (!currentUser) return undefined;
                 const prefetch = () => { loadFinnhubDiagnosticDashboard().catch(() => {}); };
                 if ('requestIdleCallback' in window) {
                     const idleId = window.requestIdleCallback(prefetch, { timeout: 4000 });
@@ -890,7 +897,13 @@ const firebaseConfig = {
                 }
                 const timeoutId = window.setTimeout(prefetch, 1500);
                 return () => window.clearTimeout(timeoutId);
-            }, [currentUser, isOwnerPortfolioUser]);
+            }, [currentUser]);
+
+            useEffect(() => {
+                if (!currentUser || !userDataReady || !apiKeysChecked || onboardingShownRef.current) return;
+                onboardingShownRef.current = true;
+                if (!finnhubApiKey) setOnboardingOpen(true);
+            }, [currentUser, userDataReady, apiKeysChecked, finnhubApiKey]);
 
             // Close API key help popovers on outside click / Escape
             useEffect(() => {
@@ -991,6 +1004,7 @@ const firebaseConfig = {
                         if (!doc.exists) {
                             if (auth.currentUser?.photoURL) setProfilePhoto(auth.currentUser.photoURL);
                             setUserDataReady(true);
+                            setApiKeysChecked(true); // no saved keys to decrypt
                             return;
                         }
                         if (!isSavingRef.current) {
@@ -1107,8 +1121,10 @@ const firebaseConfig = {
                             };
 
                             // Decrypt API keys asynchronously (non-blocking)
-                            handleApiKey(data.finnhubApiKey, setFinnhubApiKey);
-                            handleApiKey(data.marketauxApiKey, setMarketauxApiKey);
+                            Promise.all([
+                                handleApiKey(data.finnhubApiKey, setFinnhubApiKey),
+                                handleApiKey(data.marketauxApiKey, setMarketauxApiKey),
+                            ]).finally(() => setApiKeysChecked(true));
                             setUserDataReady(true);
                         }
                     }, (error) => {
@@ -2146,6 +2162,9 @@ const firebaseConfig = {
                 lastAppliedSnapshotRef.current = null;
                 if (auth) await signOut(auth);
                 setUserDataReady(false);
+                setApiKeysChecked(false);
+                setOnboardingOpen(false);
+                onboardingShownRef.current = false;
                 setCurrentUser(null);
                 setNotes([]);
                 setNickname('');
@@ -4823,7 +4842,7 @@ const firebaseConfig = {
                 );
             }
 
-            if (mainTab === 'dashboard' && isOwnerPortfolioUser) {
+            if (mainTab === 'dashboard') {
                 return (
                     <Suspense fallback={dashboardLoadingFallback}>
                         <FinnhubDiagnosticDashboard
@@ -4839,6 +4858,21 @@ const firebaseConfig = {
 
             return (
                 <>
+                {onboardingOpen && (
+                    <Suspense fallback={null}>
+                        <OnboardingWalkthrough
+                            finnhubApiKey={finnhubApiKey}
+                            marketauxApiKey={marketauxApiKey}
+                            validateApiKey={validateApiKey}
+                            maxKeyLength={MAX_API_KEY_LENGTH}
+                            onSaveFinnhubKey={setFinnhubApiKey}
+                            onSaveMarketauxKey={setMarketauxApiKey}
+                            onClose={() => setOnboardingOpen(false)}
+                            onOpenQuickStart={() => { setOnboardingOpen(false); setQuickStartOpen(true); }}
+                            onOpenDashboard={() => { setOnboardingOpen(false); setMainTab('dashboard'); }}
+                        />
+                    </Suspense>
+                )}
                 {quickStartOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
                         <div className="bg-gray-900 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
@@ -6369,12 +6403,11 @@ const firebaseConfig = {
                             >
                                 Portfolio {portfolioData.length > 0 && `(${portfolioData.length})`}
                             </button>
-                            {isOwnerPortfolioUser && (
                             <button
                                 onClick={() => setMainTab('dashboard')}
                                 onMouseEnter={loadFinnhubDiagnosticDashboard}
                                 onFocus={loadFinnhubDiagnosticDashboard}
-                                className={`flex-1 py-2 px-3 sm:px-6 rounded-lg border font-semibold shadow-sm transition-all ${
+                                className={`hidden md:block flex-1 py-2 px-3 sm:px-6 rounded-lg border font-semibold shadow-sm transition-all ${
                                     mainTab === 'dashboard'
                                         ? 'bg-gray-950 text-green-400 border-green-500/60 ring-1 ring-green-500/50'
                                         : (darkMode ? 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200 hover:border-gray-500' : 'bg-gray-100 text-gray-500 border-gray-300 hover:text-gray-700')
@@ -6382,7 +6415,6 @@ const firebaseConfig = {
                             >
                                 Live Dashboard
                             </button>
-                            )}
                         </div>
 
                         {mainTab === 'dashboard' ? (
