@@ -3,9 +3,18 @@ main = "src/index.js"
 compatibility_date = "2026-02-15"
 
 [vars]
+FIREBASE_PROJECT_ID = "red-s-stickies"
+# Unlimited Ask K; everyone else gets NON_OWNER_DAILY_LIMIT questions per UTC day.
+OWNER_UID = "tQ4KeGwCjsb5CSbrFwmWYWX3BvI2"
+NON_OWNER_DAILY_LIMIT = "50"
 ALLOWED_ORIGINS = "https://stockstickies.com,https://www.stockstickies.com,https://mobile.stockstickies.com,https://stock-stickies-mobile.eastern-shore-ai.chatgpt.site,http://localhost:5173,http://127.0.0.1:5173"
 
 # Ask K Assistant secrets (set via `wrangler secret put` from this folder):
 # - STOCKSTICKIES_ASKK_API_KEY: API key for the LLM provider (required)
 # - STOCKSTICKIES_ASKK_BASE_URL: provider base URL (optional; e.g. https://api.minimaxi.chat/v1)
 # - STOCKSTICKIES_ASKK_MODEL:    model identifier (optional; e.g. MiniMax-Text-01)
+
+# Per-user daily question counts for the non-owner cap.
+[[kv_namespaces]]
+binding = "ASKK_USAGE"
+id = "dcc15834938e4776a8d9a12de7f30588"

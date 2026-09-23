@@ -151,7 +151,7 @@ function StockStickiesLogo({ compact = false }) {
   )
 }
 
-function AskK({ portfolio }) {
+function AskK({ portfolio, user }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -182,9 +182,11 @@ function AskK({ portfolio }) {
     setInput('')
     setBusy(true)
     try {
+      if (!user) throw new Error('signed-out')
+      const idToken = await user.getIdToken()
       const response = await fetch(ASKK_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           message: text,
           history: history.slice(-10),
@@ -1499,7 +1501,7 @@ export default function App() {
         </>
       )}
 
-      <AskK portfolio={askKPortfolio} />
+      <AskK portfolio={askKPortfolio} user={user} />
     </div>
   )
 }

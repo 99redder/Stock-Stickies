@@ -20,7 +20,7 @@ function formatMessage(text) {
         .replace(/\n/g, '<br>')
 }
 
-export default function AskK({ portfolio, darkMode, open: controlledOpen, onClose }) {
+export default function AskK({ portfolio, darkMode, open: controlledOpen, onClose, authUser }) {
     const [internalOpen, setInternalOpen] = useState(false)
     const isControlled = typeof controlledOpen === 'boolean'
     const open = isControlled ? controlledOpen : internalOpen
@@ -31,6 +31,8 @@ export default function AskK({ portfolio, darkMode, open: controlledOpen, onClos
     const [messages, setMessages] = useState([])
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
+    // Daily allowance for non-owner accounts ({ limit, remaining }); null = unlimited.
+    const [usage, setUsage] = useState(null)
     const messagesRef = useRef(null)
     const inputRef = useRef(null)
     const portfolioRef = useRef(portfolio)
@@ -70,9 +72,11 @@ export default function AskK({ portfolio, darkMode, open: controlledOpen, onClos
         setBusy(true)
 
         try {
+            if (!authUser) throw new Error('signed-out')
+            const idToken = await authUser.getIdToken()
             const res = await fetch(ASKK_API_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
                 body: JSON.stringify({
                     message: text,
                     history: newHistory.slice(-10).filter((m) => m.role === 'user' || m.role === 'assistant'),
@@ -80,6 +84,7 @@ export default function AskK({ portfolio, darkMode, open: controlledOpen, onClos
                 })
             })
             const data = await res.json().catch(() => ({}))
+            if (data?.usage) setUsage(data.usage)
             if (data?.ok && data?.reply) {
                 setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }])
             } else {
@@ -91,7 +96,7 @@ export default function AskK({ portfolio, darkMode, open: controlledOpen, onClos
             setBusy(false)
             setTimeout(() => inputRef.current?.focus(), 30)
         }
-    }, [busy, messages])
+    }, [authUser, busy, messages])
 
     const onKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -205,6 +210,7 @@ export default function AskK({ portfolio, darkMode, open: controlledOpen, onClos
                     </div>
                     <div className={`text-[10px] mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                         K analyzes your portfolio data — observations only, not financial advice.
+                        {usage && ` · ${usage.remaining} of ${usage.limit} questions left today`}
                     </div>
                 </footer>
             </aside>

@@ -7789,6 +7789,7 @@ const firebaseConfig = {
                     <Suspense fallback={null}>
                         <AskK
                             portfolio={askKPortfolio}
+                            authUser={auth?.currentUser || null}
                             darkMode={darkMode}
                             open
                             onClose={() => setAskKOpen(false)}
