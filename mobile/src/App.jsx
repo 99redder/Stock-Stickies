@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
@@ -34,24 +34,29 @@ const ASKK_API_URL = import.meta.env.VITE_ASKK_API_URL
   || 'https://stock-stickies-askk.99redder.workers.dev/api/ask-k?client=mobile-build-9'
 const BROKERAGE_API_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/holdings?client=mobile-build-9'
 
-const ACCOUNTS = [
+// The owner's fixed accounts (Plaid/Robinhood sync maps to these ids). Other
+// users use the accounts they named on desktop (customAccounts), or none.
+const OWNER_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
+const BUILTIN_ACCOUNTS = [
   { id: 'individual', label: 'Individual', short: 'Taxable', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.' },
   { id: 'traditional', label: 'Traditional IRA', short: 'Trad. IRA', strategy: 'Traditional IRA — long-term buy-and-hold core of quality names.' },
   { id: 'roth', label: 'Roth IRA', short: 'Roth IRA', strategy: 'Roth IRA — higher-risk speculative names plus cash secured puts.' },
 ]
-const ACCOUNT_IDS = ACCOUNTS.map((account) => account.id)
+const BUILTIN_ACCOUNT_IDS = BUILTIN_ACCOUNTS.map((account) => account.id)
 const UNASSIGNED = 'unassigned'
+const USER_ACCOUNT_ID_PATTERN = /^acct-[a-z0-9]{4,24}$/
 
 const normalizeTicker = (value) => String(value || '').trim().toUpperCase()
-const getAccount = (note) => {
-  if (ACCOUNT_IDS.includes(note?.account)) return note.account
-  // Legacy cash notes predate brokerage-account attribution. Actual dollars
-  // are only held in the taxable account, so USD has an unambiguous home.
-  if (normalizeTicker(note?.title) === 'USD') return 'individual'
-  return UNASSIGNED
-}
-const getAccountLabel = (id) => ACCOUNTS.find((account) => account.id === id)?.label || 'Unassigned'
-const getPutAccount = (put) => ACCOUNT_IDS.includes(put?.account) ? put.account : 'roth'
+// Mirrors the desktop sanitizers for the customAccounts / accountSetup fields.
+const sanitizeCustomAccounts = (value) => (Array.isArray(value) ? value : [])
+  .filter((account) => account
+    && (BUILTIN_ACCOUNT_IDS.includes(account.id) || USER_ACCOUNT_ID_PATTERN.test(String(account.id || '')))
+    && typeof account.label === 'string' && account.label.trim())
+  .slice(0, 8)
+  .map((account) => ({ id: account.id, label: account.label.trim().slice(0, 30), short: account.label.trim().slice(0, 30) }))
+const sanitizeAccountSetup = (value) => (
+  value && (value.mode === 'multiple' || value.mode === 'single') ? { mode: value.mode } : null
+)
 const money = (value, digits = 0) => new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -359,6 +364,38 @@ export default function App() {
   const [ytdCardUpdating, setYtdCardUpdating] = useState(false)
   const [cashSectionExpanded, setCashSectionExpanded] = useState(false)
   const [expandedCashAccounts, setExpandedCashAccounts] = useState({})
+  const [customAccounts, setCustomAccounts] = useState([])
+  const [accountSetup, setAccountSetup] = useState(null)
+
+  // Accounts: the owner always gets the built-in three (and the Plaid-backed
+  // brokerage features); everyone else gets the accounts they chose on desktop.
+  // Until they choose, only notes already using the built-in ids keep them.
+  const isOwner = user?.uid === OWNER_UID
+  const hasLegacyAccountNotes = !isOwner && !accountSetup
+    && notes.some((note) => BUILTIN_ACCOUNT_IDS.includes(note?.account))
+  const ACCOUNTS = useMemo(() => {
+    if (isOwner) return BUILTIN_ACCOUNTS
+    if (accountSetup) return accountSetup.mode === 'single' ? [] : customAccounts
+    return hasLegacyAccountNotes ? BUILTIN_ACCOUNTS : []
+  }, [isOwner, accountSetup, customAccounts, hasLegacyAccountNotes])
+  const ACCOUNT_IDS = useMemo(() => ACCOUNTS.map((account) => account.id), [ACCOUNTS])
+  const accountsEnabled = ACCOUNTS.length > 0
+  // With accounts off, every position sits in the one implicit portfolio bucket.
+  const cashAccountIds = useMemo(() => (accountsEnabled ? ACCOUNT_IDS : [UNASSIGNED]), [accountsEnabled, ACCOUNT_IDS])
+  const getAccount = useCallback((note) => {
+    if (ACCOUNT_IDS.includes(note?.account)) return note.account
+    // Owner's legacy cash notes predate account attribution. Actual dollars are
+    // only held in the taxable account, so USD has an unambiguous home.
+    if (isOwner && normalizeTicker(note?.title) === 'USD') return 'individual'
+    return UNASSIGNED
+  }, [ACCOUNT_IDS, isOwner])
+  const getAccountLabel = useCallback((id) => (
+    ACCOUNTS.find((account) => account.id === id)?.label || (accountsEnabled ? 'Unassigned' : 'Portfolio')
+  ), [ACCOUNTS, accountsEnabled])
+  // Owner puts written before the account field existed were all in the Roth.
+  const getPutAccount = useCallback((put) => (
+    ACCOUNT_IDS.includes(put?.account) ? put.account : (isOwner ? 'roth' : UNASSIGNED)
+  ), [ACCOUNT_IDS, isOwner])
 
   useEffect(() => {
     const onInstall = (event) => {
@@ -397,7 +434,7 @@ export default function App() {
 
     return db.collection('users').doc(user.uid).onSnapshot(async (snapshot) => {
       if (!snapshot.exists) {
-        setDataError('No Stock Stickies portfolio was found for this account.')
+        setDataError('Your portfolio isn’t set up yet. Sign in at stockstickies.com on a computer to add your API key and first notes — they’ll show up here automatically.')
         setDataReady(true)
         return
       }
@@ -407,6 +444,8 @@ export default function App() {
       setCategories(Array.isArray(data.categories) ? data.categories : [])
       setColorLabels(data.colorLabels || {})
       setCashSecuredPuts(Array.isArray(data.cashSecuredPuts) ? data.cashSecuredPuts : [])
+      setCustomAccounts(sanitizeCustomAccounts(data.customAccounts))
+      setAccountSetup(sanitizeAccountSetup(data.accountSetup))
       setWatchList(Array.isArray(data.watchList) ? data.watchList : [])
       setNickname(data.nickname || '')
       setProfilePhoto(data.profilePhoto || user.photoURL || '')
@@ -430,7 +469,9 @@ export default function App() {
   }, [user])
 
   useEffect(() => {
-    if (!user) {
+    // Plaid/Robinhood balances belong to the owner's account only; the Worker
+    // rejects everyone else, so don't even ask.
+    if (!user || user.uid !== OWNER_UID) {
       setBrokerageSnapshot(null)
       setBrokerageError('')
       return undefined
@@ -553,7 +594,7 @@ export default function App() {
       ...position,
       percentage: total > 0 ? (position.value / total) * 100 : 0,
     }))
-  }, [portfolioNotes, prices, colorLabels, brokerageSnapshot])
+  }, [portfolioNotes, prices, colorLabels, brokerageSnapshot, ACCOUNT_IDS, getAccount])
 
   const accountTotals = useMemo(() => {
     const totals = {}
@@ -587,7 +628,7 @@ export default function App() {
   }, [allPositions])
 
   const brokerAccountMetrics = useMemo(() => {
-    const metrics = Object.fromEntries(ACCOUNT_IDS.map((id) => [id, {
+    const metrics = Object.fromEntries([...ACCOUNT_IDS, UNASSIGNED].map((id) => [id, {
       currentBalance: 0,
       availableBalance: 0,
       holdingsValue: 0,
@@ -659,7 +700,7 @@ export default function App() {
     }
 
     return metrics
-  }, [brokerageSnapshot])
+  }, [brokerageSnapshot, ACCOUNT_IDS])
 
   const cashMetricsByAccount = useMemo(() => {
     const ids = [...ACCOUNT_IDS, UNASSIGNED]
@@ -730,7 +771,7 @@ export default function App() {
         totalCashPool: cashPool + sgov,
       }]
     }))
-  }, [allPositions, brokerAccountMetrics, cashSecuredPuts])
+  }, [allPositions, brokerAccountMetrics, cashSecuredPuts, ACCOUNT_IDS, getPutAccount])
 
   const filteredPositions = useMemo(() => {
     const scoped = accountFilter === 'all'
@@ -793,7 +834,7 @@ export default function App() {
       totals[account] = (totals[account] || 0) + (Number(put.strike) || 0) * (Number(put.qty) || 0) * 100
     })
     return totals
-  }, [cashSecuredPuts])
+  }, [cashSecuredPuts, getPutAccount])
   const totalPutObligation = Object.values(putObligationByAccount).reduce((sum, value) => sum + value, 0)
   const accountDisplayBalances = Object.fromEntries(ACCOUNT_IDS.map((id) => [
     id,
@@ -805,13 +846,15 @@ export default function App() {
   ]))
   const grandAccountBalance = ACCOUNT_IDS.reduce((sum, id) => sum + accountDisplayBalances[id], 0)
     + (accountTotals[UNASSIGNED]?.value || 0)
+    // Without accounts every put sits in the one portfolio; count its collateral like an account's.
+    + (accountsEnabled ? 0 : (putObligationByAccount[UNASSIGNED] || 0))
   const accountBalance = accountFilter === 'all'
     ? grandAccountBalance
     : (accountDisplayBalances[accountFilter] ?? (accountTotals[accountFilter]?.value || 0))
   const hasBrokerPortfolio = accountFilter === 'all'
     ? ACCOUNT_IDS.some((id) => brokerAccountMetrics[id].hasBalance || brokerAccountMetrics[id].hasHoldings)
     : Boolean(brokerAccountMetrics[accountFilter]?.hasBalance || brokerAccountMetrics[accountFilter]?.hasHoldings)
-  const scopedCashAccountIds = accountFilter === 'all' ? ACCOUNT_IDS : [accountFilter]
+  const scopedCashAccountIds = accountFilter === 'all' ? cashAccountIds : [accountFilter]
   const totalCash = scopedCashAccountIds
     .reduce((sum, id) => sum + (cashMetricsByAccount[id]?.totalCashPool || 0), 0)
   const allCashPositionRows = scopedCashAccountIds
@@ -923,13 +966,13 @@ export default function App() {
       totals: {
         longMarketValue: Number(grandTotal.toFixed(2)),
         accountBalance: Number(grandAccountBalance.toFixed(2)),
-        actualCashBalance: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].actualCash, 0).toFixed(2)),
-        brokerageCashPool: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].cashPool, 0).toFixed(2)),
-        sgovValue: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].sgov, 0).toFixed(2)),
-        cashBalance: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
-        availableCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
-        totalAvailableCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
-        totalCash: Number(ACCOUNT_IDS.reduce((sum, id) => sum + cashMetricsByAccount[id].totalCashPool, 0).toFixed(2)),
+        actualCashBalance: Number(cashAccountIds.reduce((sum, id) => sum + cashMetricsByAccount[id].actualCash, 0).toFixed(2)),
+        brokerageCashPool: Number(cashAccountIds.reduce((sum, id) => sum + cashMetricsByAccount[id].cashPool, 0).toFixed(2)),
+        sgovValue: Number(cashAccountIds.reduce((sum, id) => sum + cashMetricsByAccount[id].sgov, 0).toFixed(2)),
+        cashBalance: Number(cashAccountIds.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
+        availableCash: Number(cashAccountIds.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
+        totalAvailableCash: Number(cashAccountIds.reduce((sum, id) => sum + cashMetricsByAccount[id].totalAvailableCash, 0).toFixed(2)),
+        totalCash: Number(cashAccountIds.reduce((sum, id) => sum + cashMetricsByAccount[id].totalCashPool, 0).toFixed(2)),
         cspObligation: Number(totalPutObligation.toFixed(2)),
         longPlusCspExposure: Number((grandTotal + totalPutObligation).toFixed(2)),
         positionCount: allPositions.length,
@@ -1015,7 +1058,7 @@ export default function App() {
       watchList: watchList.slice(0, 100),
       categories: categories.map((color) => ({ color, label: colorLabels[color] || 'Category' })),
     }
-  }, [allPositions, accountDisplayBalances, accountTotals, cashMetricsByAccount, cashSecuredPuts, categories, colorLabels, grandAccountBalance, nickname, notes, putObligationByAccount, totalPutObligation, watchList])
+  }, [allPositions, accountDisplayBalances, accountTotals, cashMetricsByAccount, cashSecuredPuts, categories, colorLabels, grandAccountBalance, nickname, notes, putObligationByAccount, totalPutObligation, watchList, ACCOUNTS, cashAccountIds, getAccountLabel, getPutAccount])
 
   const refreshPrices = async () => {
     if (!portfolioNotes.length || refreshing) return
@@ -1201,7 +1244,7 @@ export default function App() {
           <div className="hero-topline">
             <div>
               <div className="hero-meta">
-                <p className="eyebrow">{accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
+                <p className="eyebrow">{!accountsEnabled ? 'PORTFOLIO' : accountFilter === 'all' ? 'ALL ACCOUNTS' : getAccountLabel(accountFilter).toUpperCase()}</p>
               </div>
               <h1>{money(accountBalance)}</h1>
               <div className={scopedPnlTotals.coveredCount > 0 ? (scopedPnlTotals.unrealizedPnL >= 0 ? 'hero-pnl gain' : 'hero-pnl loss') : 'hero-pnl unavailable'}>
@@ -1215,6 +1258,7 @@ export default function App() {
               {scopedPnlTotals.coveredCount > 0 && scopedPnlTotals.missingCount > 0 && (
                 <small className="pnl-coverage">Cost basis for {scopedPnlTotals.coveredCount} of {filteredPositions.length} positions</small>
               )}
+              {isOwner && (
               <div className={scopedYtdPerformance?.status === 'ready'
                 ? (scopedYtdPerformance.gain >= 0 ? 'hero-ytd gain' : 'hero-ytd loss')
                 : 'hero-ytd unavailable'}>
@@ -1231,6 +1275,7 @@ export default function App() {
                         : 'Loading…'}
                 </strong>
               </div>
+              )}
               <small className="balance-caption">
                 {hasBrokerPortfolio
                   ? 'Linked brokerage balance · positions, cash & CSP collateral'
@@ -1238,10 +1283,12 @@ export default function App() {
               </small>
             </div>
             <div className="hero-actions">
-              <button className="share-ytd-button" type="button" onClick={shareYtdPerformance} disabled={scopedYtdPerformance?.status !== 'ready'}>
-                <Icon name="share" size={18} />
-                <span>Share YTD</span>
-              </button>
+              {isOwner && (
+                <button className="share-ytd-button" type="button" onClick={shareYtdPerformance} disabled={scopedYtdPerformance?.status !== 'ready'}>
+                  <Icon name="share" size={18} />
+                  <span>Share YTD</span>
+                </button>
+              )}
               <button className="refresh-button" type="button" onClick={refreshPrices} disabled={refreshing}>
                 <Icon name="refresh" />
                 <span>{refreshing ? 'Updating…' : 'Update'}</span>
@@ -1253,11 +1300,15 @@ export default function App() {
             {lastUpdated ? `Quotes updated ${lastUpdated.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Tap Update to fetch current quotes'}
           </div>
           {refreshMessage && <p className="refresh-message" role="status">{refreshMessage}</p>}
+          {!finnhubKey && portfolioNotes.length > 0 && !refreshMessage && (
+            <p className="refresh-message" role="status">Live prices need your free Finnhub key — add it at stockstickies.com on a computer.</p>
+          )}
           {brokerageError && <p className="refresh-message" role="status">Cash balance unavailable: {brokerageError}</p>}
         </section>
 
         {dataError ? <div className="error-card">{dataError}</div> : (
           <>
+            {accountsEnabled && (
             <nav className="account-scroller" aria-label="Filter by account">
               <button type="button" className={accountFilter === 'all' ? 'active' : ''} onClick={() => setAccountFilter('all')}>
                 <span>All accounts</span><strong>{money(grandAccountBalance)}</strong>
@@ -1291,6 +1342,7 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            )}
 
             <section className={`cash-section ${cashSectionExpanded ? 'expanded' : ''}`}>
               <button
@@ -1301,7 +1353,7 @@ export default function App() {
               >
                 <span>
                   <small>CASH &amp; COLLATERAL</small>
-                  <strong>{accountFilter === 'all' ? 'All accounts' : getAccountLabel(accountFilter)}</strong>
+                  <strong>{!accountsEnabled ? 'Portfolio' : accountFilter === 'all' ? 'All accounts' : getAccountLabel(accountFilter)}</strong>
                 </span>
                 <span className="cash-section-total">
                   <small>Total cash</small>
@@ -1435,7 +1487,13 @@ export default function App() {
                     )}
                   </article>
                 ))}
-                {!displayPositions.length && <div className="empty-list">No positions match this view.</div>}
+                {!displayPositions.length && (
+                  <div className="empty-list">
+                    {allPositions.length
+                      ? 'No positions match this view.'
+                      : 'No positions yet. On stockstickies.com, add a note and enter your share count — it shows up here.'}
+                  </div>
+                )}
               </div>
             </section>
           </>
