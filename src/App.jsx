@@ -296,10 +296,17 @@ const firebaseConfig = {
         // Brokerage accounts a position can be assigned to. `strategy` is descriptive
         // context only — it is shipped to Ask K so answers can be framed per account.
         const ACCOUNTS = [
-            { id: 'individual', label: 'Individual', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.' },
-            { id: 'traditional', label: 'Traditional IRA', strategy: 'Traditional IRA — long-term buy-and-hold core of quality names.' },
-            { id: 'roth', label: 'Roth IRA', strategy: 'Roth IRA — higher-risk speculative "moon shot" names plus cash secured puts, where tax-free growth has the most upside. All CSPs are written in this account.' }
+            { id: 'individual', label: 'Individual', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.', generalStrategy: 'Taxable brokerage account.' },
+            { id: 'traditional', label: 'Traditional IRA', strategy: 'Traditional IRA — long-term buy-and-hold core of quality names.', generalStrategy: 'Traditional IRA (tax-deferred).' },
+            { id: 'roth', label: 'Roth IRA', strategy: 'Roth IRA — higher-risk speculative "moon shot" names plus cash secured puts, where tax-free growth has the most upside. All CSPs are written in this account.', generalStrategy: 'Roth IRA (tax-free growth).' }
         ];
+        // `strategy` describes the owner's own plan for each account; other users see the
+        // neutral `generalStrategy` (it also feeds their Ask K payload and exports).
+        const getAccountStrategy = (accountId, isOwner) => {
+            const account = ACCOUNTS.find(a => a.id === accountId);
+            if (!account) return null;
+            return isOwner ? account.strategy : account.generalStrategy;
+        };
         const ACCOUNT_IDS = ACCOUNTS.map(a => a.id);
         const DEFAULT_ACCOUNT_ID = 'individual';
         const UNASSIGNED_ACCOUNT_ID = 'unassigned';
@@ -3747,7 +3754,7 @@ const firebaseConfig = {
                             id: a.id,
                             label: a.label,
                             theme: getAccountTheme(a.id) || null,
-                            strategy: a.strategy,
+                            strategy: getAccountStrategy(a.id, isOwnerPortfolioUser),
                             marketValue: Number((accountTotals[a.id]?.value || 0).toFixed(2)),
                             knownCostBasis: Number(allPortfolioData
                                 .filter(h => h.account === a.id && h.unrealizedPnL != null)
@@ -3826,7 +3833,7 @@ const firebaseConfig = {
                     })),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, accountThemes]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, accountThemes, isOwnerPortfolioUser]);
 
             // Markdown snapshot of whatever the Portfolio tab is currently showing, for
             // pasting into an external LLM. Follows the account filter, exactly like the
@@ -3876,7 +3883,7 @@ const firebaseConfig = {
                     presentAccountIds.forEach(id => {
                         const value = accountTotals[id]?.value || 0;
                         const pct = grandPortfolioValue > 0 ? (value / grandPortfolioValue) * 100 : 0;
-                        const intent = ACCOUNTS.find(a => a.id === id)?.strategy || 'Not yet assigned to an account.';
+                        const intent = getAccountStrategy(id, isOwnerPortfolioUser) || 'Not yet assigned to an account.';
                         lines.push(`| ${getAccountLabel(id)} | ${getAccountTheme(id) || '—'} | ${intent} | ${money(value)} | ${pct.toFixed(1)}% | ${accountTotals[id]?.positionCount || 0} | ${money(putObligationByAccount[id] || 0)} |`);
                     });
                     lines.push('');
@@ -6752,7 +6759,7 @@ const firebaseConfig = {
                                             aria-expanded={!isCollapsed}
                                             aria-controls={`account-notes-${accountId}`}
                                             className="shrink-0 rounded p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                                            title={ACCOUNTS.find(a => a.id === accountId)?.strategy || 'Notes not assigned to an account'}
+                                            title={getAccountStrategy(accountId, isOwnerPortfolioUser) || 'Notes not assigned to an account'}
                                         >
                                             {isCollapsed ? <ChevronRight size={20}/> : <ChevronDown size={20}/>}
                                         </button>
@@ -6994,7 +7001,7 @@ const firebaseConfig = {
                                                     className={`px-3 py-2 rounded-lg text-left border transition ${isActive
                                                         ? (darkMode ? 'bg-cyan-500 border-cyan-400 text-gray-950' : 'bg-blue-500 border-blue-500 text-white')
                                                         : (darkMode ? 'bg-gray-900/60 border-gray-700 text-gray-300 hover:bg-gray-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')}`}
-                                                    title={accountId === 'all' ? 'All accounts combined' : (ACCOUNTS.find(a => a.id === accountId)?.strategy || 'Positions not assigned to an account')}
+                                                    title={accountId === 'all' ? 'All accounts combined' : (getAccountStrategy(accountId, isOwnerPortfolioUser) || 'Positions not assigned to an account')}
                                                 >
                                                     <div className="text-sm font-semibold">
                                                         {accountId === 'all' ? 'All Accounts' : getAccountLabel(accountId)}
