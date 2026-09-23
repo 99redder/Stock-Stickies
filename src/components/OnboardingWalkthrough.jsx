@@ -4,7 +4,34 @@ import { useState } from 'react'
 // key is saved; keys typed here go through the same state (and encrypted
 // autosave) as the header inputs.
 
-const STEPS = ['Welcome', 'Finnhub key', 'News key', 'Get started']
+const STEP_LABELS = {
+    welcome: 'Welcome',
+    finnhub: 'Finnhub key',
+    news: 'News key',
+    accounts: 'Accounts',
+    done: 'Get started',
+}
+
+const ACCOUNT_SUGGESTIONS = ['Brokerage', 'Roth IRA', 'Traditional IRA', '401(k)', 'HSA', 'Crypto', 'Joint']
+const MAX_ACCOUNTS = 8
+const MAX_ACCOUNT_LABEL = 30
+
+const OptionCard = ({ selected, onSelect, title, children }) => (
+    <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+        className={`w-full rounded-xl border-2 p-4 text-left transition ${selected ? 'border-cyan-400 bg-cyan-500/10' : 'border-gray-700 bg-gray-950/50 hover:border-gray-500'}`}
+    >
+        <div className="flex items-center gap-3">
+            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${selected ? 'border-cyan-400' : 'border-gray-500'}`}>
+                {selected && <span className="h-2.5 w-2.5 rounded-full bg-cyan-400" />}
+            </span>
+            <span className="font-semibold text-white">{title}</span>
+        </div>
+        <p className="mt-1.5 pl-8 text-gray-400">{children}</p>
+    </button>
+)
 
 const ExternalButton = ({ href, children }) => (
     <a
@@ -53,22 +80,41 @@ async function testFinnhubKey(key) {
 }
 
 export default function OnboardingWalkthrough({
+    mode = 'welcome',
+    includeAccountsStep = false,
     finnhubApiKey,
     marketauxApiKey,
-    startAtKeys = false,
     validateApiKey,
     maxKeyLength,
+    currentMode = null,
+    currentAccounts = [],
+    accountNoteCounts = {},
+    createAccountId,
     onSaveFinnhubKey,
     onSaveMarketauxKey,
+    onSaveAccounts,
     onClose,
     onOpenDashboard,
     onOpenQuickStart,
 }) {
-    const [step, setStep] = useState(finnhubApiKey ? 2 : startAtKeys ? 1 : 0)
+    // mode: 'welcome' (first run), 'keys' (from the dashboard), 'accounts' (Manage accounts).
+    const standaloneAccounts = mode === 'accounts'
+    const steps = standaloneAccounts
+        ? ['accounts']
+        : ['welcome', 'finnhub', 'news', ...(includeAccountsStep ? ['accounts'] : []), 'done']
+    const initialStep = standaloneAccounts ? 'accounts'
+        : mode === 'keys' ? 'finnhub'
+            : finnhubApiKey ? (includeAccountsStep ? 'accounts' : 'news')
+                : 'welcome'
+    const [step, setStep] = useState(Math.max(0, steps.indexOf(initialStep)))
+    const stepKey = steps[step]
     const [finnhubDraft, setFinnhubDraft] = useState('')
     const [finnhubStatus, setFinnhubStatus] = useState('idle')
     const [marketauxDraft, setMarketauxDraft] = useState('')
     const [marketauxError, setMarketauxError] = useState('')
+    const [accountChoice, setAccountChoice] = useState(currentMode)
+    const [accountDrafts, setAccountDrafts] = useState(() => currentAccounts.map((a) => ({ id: a.id, label: a.label })))
+    const [newAccountLabel, setNewAccountLabel] = useState('')
 
     const saveFinnhub = async (skipTest = false) => {
         const key = finnhubDraft.trim()
@@ -105,8 +151,40 @@ export default function OnboardingWalkthrough({
         unreachable: { tone: 'text-amber-300', text: 'Couldn’t reach Finnhub to test the key.' },
     }[finnhubStatus]
 
-    const canContinue = step !== 1 || Boolean(finnhubApiKey)
+    // ----- accounts -----
+    const cleanLabel = (label) => String(label || '').replace(/\s+/g, ' ').trim().slice(0, MAX_ACCOUNT_LABEL)
+    const namedDrafts = accountDrafts.filter((a) => cleanLabel(a.label))
+    const labelKeys = namedDrafts.map((a) => cleanLabel(a.label).toLowerCase())
+    const hasDuplicateLabels = new Set(labelKeys).size !== labelKeys.length
+    const accountsValid = accountChoice === 'single'
+        || (accountChoice === 'multiple' && namedDrafts.length > 0 && !hasDuplicateLabels)
+    const addAccount = (label) => {
+        const clean = cleanLabel(label)
+        if (!clean || accountDrafts.length >= MAX_ACCOUNTS) return
+        if (accountDrafts.some((a) => cleanLabel(a.label).toLowerCase() === clean.toLowerCase())) return
+        setAccountDrafts((drafts) => [...drafts, { id: createAccountId(), label: clean }])
+        setNewAccountLabel('')
+    }
+    const commitAccounts = () => {
+        if (!accountsValid) return false
+        onSaveAccounts({
+            mode: accountChoice,
+            // Kept even in single mode, so switching back later restores the names.
+            accounts: namedDrafts.map((a) => ({ id: a.id, label: cleanLabel(a.label) })),
+        })
+        return true
+    }
+    const suggestions = ACCOUNT_SUGGESTIONS.filter((label) => !labelKeys.includes(label.toLowerCase()))
+
+    const canContinue = stepKey === 'finnhub' ? Boolean(finnhubApiKey)
+        : stepKey === 'accounts' ? accountsValid
+            : true
+    const goNext = () => {
+        if (stepKey === 'accounts' && !commitAccounts()) return
+        setStep(step + 1)
+    }
     const inputClass = 'w-full rounded-lg border-2 border-gray-600 bg-gray-800 px-3 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400'
+    const accountInputClass = 'w-full rounded-lg border-2 border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400'
 
     return (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
@@ -117,23 +195,27 @@ export default function OnboardingWalkthrough({
                 className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 text-sm text-gray-200 shadow-2xl"
             >
                 <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">
-                    <div className="flex items-center gap-2">
-                        {STEPS.map((label, index) => (
-                            <span
-                                key={label}
-                                title={label}
-                                className={`h-2 rounded-full transition-all ${index === step ? 'w-8 bg-cyan-400' : index < step ? 'w-2 bg-cyan-700' : 'w-2 bg-gray-700'}`}
-                            />
-                        ))}
-                        <span className="ml-2 text-xs font-semibold text-gray-500">Step {step + 1} of {STEPS.length}</span>
-                    </div>
+                    {standaloneAccounts ? (
+                        <span className="text-xs font-bold uppercase tracking-wide text-gray-400">Manage accounts</span>
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            {steps.map((key, index) => (
+                                <span
+                                    key={key}
+                                    title={STEP_LABELS[key]}
+                                    className={`h-2 rounded-full transition-all ${index === step ? 'w-8 bg-cyan-400' : index < step ? 'w-2 bg-cyan-700' : 'w-2 bg-gray-700'}`}
+                                />
+                            ))}
+                            <span className="ml-2 text-xs font-semibold text-gray-500">Step {step + 1} of {steps.length}</span>
+                        </div>
+                    )}
                     <button type="button" onClick={onClose} className="text-xs font-semibold text-gray-400 hover:text-white">
-                        {finnhubApiKey ? 'Close' : 'Remind me later'}
+                        {standaloneAccounts || finnhubApiKey ? 'Close' : 'Remind me later'}
                     </button>
                 </div>
 
                 <div className="space-y-5 overflow-y-auto px-6 py-6">
-                    {step === 0 && (
+                    {stepKey === 'welcome' && (
                         <>
                             <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">Welcome to Stock Stickies 👋</h2>
                             <p className="text-gray-300">
@@ -154,7 +236,7 @@ export default function OnboardingWalkthrough({
                         </>
                     )}
 
-                    {step === 1 && (
+                    {stepKey === 'finnhub' && (
                         <>
                             <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">Get your free Finnhub key</h2>
                             <Instructions items={[
@@ -206,7 +288,7 @@ export default function OnboardingWalkthrough({
                         </>
                     )}
 
-                    {step === 2 && (
+                    {stepKey === 'news' && (
                         <>
                             <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">
                                 Add news <span className="text-base font-semibold text-gray-500">(optional)</span>
@@ -252,7 +334,100 @@ export default function OnboardingWalkthrough({
                         </>
                     )}
 
-                    {step === 3 && (
+                    {stepKey === 'accounts' && (
+                        <>
+                            <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">How do you keep your investments?</h2>
+                            <p className="text-gray-400">This decides how Stock Stickies groups your positions. You can change it any time from <span className="text-gray-200">Manage accounts</span> on the Notes tab.</p>
+                            <div className="space-y-3">
+                                <OptionCard selected={accountChoice === 'single'} onSelect={() => setAccountChoice('single')} title="All in one place">
+                                    Show one combined portfolio. Best if you have a single brokerage account, or just don’t want to split things up.
+                                </OptionCard>
+                                <OptionCard selected={accountChoice === 'multiple'} onSelect={() => setAccountChoice('multiple')} title="In separate accounts">
+                                    Track each account on its own — like a brokerage account, a Roth IRA, and a 401(k) — and see them side by side or combined.
+                                </OptionCard>
+                            </div>
+
+                            {accountChoice === 'multiple' && (
+                                <div className="space-y-3 rounded-xl border border-gray-700 bg-gray-950/50 p-4">
+                                    <p className="font-semibold text-white">Name your accounts</p>
+                                    {accountDrafts.length > 0 && (
+                                        <ul className="space-y-2">
+                                            {accountDrafts.map((account) => {
+                                                const noteCount = accountNoteCounts[account.id] || 0
+                                                return (
+                                                    <li key={account.id} className="flex items-center gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={account.label}
+                                                            maxLength={MAX_ACCOUNT_LABEL}
+                                                            aria-label="Account name"
+                                                            onChange={(event) => setAccountDrafts((drafts) => drafts.map((a) => (a.id === account.id ? { ...a, label: event.target.value } : a)))}
+                                                            className={accountInputClass}
+                                                        />
+                                                        {noteCount > 0 && (
+                                                            <span className="shrink-0 text-xs text-gray-500">{noteCount} note{noteCount === 1 ? '' : 's'}</span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setAccountDrafts((drafts) => drafts.filter((a) => a.id !== account.id))}
+                                                            title={noteCount > 0 ? `Remove — its ${noteCount} note${noteCount === 1 ? '' : 's'} will move to Unassigned` : 'Remove'}
+                                                            aria-label={`Remove ${account.label || 'account'}`}
+                                                            className="shrink-0 rounded-lg px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-800 hover:text-red-300"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </li>
+                                                )
+                                            })}
+                                        </ul>
+                                    )}
+                                    {accountDrafts.length < MAX_ACCOUNTS && (
+                                        <>
+                                            {suggestions.length > 0 && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {suggestions.map((label) => (
+                                                        <button
+                                                            key={label}
+                                                            type="button"
+                                                            onClick={() => addAccount(label)}
+                                                            className="rounded-full border border-gray-600 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-cyan-400 hover:text-cyan-200"
+                                                        >
+                                                            + {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={newAccountLabel}
+                                                    maxLength={MAX_ACCOUNT_LABEL}
+                                                    onChange={(event) => setNewAccountLabel(event.target.value)}
+                                                    onKeyDown={(event) => { if (event.key === 'Enter') addAccount(newAccountLabel) }}
+                                                    placeholder="Or type your own, e.g. Fidelity 401(k)"
+                                                    aria-label="New account name"
+                                                    className={accountInputClass}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addAccount(newAccountLabel)}
+                                                    disabled={!cleanLabel(newAccountLabel)}
+                                                    className="shrink-0 rounded-lg bg-emerald-500 px-4 py-2 font-bold text-gray-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                                >
+                                                    Add
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                    {hasDuplicateLabels && <p className="text-xs text-red-400">Two accounts have the same name — give each a different one.</p>}
+                                    {accountDrafts.length === 0 && <p className="text-xs text-gray-500">Add at least one account to continue.</p>}
+                                    <p className="text-xs text-gray-500">New positions start unassigned — pick the account from each note’s card (click the lock).</p>
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {stepKey === 'done' && (
                         <>
                             <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">You’re all set 🎉</h2>
                             <p className="text-gray-400">Here’s where to go next:</p>
@@ -267,7 +442,9 @@ export default function OnboardingWalkthrough({
                                 </div>
                                 <div className="rounded-xl border border-gray-700 bg-gray-950/50 p-4">
                                     <p className="font-semibold text-white">💼 Track your portfolio</p>
-                                    <p className="mt-1 text-gray-400">Click the lock on a note to enter how many shares you own — it then shows up on the <span className="text-gray-200">Portfolio</span> tab with its value and allocation.</p>
+                                    <p className="mt-1 text-gray-400">
+                                        Click the lock on a note to enter how many shares you own{currentMode === 'multiple' ? ' and which account holds them' : ''} — it then shows up on the <span className="text-gray-200">Portfolio</span> tab with its value and allocation.
+                                    </p>
                                 </div>
                             </div>
                             <p className="text-xs text-gray-500">
@@ -280,32 +457,50 @@ export default function OnboardingWalkthrough({
                 </div>
 
                 <div className="flex items-center justify-between border-t border-gray-800 px-6 py-4">
-                    <button
-                        type="button"
-                        onClick={() => setStep(step - 1)}
-                        className={`rounded-lg px-4 py-2 font-semibold text-gray-400 hover:text-white ${step === 0 ? 'invisible' : ''}`}
-                    >
-                        Back
-                    </button>
-                    {step < STEPS.length - 1 ? (
-                        <button
-                            type="button"
-                            onClick={() => setStep(step + 1)}
-                            disabled={!canContinue}
-                            title={canContinue ? undefined : 'Save your Finnhub key to continue'}
-                            className="rounded-lg bg-cyan-500 px-5 py-2 font-bold text-gray-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                            {step === 0 ? 'Let’s go' : step === 2 && !marketauxApiKey ? 'Skip for now' : 'Next'}
-                        </button>
+                    {standaloneAccounts ? (
+                        <>
+                            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 font-semibold text-gray-400 hover:text-white">
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { if (commitAccounts()) onClose() }}
+                                disabled={!accountsValid}
+                                className="rounded-lg bg-cyan-500 px-5 py-2 font-bold text-gray-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                Save
+                            </button>
+                        </>
                     ) : (
-                        <div className="flex gap-2">
-                            <button type="button" onClick={onClose} className="rounded-lg border border-gray-600 px-4 py-2 font-semibold text-gray-200 hover:border-gray-400">
-                                Start with a note
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setStep(step - 1)}
+                                className={`rounded-lg px-4 py-2 font-semibold text-gray-400 hover:text-white ${step === 0 ? 'invisible' : ''}`}
+                            >
+                                Back
                             </button>
-                            <button type="button" onClick={onOpenDashboard} className="hidden rounded-lg bg-cyan-500 md:block px-4 py-2 font-bold text-gray-950 hover:bg-cyan-400">
-                                Open Live Dashboard
-                            </button>
-                        </div>
+                            {step < steps.length - 1 ? (
+                                <button
+                                    type="button"
+                                    onClick={goNext}
+                                    disabled={!canContinue}
+                                    title={canContinue ? undefined : stepKey === 'finnhub' ? 'Save your Finnhub key to continue' : 'Choose how you keep your investments'}
+                                    className="rounded-lg bg-cyan-500 px-5 py-2 font-bold text-gray-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {stepKey === 'welcome' ? 'Let’s go' : stepKey === 'news' && !marketauxApiKey ? 'Skip for now' : 'Next'}
+                                </button>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={onClose} className="rounded-lg border border-gray-600 px-4 py-2 font-semibold text-gray-200 hover:border-gray-400">
+                                        Start with a note
+                                    </button>
+                                    <button type="button" onClick={onOpenDashboard} className="hidden rounded-lg bg-cyan-500 md:block px-4 py-2 font-bold text-gray-950 hover:bg-cyan-400">
+                                        Open Live Dashboard
+                                    </button>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>

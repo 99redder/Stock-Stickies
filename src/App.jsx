@@ -295,7 +295,12 @@ const firebaseConfig = {
 
         // Brokerage accounts a position can be assigned to. `strategy` is descriptive
         // context only — it is shipped to Ask K so answers can be framed per account.
-        const ACCOUNTS = [
+        // The owner's three accounts. They are a fixed one-off: Plaid sync and the
+        // brokerage Worker map to these exact ids, so the owner never gets custom
+        // accounts. Everyone else names their own accounts during onboarding
+        // (ids 'acct-…'), or opts out of accounts entirely. Users who have not
+        // finished that setup yet still see these so existing notes stay put.
+        const BUILTIN_ACCOUNTS = [
             { id: 'individual', label: 'Individual', strategy: 'Taxable individual brokerage — primarily swing trades and shorter-horizon positions.', generalStrategy: 'Taxable brokerage account.' },
             { id: 'traditional', label: 'Traditional IRA', strategy: 'Traditional IRA — long-term buy-and-hold core of quality names.', generalStrategy: 'Traditional IRA (tax-deferred).' },
             { id: 'roth', label: 'Roth IRA', strategy: 'Roth IRA — higher-risk speculative "moon shot" names plus cash secured puts, where tax-free growth has the most upside. All CSPs are written in this account.', generalStrategy: 'Roth IRA (tax-free growth).' }
@@ -303,26 +308,40 @@ const firebaseConfig = {
         // `strategy` describes the owner's own plan for each account; other users see the
         // neutral `generalStrategy` (it also feeds their Ask K payload and exports).
         const getAccountStrategy = (accountId, isOwner) => {
-            const account = ACCOUNTS.find(a => a.id === accountId);
+            const account = BUILTIN_ACCOUNTS.find(a => a.id === accountId);
             if (!account) return null;
             return isOwner ? account.strategy : account.generalStrategy;
         };
-        const ACCOUNT_IDS = ACCOUNTS.map(a => a.id);
-        const DEFAULT_ACCOUNT_ID = 'individual';
+        const BUILTIN_ACCOUNT_IDS = BUILTIN_ACCOUNTS.map(a => a.id);
         const UNASSIGNED_ACCOUNT_ID = 'unassigned';
         const MAX_ACCOUNT_THEME_LENGTH = 60;
-        // Notes created before accounts existed have no `account` field. They stay in an
-        // explicit "Unassigned" bucket rather than silently landing in a real account.
-        const getNoteAccount = (note) =>
-            ACCOUNT_IDS.includes(note?.account) ? note.account : UNASSIGNED_ACCOUNT_ID;
-        const getAccountLabel = (accountId) =>
-            ACCOUNTS.find(a => a.id === accountId)?.label || 'Unassigned';
+        const MAX_USER_ACCOUNTS = 8;
+        const MAX_ACCOUNT_LABEL_LENGTH = 30;
+        const USER_ACCOUNT_ID_PATTERN = /^acct-[a-z0-9]{4,24}$/;
+        const isValidAccountId = (id) => BUILTIN_ACCOUNT_IDS.includes(id) || USER_ACCOUNT_ID_PATTERN.test(String(id || ''));
+        const createUserAccountId = () => `acct-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+        const sanitizeUserAccounts = (value) => {
+            if (!Array.isArray(value)) return [];
+            const seen = new Set();
+            return value
+                .filter(a => a && isValidAccountId(a.id) && typeof a.label === 'string' && a.label.trim())
+                .filter(a => !seen.has(a.id) && seen.add(a.id))
+                .map(a => ({ id: a.id, label: a.label.trim().slice(0, MAX_ACCOUNT_LABEL_LENGTH) }))
+                .slice(0, MAX_USER_ACCOUNTS);
+        };
+        // { mode: 'multiple' | 'single', completedAt } once a (non-owner) user has chosen.
+        const sanitizeAccountSetup = (value) => (
+            value && (value.mode === 'multiple' || value.mode === 'single')
+                ? { mode: value.mode, completedAt: typeof value.completedAt === 'string' ? value.completedAt : null }
+                : null
+        );
 
         const sanitizeAccountThemes = (value) => {
             if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
             return Object.fromEntries(
                 Object.entries(value)
-                    .filter(([accountId, title]) => ACCOUNT_IDS.includes(accountId) && typeof title === 'string' && title.trim())
+                    .filter(([accountId, title]) => isValidAccountId(accountId) && typeof title === 'string' && title.trim())
                     .map(([accountId, title]) => [accountId, title.trim().slice(0, MAX_ACCOUNT_THEME_LENGTH)])
             );
         };
@@ -639,6 +658,44 @@ const firebaseConfig = {
             const [accountThemes, setAccountThemes] = useState({});
             const [editingAccountTheme, setEditingAccountTheme] = useState(null);
             const [tempAccountTheme, setTempAccountTheme] = useState('');
+
+            // Effective accounts for this user (see BUILTIN_ACCOUNTS). The owner is a
+            // fixed one-off; stored custom-account fields are ignored and never written.
+            const isOwnerAccount = auth?.currentUser?.uid === OWNER_FIREBASE_UID;
+            const [userAccounts, setUserAccounts] = useState([]);
+            const [accountSetup, setAccountSetup] = useState(null);
+            // Until a user answers the accounts question they get no accounts, unless their
+            // notes already use the built-in ids (created before custom accounts existed).
+            const hasLegacyAccountNotes = !isOwnerAccount && !accountSetup
+                && notes.some(n => BUILTIN_ACCOUNT_IDS.includes(n?.account));
+            const ACCOUNTS = useMemo(() => {
+                if (isOwnerAccount) return BUILTIN_ACCOUNTS;
+                if (accountSetup) return accountSetup.mode === 'single' ? [] : userAccounts;
+                return hasLegacyAccountNotes ? BUILTIN_ACCOUNTS : [];
+            }, [isOwnerAccount, accountSetup, userAccounts, hasLegacyAccountNotes]);
+            const accountsEnabled = ACCOUNTS.length > 0;
+            const ACCOUNT_IDS = useMemo(() => ACCOUNTS.map(a => a.id), [ACCOUNTS]);
+            const DEFAULT_ACCOUNT_ID = ACCOUNT_IDS[0] || UNASSIGNED_ACCOUNT_ID;
+            const needsAccountSetup = !isOwnerAccount && !accountSetup;
+            const accountNoteCounts = useMemo(() => notes.reduce((counts, n) => {
+                if (n?.account) counts[n.account] = (counts[n.account] || 0) + 1;
+                return counts;
+            }, {}), [notes]);
+            const saveAccountSetup = ({ mode, accounts }) => {
+                if (isOwnerAccount) return;
+                setUserAccounts(sanitizeUserAccounts(accounts));
+                setAccountSetup({ mode, completedAt: new Date().toISOString() });
+            };
+            // Persisted only for non-owner accounts; the owner's document never gets these.
+            const accountFieldsForSave = useMemo(() => (
+                isOwnerAccount ? {} : { customAccounts: userAccounts, accountSetup }
+            ), [isOwnerAccount, userAccounts, accountSetup]);
+            // Notes created before accounts existed have no `account` field. They stay in an
+            // explicit "Unassigned" bucket rather than silently landing in a real account.
+            const getNoteAccount = useCallback((note) =>
+                ACCOUNT_IDS.includes(note?.account) ? note.account : UNASSIGNED_ACCOUNT_ID, [ACCOUNT_IDS]);
+            const getAccountLabel = useCallback((accountId) =>
+                ACCOUNTS.find(a => a.id === accountId)?.label || 'Unassigned', [ACCOUNTS]);
             const getAccountTheme = (accountId) => accountThemes[accountId] || '';
             const beginEditingAccountTheme = (accountId) => {
                 if (!ACCOUNT_IDS.includes(accountId)) return;
@@ -772,9 +829,11 @@ const firebaseConfig = {
                 `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(digits)}%`;
 
             const getPutObligation = (put) => parseMoneyNumber(put?.strike) * parseMoneyNumber(put?.qty) * 100;
-            // CSPs predate account attribution. Every put written before this field existed
-            // was in the Roth, so legacy records fall back there rather than to Unassigned.
-            const getPutAccount = (put) => ACCOUNT_IDS.includes(put?.account) ? put.account : 'roth';
+            // CSPs predate account attribution. Every owner put written before this field
+            // existed was in the Roth, so the owner's legacy records fall back there; other
+            // users' fall back to Unassigned.
+            const putFallbackAccount = isOwnerAccount ? 'roth' : UNASSIGNED_ACCOUNT_ID;
+            const getPutAccount = useCallback((put) => ACCOUNT_IDS.includes(put?.account) ? put.account : putFallbackAccount, [ACCOUNT_IDS, putFallbackAccount]);
             const totalPutObligation = cashSecuredPuts.reduce((sum, put) => sum + getPutObligation(put), 0);
             const putObligationByAccount = cashSecuredPuts.reduce((acc, put) => {
                 const id = getPutAccount(put);
@@ -792,7 +851,7 @@ const firebaseConfig = {
                 const strike = String(newPutStrike || '').trim();
                 const qty = String(newPutQty || '').trim();
                 const expiry = String(newPutExpiry || '').trim();
-                const account = ACCOUNT_IDS.includes(newPutAccount) ? newPutAccount : 'roth';
+                const account = ACCOUNT_IDS.includes(newPutAccount) ? newPutAccount : putFallbackAccount;
                 if (!ticker || !strike || !qty || !expiry) return;
                 if (editingPutId) {
                     setCashSecuredPuts((prev) => prev.map((item) => item.id === editingPutId ? { ...item, ticker, strike, qty, expiry, account } : item));
@@ -803,7 +862,7 @@ const firebaseConfig = {
                 setNewPutStrike('');
                 setNewPutQty('');
                 setNewPutExpiry('');
-                setNewPutAccount('roth');
+                setNewPutAccount(isOwnerAccount ? 'roth' : DEFAULT_ACCOUNT_ID);
                 setEditingPutId(null);
                 setShowCashSecuredPutModal(false);
             };
@@ -869,6 +928,8 @@ const firebaseConfig = {
             const [portfolioLegendDollarAmounts, setPortfolioLegendDollarAmounts] = useState(false);
             const [portfolioDonutIncludesCash, setPortfolioDonutIncludesCash] = useState(true);
             const [notesGroupMode, setNotesGroupMode] = useState('account'); // 'account' | 'category' | 'size'
+            // Users without accounts group by category; their saved preference is left alone.
+            const shownNotesGroupMode = !accountsEnabled && notesGroupMode === 'account' ? 'category' : notesGroupMode;
             const [hideLegendPanel, setHideLegendPanel] = useState(false);
             const [hideToolbarPanel, setHideToolbarPanel] = useState(false);
             const [sharesPrivacyMode, setSharesPrivacyMode] = useState('show'); // 'show' | 'hide'
@@ -909,8 +970,10 @@ const firebaseConfig = {
             useEffect(() => {
                 if (!currentUser || !userDataReady || !apiKeysChecked || onboardingShownRef.current) return;
                 onboardingShownRef.current = true;
-                if (!finnhubApiKey) setOnboardingOpen('welcome');
-            }, [currentUser, userDataReady, apiKeysChecked, finnhubApiKey]);
+                // Repeats each sign-in until the Finnhub key is saved and (for everyone but
+                // the owner) the accounts question has been answered.
+                if (!finnhubApiKey || needsAccountSetup) setOnboardingOpen('welcome');
+            }, [currentUser, userDataReady, apiKeysChecked, finnhubApiKey, needsAccountSetup]);
 
             // Close API key help popovers on outside click / Escape
             useEffect(() => {
@@ -1036,6 +1099,8 @@ const firebaseConfig = {
                                 accountThemes: sanitizeAccountThemes(data.accountThemes),
                                 sectorThemes: sanitizeSectorThemes(data.sectorThemes),
                                 sectorAssignments: sanitizeSectorAssignments(data.sectorAssignments),
+                                customAccounts: sanitizeUserAccounts(data.customAccounts),
+                                accountSetup: sanitizeAccountSetup(data.accountSetup),
                                 darkMode: data.darkMode || false,
                                 watchList: (data.watchList || []).filter((ticker) => !incomingRadarList.includes(ticker)),
                                 watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
@@ -1075,6 +1140,8 @@ const firebaseConfig = {
                             setAccountThemes(incoming.accountThemes);
                             setSectorThemes(incoming.sectorThemes);
                             setSectorAssignments(incoming.sectorAssignments);
+                            setUserAccounts(incoming.customAccounts);
+                            setAccountSetup(incoming.accountSetup);
                             setDarkMode(incoming.darkMode);
                             setWatchList(incoming.watchList);
                             setWatchListNotes(incoming.watchListNotes);
@@ -1161,6 +1228,7 @@ const firebaseConfig = {
                             accountThemes,
                             sectorThemes,
                             sectorAssignments,
+                            ...accountFieldsForSave,
                             darkMode,
                             watchList,
                             watchListNotes,
@@ -1222,7 +1290,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
+            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, accountFieldsForSave, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1243,6 +1311,7 @@ const firebaseConfig = {
                             accountThemes,
                             sectorThemes,
                             sectorAssignments,
+                            ...accountFieldsForSave,
                             darkMode,
                             watchList,
                             watchListNotes,
@@ -1272,7 +1341,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
+            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, accountFieldsForSave, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1478,6 +1547,7 @@ const firebaseConfig = {
                         accountThemes,
                         sectorThemes,
                         sectorAssignments,
+                        ...accountFieldsForSave,
                         darkMode,
                         watchList,
                         watchListNotes,
@@ -2184,6 +2254,8 @@ const firebaseConfig = {
                 setAccountThemes({});
                 setSectorThemes(DEFAULT_SECTOR_THEMES);
                 setSectorAssignments({});
+                setUserAccounts([]);
+                setAccountSetup(null);
                 // Clear localStorage cache on logout
                 localStorage.removeItem('portfolio_prices_cache');
                 localStorage.removeItem('portfolio_sector_cache');
@@ -2488,6 +2560,10 @@ const firebaseConfig = {
                         accountThemes: sanitizeAccountThemes(data.accountThemes),
                         sectorThemes: sanitizeSectorThemes(data.sectorThemes),
                         sectorAssignments: sanitizeSectorAssignments(data.sectorAssignments),
+                        ...(isOwnerAccount ? {} : {
+                            customAccounts: sanitizeUserAccounts(data.customAccounts),
+                            accountSetup: sanitizeAccountSetup(data.accountSetup),
+                        }),
                         darkMode: !!data.darkMode,
                         watchList: data.watchList || [],
                         watchListNotes: sanitizeWatchListNotes(data.watchListNotes),
@@ -2853,7 +2929,7 @@ const firebaseConfig = {
                     buckets[getNoteAccount(n)].push(n);
                 });
                 return buckets;
-            }, [sortedClassifiedNotes]);
+            }, [sortedClassifiedNotes, ACCOUNT_IDS, getNoteAccount]);
 
 
 
@@ -3352,7 +3428,7 @@ const firebaseConfig = {
                     ...h,
                     percentage: totalValue > 0 ? (h.value / totalValue) * 100 : 0
                 })).sort((a, b) => b.value - a.value);
-            }, [portfolioPrices]);
+            }, [portfolioPrices, getNoteAccount]);
 
             // Every position, ignoring the account filter — used for account totals and Ask K.
             const allPortfolioData = useMemo(() => buildHoldings(portfolioNotes), [portfolioNotes, buildHoldings]);
@@ -3364,7 +3440,7 @@ const firebaseConfig = {
                     ...ACCOUNT_IDS.filter(id => present.has(id)),
                     ...(present.has(UNASSIGNED_ACCOUNT_ID) ? [UNASSIGNED_ACCOUNT_ID] : [])
                 ];
-            }, [allPortfolioData]);
+            }, [allPortfolioData, ACCOUNT_IDS]);
 
             const accountTotals = useMemo(() => {
                 const totals = {};
@@ -3421,7 +3497,7 @@ const firebaseConfig = {
                 const ids = [...ACCOUNT_IDS];
                 ids.sort((a, b) => (accountTotals[b]?.value || 0) - (accountTotals[a]?.value || 0));
                 return [...ids, UNASSIGNED_ACCOUNT_ID];
-            }, [accountTotals]);
+            }, [accountTotals, ACCOUNT_IDS]);
 
             // CSP obligation for whatever the pie is currently showing. Puts carry an account,
             // so a single-account view must not report the whole book's obligation.
@@ -3433,7 +3509,7 @@ const firebaseConfig = {
                 portfolioAccountFilter === 'all'
                     ? portfolioNotes
                     : portfolioNotes.filter(n => getNoteAccount(n) === portfolioAccountFilter),
-            [portfolioNotes, portfolioAccountFilter]);
+            [portfolioNotes, portfolioAccountFilter, getNoteAccount]);
 
             const portfolioData = useMemo(() => buildHoldings(filteredPortfolioNotes), [filteredPortfolioNotes, buildHoldings]);
 
@@ -3833,13 +3909,32 @@ const firebaseConfig = {
                     })),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, accountThemes, isOwnerPortfolioUser]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, accountThemes, isOwnerPortfolioUser, ACCOUNTS, getAccountLabel, getPutAccount]);
 
             // Markdown snapshot of whatever the Portfolio tab is currently showing, for
             // pasting into an external LLM. Follows the account filter, exactly like the
             // donut and legend do, so what you copy is what you see.
+            // Users who opted out of accounts: send Ask K a plain portfolio with no
+            // account fields, so it never talks about "unassigned" positions.
+            const askKPayload = useMemo(() => {
+                if (accountsEnabled) return askKPortfolio;
+                const withoutAccount = (item) => {
+                    const copy = { ...item };
+                    delete copy.account;
+                    delete copy.accountLabel;
+                    delete copy.percentOfAccount;
+                    return copy;
+                };
+                return {
+                    ...askKPortfolio,
+                    accounts: [],
+                    positions: askKPortfolio.positions.map(withoutAccount),
+                    cashSecuredPuts: askKPortfolio.cashSecuredPuts.map(withoutAccount),
+                };
+            }, [accountsEnabled, askKPortfolio]);
+
             const buildPortfolioExport = () => {
-                const scopeLabel = portfolioAccountFilter === 'all' ? 'All Accounts' : getAccountLabel(portfolioAccountFilter);
+                const scopeLabel = !accountsEnabled ? 'Portfolio' : portfolioAccountFilter === 'all' ? 'All Accounts' : getAccountLabel(portfolioAccountFilter);
                 const owner = nickname || currentUser?.split('@')[0] || 'User';
                 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 const noteById = new Map(notes.map(n => [n.id, n]));
@@ -3908,14 +4003,16 @@ const firebaseConfig = {
                 if (portfolioData.length === 0) {
                     lines.push('_No positions._');
                 } else {
-                    lines.push('| # | Ticker | Account | Category | Shares | Price | Market value | Cost basis | Unrealized P&L | % of shown |');
-                    lines.push('|---|---|---|---|---|---|---|---|---|---|');
+                    lines.push(accountsEnabled
+                        ? '| # | Ticker | Account | Category | Shares | Price | Market value | Cost basis | Unrealized P&L | % of shown |'
+                        : '| # | Ticker | Category | Shares | Price | Market value | Cost basis | Unrealized P&L | % of shown |');
+                    lines.push(accountsEnabled ? '|---|---|---|---|---|---|---|---|---|---|' : '|---|---|---|---|---|---|---|---|---|');
                     portfolioData.forEach((h, i) => {
                         const priced = Number.isFinite(h.price) && h.price > 0;
                         const cells = [
                             i + 1,
                             h.ticker,
-                            getAccountLabel(h.account),
+                            ...(accountsEnabled ? [getAccountLabel(h.account)] : []),
                             colorLabels[h.color] || 'Unclassified',
                             h.shares.toLocaleString(),
                             priced ? money(h.price) : 'no price',
@@ -4066,7 +4163,7 @@ const firebaseConfig = {
                     }
                 });
                 return dupes;
-            }, [notes]);
+            }, [notes, getNoteAccount]);
 
             // Assign a note (position) to a brokerage account. Refuses a move that would put
             // two notes for the same ticker in one account. Returns whether it applied.
@@ -4094,7 +4191,9 @@ const firebaseConfig = {
                 const clash = findDuplicateNote(note.title, accountId, noteId);
                 if (!clash) return;
                 showBrandedNotice(
-                    `${normalizeTicker(note.title)} already has a note in ${getAccountLabel(accountId)}. Two notes for one holding will double-count it in that account.`,
+                    accountsEnabled
+                        ? `${normalizeTicker(note.title)} already has a note in ${getAccountLabel(accountId)}. Two notes for one holding will double-count it in that account.`
+                        : `${normalizeTicker(note.title)} already has a note. Two notes for one holding will double-count it in your portfolio.`,
                     'Duplicate position'
                 );
             };
@@ -4849,15 +4948,22 @@ const firebaseConfig = {
                 );
             }
 
-            // onboardingOpen: false | 'welcome' (first-run) | 'keys' (opened from the dashboard)
+            // onboardingOpen: false | 'welcome' (first run) | 'keys' (from the dashboard)
+            // | 'accounts' (Manage accounts). The owner never gets the accounts step.
             const onboardingModal = onboardingOpen ? (
                 <Suspense fallback={null}>
                     <OnboardingWalkthrough
+                        mode={onboardingOpen}
+                        includeAccountsStep={!isOwnerAccount}
                         finnhubApiKey={finnhubApiKey}
                         marketauxApiKey={marketauxApiKey}
-                        startAtKeys={onboardingOpen === 'keys'}
                         validateApiKey={validateApiKey}
                         maxKeyLength={MAX_API_KEY_LENGTH}
+                        currentMode={accountSetup?.mode || (accountsEnabled ? 'multiple' : null)}
+                        currentAccounts={accountSetup ? userAccounts : ACCOUNTS}
+                        accountNoteCounts={accountNoteCounts}
+                        createAccountId={createUserAccountId}
+                        onSaveAccounts={saveAccountSetup}
                         onSaveFinnhubKey={setFinnhubApiKey}
                         onSaveMarketauxKey={setMarketauxApiKey}
                         onClose={() => setOnboardingOpen(false)}
@@ -5291,6 +5397,7 @@ const firebaseConfig = {
                                                             {sharesPrivacyMode === 'hide' ? 'shares hidden' : 'shares owned (for portfolio)'}
                                                         </span>
                                                     </div>
+                                                    {accountsEnabled && (
                                                     <div className="flex items-center gap-3">
                                                         <select
                                                             value={ACCOUNT_IDS.includes(expandedNote.account) ? expandedNote.account : ''}
@@ -5307,6 +5414,7 @@ const firebaseConfig = {
                                                         </select>
                                                         <span className="text-gray-600">account</span>
                                                     </div>
+                                                    )}
                                                 </>
                                             ) : (
                                                 <>
@@ -5588,7 +5696,7 @@ const firebaseConfig = {
                         <div className={`w-full max-w-md rounded-xl shadow-2xl ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} p-6`}>
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-xl font-bold">{editingPutId ? 'Edit Cash Secured Put' : 'Add Cash Secured Put'}</h3>
-                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); setNewPutAccount('roth'); }} className={`p-2 rounded ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}><X size={18} /></button>
+                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); setNewPutAccount(isOwnerAccount ? 'roth' : DEFAULT_ACCOUNT_ID); }} className={`p-2 rounded ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}><X size={18} /></button>
                             </div>
                             <div className="space-y-3">
                                 <label className="block">
@@ -5607,15 +5715,17 @@ const firebaseConfig = {
                                     <span className={`mb-1 block text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Expiration</span>
                                     <input type="date" value={newPutExpiry} onChange={(e) => setNewPutExpiry(e.target.value)} className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} />
                                 </label>
+                                {accountsEnabled && (
                                 <label className="block">
                                     <span className={`mb-1 block text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Account</span>
                                     <select value={newPutAccount} onChange={(e) => setNewPutAccount(e.target.value)} className={`w-full px-3 py-2 rounded border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-800 border-gray-300'} focus:ring-2 focus:ring-blue-500 outline-none`} title="Account this put is written in">
                                         {ACCOUNTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                                     </select>
                                 </label>
+                                )}
                             </div>
                             <div className="flex justify-end gap-2 mt-5">
-                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); setNewPutAccount('roth'); }} className={`px-4 py-2 rounded ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>Cancel</button>
+                                <button onClick={() => { setShowCashSecuredPutModal(false); setEditingPutId(null); setNewPutTicker(''); setNewPutStrike(''); setNewPutQty(''); setNewPutExpiry(''); setNewPutAccount(isOwnerAccount ? 'roth' : DEFAULT_ACCOUNT_ID); }} className={`px-4 py-2 rounded ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>Cancel</button>
                                 <button onClick={addCashSecuredPut} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded shadow">{editingPutId ? 'Save' : 'Add'}</button>
                             </div>
                         </div>
@@ -6575,18 +6685,20 @@ const firebaseConfig = {
                                     <div className="flex items-center gap-3">
                                         <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Group By</span>
                                         <div className={`inline-flex rounded-lg p-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                            {accountsEnabled && (
                                             <button
                                                 type="button"
                                                 onClick={() => setNotesGroupMode('account')}
-                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesGroupMode === 'account' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${shownNotesGroupMode === 'account' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
                                                 title="Group notes by brokerage account"
                                             >
                                                 Portfolio
                                             </button>
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={() => setNotesGroupMode('category')}
-                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesGroupMode === 'category' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${shownNotesGroupMode === 'category' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')}`}
                                             >
                                                 Category
                                             </button>
@@ -6594,12 +6706,22 @@ const firebaseConfig = {
                                                 type="button"
                                                 onClick={() => finnhubApiKey && setNotesGroupMode('size')}
                                                 disabled={!finnhubApiKey}
-                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${notesGroupMode === 'size' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')} ${!finnhubApiKey ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${shownNotesGroupMode === 'size' ? (darkMode ? 'bg-gray-900 text-white shadow' : 'bg-white text-gray-900 shadow') : (darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900')} ${!finnhubApiKey ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                 title={!finnhubApiKey ? 'Add a Finnhub API key to group notes by position size' : 'Show all notes sorted by largest position (market value)'}
                                             >
                                                 Size
                                             </button>
                                         </div>
+                                        {!isOwnerAccount && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setOnboardingOpen('accounts')}
+                                                className={`px-2.5 py-1.5 rounded-md text-xs font-semibold border ${darkMode ? 'border-gray-600 text-gray-300 hover:text-white hover:border-gray-400' : 'border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400'}`}
+                                                title="Rename, add, or remove accounts — or keep one combined portfolio"
+                                            >
+                                                Manage accounts
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Only shown while something is actually unlocked — a
@@ -6700,7 +6822,7 @@ const firebaseConfig = {
                                 </div>
                             </div>
                         )}
-                        {notesGroupMode === 'account' ? (<>
+                        {shownNotesGroupMode === 'account' ? (<>
                             {allPortfolioData.length > 0 && (
                                 <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${darkMode ? 'border-gray-700 bg-gray-800 text-white' : 'border-gray-200 bg-white text-gray-800'}`}>
                                     <div>
@@ -6845,7 +6967,7 @@ const firebaseConfig = {
                                 </div>
                             );
                             })}
-                        </>) : notesGroupMode === 'category' ? (categories.map(color => {
+                        </>) : shownNotesGroupMode === 'category' ? (categories.map(color => {
                             const categoryNotes = groupedNotes[color];
                             if (!categoryNotes.length) return null;
                             return (
@@ -6981,7 +7103,7 @@ const firebaseConfig = {
                                 {/* Account filter — composite by default, or one account at a time */}
                                 {allPortfolioData.length > 0 && (
                                     <div className={`mt-5 pt-4 border-t flex flex-wrap gap-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                        {['all', ...presentAccountIds].map(accountId => {
+                                        {['all', ...(accountsEnabled ? presentAccountIds : [])].map(accountId => {
                                             const isActive = portfolioAccountFilter === accountId;
                                             const value = accountId === 'all' ? grandPortfolioValue : (accountTotals[accountId]?.value || 0);
                                             const count = accountId === 'all' ? allPortfolioData.length : (accountTotals[accountId]?.positionCount || 0);
@@ -7461,7 +7583,7 @@ const firebaseConfig = {
                                             <div className={`text-sm mt-1 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Total buying obligation: {formatUsd(totalPutObligation)}</div>
                                         </div>
                                         <button
-                                            onClick={() => setShowCashSecuredPutModal(true)}
+                                            onClick={() => { setNewPutAccount(isOwnerAccount ? 'roth' : DEFAULT_ACCOUNT_ID); setShowCashSecuredPutModal(true); }}
                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded shadow"
                                             title="Add cash secured put"
                                         >
@@ -7498,7 +7620,7 @@ const firebaseConfig = {
                                                         <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{put.ticker}</div>
                                                         <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>${put.strike} · Qty {put.qty || '—'} · {put.expiry}</div>
                                                         <div className={`text-sm font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Buying obligation: {formatUsd(getPutObligation(put))}</div>
-                                                        <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-300'}`}>{getAccountLabel(getPutAccount(put))}</span>
+                                                        {accountsEnabled && <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-300'}`}>{getAccountLabel(getPutAccount(put))}</span>}
                                                     </div>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setPutToDelete(put.id); }}
@@ -7635,7 +7757,7 @@ const firebaseConfig = {
                                             <div className={`text-sm mt-1 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Total buying obligation: {formatUsd(totalPutObligation)}</div>
                                         </div>
                                         <button
-                                            onClick={() => setShowCashSecuredPutModal(true)}
+                                            onClick={() => { setNewPutAccount(isOwnerAccount ? 'roth' : DEFAULT_ACCOUNT_ID); setShowCashSecuredPutModal(true); }}
                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded shadow"
                                             title="Add cash secured put"
                                         >
@@ -7652,7 +7774,7 @@ const firebaseConfig = {
                                                         <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{put.ticker}</div>
                                                         <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>${put.strike} · Qty {put.qty || '—'} · {put.expiry}</div>
                                                         <div className={`text-sm font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Buying obligation: {formatUsd(getPutObligation(put))}</div>
-                                                        <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-300'}`}>{getAccountLabel(getPutAccount(put))}</span>
+                                                        {accountsEnabled && <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-300'}`}>{getAccountLabel(getPutAccount(put))}</span>}
                                                     </div>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setPutToDelete(put.id); }}
@@ -7795,7 +7917,7 @@ const firebaseConfig = {
                 {askKOpen && (
                     <Suspense fallback={null}>
                         <AskK
-                            portfolio={askKPortfolio}
+                            portfolio={askKPayload}
                             authUser={auth?.currentUser || null}
                             darkMode={darkMode}
                             open

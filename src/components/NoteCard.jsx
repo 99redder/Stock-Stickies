@@ -52,6 +52,8 @@ export default function NoteCard({
     Unlock,
 }) {
     const accountLabel = accounts.find(a => a.id === note.account)?.label;
+    // An empty account list means the user opted out of accounts.
+    const accountsEnabled = accounts.length > 0;
     const sharesValue = Number(note.shares) || 0;
     const positionDetails = positionDetailsById?.[note.id];
     const pnlAvailable = positionDetails?.unrealizedPnL != null;
@@ -154,7 +156,7 @@ export default function NoteCard({
 
             {isDuplicate && (
                 <div className="mb-2 rounded border border-red-500 bg-red-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-red-800">
-                    Duplicate in {accountLabel || 'Unassigned'}
+                    {accountsEnabled ? `Duplicate in ${accountLabel || 'Unassigned'}` : 'Duplicate'}
                 </div>
             )}
 
@@ -209,6 +211,7 @@ export default function NoteCard({
                                     ? <span className="text-xs text-gray-600">shares hidden</span>
                                     : <span className="text-xs text-gray-600">shares owned</span>}
                             </div>
+                            {accountsEnabled && (
                             <select
                                 value={accountIds.includes(note.account) ? note.account : ''}
                                 onChange={(e) => updateNoteAccount(note.id, e.target.value)}
@@ -218,6 +221,7 @@ export default function NoteCard({
                                 <option value="" disabled>Select account</option>
                                 {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                             </select>
+                            )}
                         </>
                     ) : (
                         <>
