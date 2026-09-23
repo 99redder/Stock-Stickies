@@ -76,18 +76,27 @@ const createDefaultWidgets = () => DASHBOARD_THEMES.flatMap((theme) => theme.sym
     priority: Boolean(theme.priority)
 })))
 
+// New dashboards (and RESET GROUPS) start small with the market overview and
+// Mag 7; the other themed groups stay available from the group picker.
+const STARTER_THEME_IDS = new Set(['market', 'mag7'])
+const createStarterWidgets = () => createDefaultWidgets().filter((widget) => STARTER_THEME_IDS.has(widget.themeId))
+
 const createGodelLayout = (widgets, totalColumns) => {
     const layout = []
     const clusterColumns = totalColumns >= 24 ? 3 : totalColumns >= 12 ? 2 : 1
     const clusterGap = 1
     const clusterWidth = Math.floor((totalColumns - clusterGap * (clusterColumns - 1)) / clusterColumns)
     const yByColumn = Array(clusterColumns).fill(0)
+    // Count only groups that have widgets, so a small dashboard packs its
+    // groups side by side instead of leaving columns for absent ones.
+    let clusterIndex = 0
 
-    CLUSTER_THEME_ORDER.forEach((themeId, themeIndex) => {
+    CLUSTER_THEME_ORDER.forEach((themeId) => {
         const theme = THEME_BY_ID[themeId]
         const themedWidgets = widgets.filter((widget) => widget.themeId === theme.id)
         if (themedWidgets.length === 0) return
-        const clusterColumn = themeIndex % clusterColumns
+        const clusterColumn = clusterIndex % clusterColumns
+        clusterIndex += 1
         const clusterX = clusterColumn * (clusterWidth + clusterGap)
         const clusterY = yByColumn[clusterColumn]
         const widgetColumns = clusterWidth >= 9 ? 3 : clusterWidth >= 6 ? 2 : 1
@@ -182,7 +191,8 @@ const loadSavedDashboard = (persistedDashboard) => {
         const saved = hasPersistedDashboard ? persistedDashboard : currentSaved || previousSaved
         const isPreviousVersion = Boolean(!hasPersistedDashboard && !currentSaved && previousSaved)
         if (!saved || !Array.isArray(saved.widgets) || saved.widgets.length === 0) {
-            return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
+            const starter = createStarterWidgets()
+            return { widgets: starter, layouts: createDashboardLayouts(starter) }
         }
 
         let widgets = saved.widgets
@@ -228,7 +238,8 @@ const loadSavedDashboard = (persistedDashboard) => {
         }
         return { widgets, layouts }
     } catch {
-        return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
+        const starter = createStarterWidgets()
+        return { widgets: starter, layouts: createDashboardLayouts(starter) }
     }
 }
 
@@ -1179,7 +1190,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     }
 
     const resetDashboard = () => {
-        const nextWidgets = createDefaultWidgets()
+        const nextWidgets = createStarterWidgets()
         setWidgets(nextWidgets)
         setLayouts(createDashboardLayouts(nextWidgets))
         setEditingWidgetId(null)
