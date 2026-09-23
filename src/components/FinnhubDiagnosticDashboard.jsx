@@ -9,6 +9,7 @@ const ResponsiveGridLayout = WidthProvider(Responsive)
 
 const STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v10'
 const PREVIOUS_STORAGE_KEY = 'stock-stickies-finnhub-diagnostic-v9'
+const DASHBOARD_VERSION = 13
 const QUOTE_CACHE_KEY = 'stock-stickies-finnhub-diagnostic-quotes-v1'
 const SUBSCRIPTION_CAP_KEY = 'stock-stickies-finnhub-subscription-cap-v1'
 const DISMISSED_NEWS_STORAGE_KEY = 'stock-stickies-dashboard-dismissed-news-v1'
@@ -24,9 +25,9 @@ const MAX_REMEMBERED_DISMISSALS = 500
 const MAX_SYMBOL_LENGTH = 24
 const SUBSCRIPTION_PROBE_DELAY_MS = 350
 const SNAPSHOT_INTERVAL_MS = 1250
+const STARTUP_SNAPSHOT_BURST_SIZE = 8
 const STALE_STREAM_AFTER_MS = 15000
 const STALE_STREAM_SNAPSHOT_INTERVAL_MS = 60000
-const BASELINE_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000
 const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 const DASHBOARD_THEMES = [
@@ -39,15 +40,17 @@ const DASHBOARD_THEMES = [
     { id: 'financials', label: 'FINANCIALS', symbols: ['JPM', 'GS', 'BAC', 'COIN', 'HOOD'] },
     { id: 'nuclear', label: 'NUCLEAR', symbols: ['CCJ', 'CEG', 'VST', 'NEE', 'NLR', 'URNM'] },
     { id: 'energy', label: 'ENERGY', symbols: ['EXE', 'DVN', 'EQT', 'XOM', 'UNG', 'CVX'] },
-    { id: 'defensive', label: 'DEFENSIVE', symbols: ['WM', 'MCD', 'JNJ', 'SCHD', 'KO', 'PG', 'WMT', 'XLU', 'DUK'] },
+    { id: 'defensive', label: 'DEFENSIVE', symbols: ['WM', 'MCD', 'SCHD', 'KO', 'PG', 'WMT', 'XLU', 'DUK'] },
     { id: 'china', label: 'CHINA', symbols: ['BABA', 'BIDU', 'TCEHY', 'XIACY', 'KWEB', 'KSTR'] },
+    { id: 'healthcare', label: 'HEALTHCARE', symbols: ['LLY', 'JNJ', 'XLV', 'IOVA', 'NVO', 'MRK', 'AMGN'] },
+    { id: 'defense', label: 'DEFENSE', symbols: ['LMT', 'RTX', 'NOC', 'ITA', 'LDOS', 'GD', 'LHX', 'HII'] },
     { id: 'other', label: 'OTHER', symbols: [] }
 ]
 
 const THEME_BY_ID = Object.fromEntries(DASHBOARD_THEMES.map((theme) => [theme.id, theme]))
 const themeHeaderId = (themeId) => `theme-heading-${themeId}`
 const GRID_COLUMNS = { lg: 30, md: 24, sm: 18, xs: 12, xxs: 6 }
-const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'robotics', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'defensive', 'china', 'other']
+const CLUSTER_THEME_ORDER = ['mag7', 'drones', 'robotics', 'ai', 'space', 'market', 'financials', 'nuclear', 'energy', 'defensive', 'china', 'healthcare', 'defense', 'other']
 
 const makeId = () => `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -182,6 +185,98 @@ const appendWidgetToLayouts = (currentLayouts, existingWidgets, widget) => Objec
     })
 )
 
+// Older dashboard versions appended newly-created sections to column zero.
+// Reflow each complete section into a round-robin column assignment so the
+// desktop view stays balanced (for example, 5/4/4 sections across three
+// columns), while preserving each section's internal tile arrangement.
+const rebalanceLayoutColumns = (widgets, layout, totalColumns) => {
+    if (!Array.isArray(layout)) return layout
+    const clusterColumns = totalColumns >= 24 ? 3 : totalColumns >= 12 ? 2 : 1
+    if (clusterColumns === 1) return layout
+
+    const activeThemeIds = new Set(widgets.map((widget) => widget.themeId))
+    const orderedThemeIds = CLUSTER_THEME_ORDER.filter((themeId) => activeThemeIds.has(themeId))
+    const widgetById = new Map(widgets.map((widget) => [widget.id, widget]))
+    const nextLayout = layout.map((item) => ({ ...item }))
+    const yByColumn = Array(clusterColumns).fill(0)
+    const clusterGap = 1
+    const clusterWidth = Math.floor((totalColumns - clusterGap * (clusterColumns - 1)) / clusterColumns)
+
+    orderedThemeIds.forEach((themeId, themeIndex) => {
+        const headerId = themeHeaderId(themeId)
+        const sectionItems = nextLayout.filter((item) => (
+            item.i === headerId || widgetById.get(item.i)?.themeId === themeId
+        ))
+        if (sectionItems.length === 0) return
+
+        const minX = Math.min(...sectionItems.map((item) => item.x))
+        const minY = Math.min(...sectionItems.map((item) => item.y))
+        const maxY = Math.max(...sectionItems.map((item) => item.y + item.h))
+        const sectionHeight = maxY - minY
+        const header = sectionItems.find((item) => item.i === headerId)
+        const sectionWidth = Math.min(header?.w || clusterWidth, clusterWidth)
+        const clusterColumn = themeIndex % clusterColumns
+        const targetX = clusterColumn * (clusterWidth + clusterGap)
+        const targetY = yByColumn[clusterColumn]
+
+        sectionItems.forEach((item) => {
+            const nextItem = nextLayout.find((candidate) => candidate.i === item.i)
+            nextItem.x = targetX + Math.max(0, item.x - minX)
+            nextItem.y = targetY + (item.y - minY)
+            if (nextItem.i === headerId) {
+                nextItem.w = sectionWidth
+                nextItem.static = true
+            }
+        })
+        yByColumn[clusterColumn] = targetY + sectionHeight + 1
+    })
+
+    return nextLayout
+}
+
+const rebalanceDashboardLayouts = (widgets, layouts) => Object.fromEntries(
+    Object.entries(GRID_COLUMNS).map(([breakpoint, columns]) => [
+        breakpoint,
+        rebalanceLayoutColumns(widgets, layouts?.[breakpoint], columns)
+    ])
+)
+
+// Apply once to both browser-local and cloud-saved dashboards. Reuse existing
+// tickers and keep unrelated tile positions intact.
+const addThemeToDashboard = (widgets, layouts, themeId) => {
+    const symbols = new Set(THEME_BY_ID[themeId].symbols)
+    const themeWidgets = createDefaultWidgets()
+        .filter((widget) => widget.themeId === themeId)
+        .map((widget) => ({
+            ...(widgets.find((existing) => providerSymbol(existing.symbol) === widget.symbol) || widget),
+            themeId
+        }))
+    const nextWidgets = widgets.filter((widget) => !symbols.has(providerSymbol(widget.symbol)))
+    const retainedIds = new Set([
+        ...nextWidgets.map((widget) => widget.id),
+        ...nextWidgets.map((widget) => themeHeaderId(widget.themeId))
+    ])
+    let nextLayouts = Object.fromEntries(Object.entries(layouts).map(([breakpoint, layout]) => [
+        breakpoint, layout.filter((item) => retainedIds.has(item.i))
+    ]))
+
+    themeWidgets.forEach((widget) => {
+        nextLayouts = appendWidgetToLayouts(nextLayouts, nextWidgets, widget)
+        nextWidgets.push(widget)
+    })
+    return { widgets: nextWidgets, layouts: nextLayouts }
+}
+
+const migrateDashboardThemes = (dashboard, savedVersion = 0) => {
+    let next = dashboard
+    const migrations = [{ version: 11, themeId: 'healthcare' }, { version: 12, themeId: 'defense' }]
+    migrations.forEach(({ version, themeId }) => {
+        if (savedVersion < version) next = addThemeToDashboard(next.widgets, next.layouts, themeId)
+    })
+    if (savedVersion < 13) next = { widgets: next.widgets, layouts: rebalanceDashboardLayouts(next.widgets, next.layouts) }
+    return next
+}
+
 const loadSavedDashboard = (persistedDashboard) => {
     const defaults = createDefaultWidgets()
     try {
@@ -215,7 +310,7 @@ const loadSavedDashboard = (persistedDashboard) => {
                 migrationSymbols.has(widget.symbol) && !existingSymbols.has(providerSymbol(widget.symbol))
             ))
             widgets = [...widgets, ...newThemeWidgets]
-            return { widgets, layouts: createDashboardLayouts(widgets) }
+            return migrateDashboardThemes({ widgets, layouts: createDashboardLayouts(widgets) })
         }
         if (widgets.length === 0) return { widgets: defaults, layouts: createDashboardLayouts(defaults) }
 
@@ -224,7 +319,7 @@ const loadSavedDashboard = (persistedDashboard) => {
             ...widgets.map((widget) => widget.id),
             ...[...activeThemeIds].map(themeHeaderId)
         ])
-        const layouts = saved.layouts && typeof saved.layouts === 'object'
+        let layouts = saved.layouts && typeof saved.layouts === 'object'
             ? Object.fromEntries(Object.entries(saved.layouts).map(([breakpoint, layout]) => [
                 breakpoint,
                 Array.isArray(layout) ? layout.filter((item) => validIds.has(item?.i)) : []
@@ -234,9 +329,11 @@ const loadSavedDashboard = (persistedDashboard) => {
         const expectedLayoutItems = widgets.length + activeThemeIds.size
         const hasUnsafeLayout = Object.values(layouts).some(layoutHasCollisions)
         if (!layouts.lg || layouts.lg.length !== expectedLayoutItems || hasUnsafeLayout) {
-            return { widgets, layouts: createDashboardLayouts(widgets) }
+            layouts = createDashboardLayouts(widgets)
         }
-        return { widgets, layouts }
+        // Persisting the version lets users remove or customize these tiles later
+        // without the next reload adding them back.
+        return migrateDashboardThemes({ widgets, layouts }, Number(saved.version) || 0)
     } catch {
         const starter = createStarterWidgets()
         return { widgets: starter, layouts: createDashboardLayouts(starter) }
@@ -258,6 +355,9 @@ const loadCachedQuotes = () => {
             low: Number.isFinite(Number(quote?.low)) ? Number(quote.low) : undefined,
             daily: Boolean(quote?.daily || isDailyMacroSymbol(normalized)),
             sourceDate: typeof quote?.sourceDate === 'string' ? quote.sourceDate : undefined,
+            snapshotAt: Number(quote?.snapshotAt) || 0,
+            baselineMarketDate: typeof quote?.baselineMarketDate === 'string' ? quote.baselineMarketDate : undefined,
+            baselineCheckedDate: typeof quote?.baselineCheckedDate === 'string' ? quote.baselineCheckedDate : undefined,
             cachedAt: Number(cachedAt) || Date.now(),
             isFresh: false,
             events: 0
@@ -328,6 +428,18 @@ const easternMarketClock = new Intl.DateTimeFormat('en-US', {
     minute: '2-digit',
     hourCycle: 'h23'
 })
+
+const easternMarketDate = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+})
+
+const getEasternMarketDate = (timestamp = Date.now()) => {
+    const parts = Object.fromEntries(easternMarketDate.formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]))
+    return `${parts.year}-${parts.month}-${parts.day}`
+}
 
 const isRegularUsMarketSession = (timestamp = Date.now()) => {
     const parts = Object.fromEntries(easternMarketClock.formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]))
@@ -761,7 +873,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     useEffect(() => {
         // JSON round-tripping strips any undefined layout metadata before this
         // object reaches Firestore, which rejects undefined nested values.
-        const dashboard = JSON.parse(JSON.stringify({ widgets, layouts, savedAt: Date.now() }))
+        const dashboard = JSON.parse(JSON.stringify({ version: DASHBOARD_VERSION, widgets, layouts, savedAt: Date.now() }))
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(dashboard))
         } catch {
@@ -807,7 +919,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                     high: quote.high,
                     low: quote.low,
                     daily: quote.daily,
-                    sourceDate: quote.sourceDate
+                    sourceDate: quote.sourceDate,
+                    snapshotAt: quote.snapshotAt,
+                    baselineMarketDate: quote.baselineMarketDate,
+                    baselineCheckedDate: quote.baselineCheckedDate
                 }]))
             if (Object.keys(cacheableQuotes).length > 0) {
                 localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), quotes: cacheableQuotes }))
@@ -1048,84 +1163,141 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     useEffect(() => {
         if (!apiKey) return undefined
         const controller = new AbortController()
-        const targets = [...new Set(widgets
-            .filter((widget) => !isDailyMacroSymbol(widget.symbol))
-            .map((widget) => providerSymbol(widget.symbol))
-            .filter((symbol) => symbol && !symbol.includes(':')))]
+        const targetMetadata = new Map()
+        widgets.forEach((widget, index) => {
+            if (isDailyMacroSymbol(widget.symbol)) return
+            const symbol = providerSymbol(widget.symbol)
+            if (!symbol || symbol.includes(':')) return
+            const existing = targetMetadata.get(symbol)
+            targetMetadata.set(symbol, {
+                index: existing?.index ?? index,
+                priority: Boolean(existing?.priority || widget.priority)
+            })
+        })
+        const targets = [...targetMetadata.keys()]
         const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+        let rateLimitCooldownUntil = 0
+        const retryAfterBySymbol = {}
+
+        const getEligibleTargets = () => {
+            const now = Date.now()
+            const checkedDate = getEasternMarketDate(now)
+            return targets.filter((symbol) => {
+                if (now < (retryAfterBySymbol[symbol] || 0)) return false
+                const quote = quotesRef.current[symbol] || {}
+                const hasPrice = Number.isFinite(quote.price) && quote.price > 0
+                const hasBaseline = Number.isFinite(quote.previousClose) && quote.previousClose > 0
+                const needsInitialData = !hasPrice || !hasBaseline
+                const attemptedAt = snapshotRequestTimesRef.current[symbol] || 0
+                if (needsInitialData && now - attemptedAt < 60000) return false
+                const isSubscribed = subscribedSymbolsRef.current.has(symbol)
+                const lastEventAt = Number(quote.lastEventAt) || 0
+                const streamIsStale = isSubscribed && (!lastEventAt || now - lastEventAt >= STALE_STREAM_AFTER_MS)
+                const staleSnapshotIsDue = streamIsStale && now - attemptedAt >= STALE_STREAM_SNAPSHOT_INTERVAL_MS
+                const baselineSnapshotIsDue = quote.baselineCheckedDate !== checkedDate
+                return needsInitialData || !isSubscribed || staleSnapshotIsDue || baselineSnapshotIsDue
+            }).sort((a, b) => {
+                const aMetadata = targetMetadata.get(a)
+                const bMetadata = targetMetadata.get(b)
+                const aQuote = quotesRef.current[a] || {}
+                const bQuote = quotesRef.current[b] || {}
+                const aNeedsDailyBaseline = aQuote.baselineCheckedDate !== checkedDate
+                const bNeedsDailyBaseline = bQuote.baselineCheckedDate !== checkedDate
+                if (aNeedsDailyBaseline !== bNeedsDailyBaseline) return aNeedsDailyBaseline ? -1 : 1
+                if (aNeedsDailyBaseline && aMetadata.priority !== bMetadata.priority) return aMetadata.priority ? -1 : 1
+                const aHasPrice = Number.isFinite(aQuote.price) && aQuote.price > 0
+                const bHasPrice = Number.isFinite(bQuote.price) && bQuote.price > 0
+                if (aHasPrice !== bHasPrice) return aHasPrice ? 1 : -1
+                const aHasBaseline = Number.isFinite(aQuote.previousClose) && aQuote.previousClose > 0
+                const bHasBaseline = Number.isFinite(bQuote.previousClose) && bQuote.previousClose > 0
+                if (aHasBaseline !== bHasBaseline) return aHasBaseline ? 1 : -1
+                const attemptedDifference = (snapshotRequestTimesRef.current[a] || 0) - (snapshotRequestTimesRef.current[b] || 0)
+                if (attemptedDifference) return attemptedDifference
+                if (aMetadata.priority !== bMetadata.priority) return aMetadata.priority ? -1 : 1
+                return aMetadata.index - bMetadata.index
+            })
+        }
+
+        const requestSnapshot = async (symbol) => {
+            snapshotRequestTimesRef.current[symbol] = Date.now()
+            lastSnapshotRequestAtRef.current = Date.now()
+            try {
+                const data = await fetchFinnhubQuote(symbol, apiKey, { maxAgeMs: 5000 })
+                if (controller.signal.aborted) return
+                delete retryAfterBySymbol[symbol]
+                const price = Number(data.c)
+                const previousClose = Number(data.pc)
+                const validPrice = Number.isFinite(price) && price > 0
+                const validPreviousClose = Number.isFinite(previousClose) && previousClose > 0
+                if (validPrice || validPreviousClose) {
+                    const now = Date.now()
+                    const providerTimestamp = Number(data.t) > 0 ? Number(data.t) * 1000 : now
+                    const previous = quotesRef.current[symbol] || {}
+                    const nextQuote = {
+                        ...previous,
+                        price: validPrice ? price : previous.price,
+                        previousClose: validPreviousClose ? previousClose : previous.previousClose,
+                        change: Number.isFinite(Number(data.d)) ? Number(data.d) : previous.change,
+                        changePercent: Number.isFinite(Number(data.dp)) ? Number(data.dp) : previous.changePercent,
+                        high: Number(data.h) || null,
+                        low: Number(data.l) || null,
+                        cachedAt: null,
+                        snapshotAt: now,
+                        baselineMarketDate: getEasternMarketDate(providerTimestamp),
+                        baselineCheckedDate: getEasternMarketDate(now),
+                        error: null
+                    }
+                    quotesRef.current[symbol] = nextQuote
+                    quoteStore.publish(symbol, nextQuote)
+                }
+            } catch (error) {
+                if (error?.name === 'AbortError') return
+                if (error?.status === 429) {
+                    rateLimitCooldownUntil = Math.max(rateLimitCooldownUntil, Date.now() + 5000)
+                    retryAfterBySymbol[symbol] = Date.now() + 60000
+                    const previous = quotesRef.current[symbol] || {}
+                    const nextQuote = { ...previous, error: 'RATE LIMITED', healthAt: Date.now() }
+                    quotesRef.current[symbol] = nextQuote
+                    quoteStore.publish(symbol, nextQuote)
+                }
+            }
+        }
 
         const loadSnapshots = async () => {
+            const checkedDate = getEasternMarketDate()
+            const startupTargets = getEligibleTargets()
+                .filter((symbol) => {
+                    const quote = quotesRef.current[symbol] || {}
+                    const hasPrice = Number.isFinite(quote.price) && quote.price > 0
+                    const hasBaseline = Number.isFinite(quote.previousClose) && quote.previousClose > 0
+                    return !hasPrice || !hasBaseline || quote.baselineCheckedDate !== checkedDate
+                })
+                .slice(0, STARTUP_SNAPSHOT_BURST_SIZE)
+
+            if (startupTargets.length > 0) await Promise.all(startupTargets.map(requestSnapshot))
+
             while (!controller.signal.aborted) {
                 if (!documentVisibleRef.current) {
                     await wait(1000)
                     continue
                 }
-                const now = Date.now()
-                const eligible = targets.filter((symbol) => {
-                    const quote = quotesRef.current[symbol] || {}
-                    const hasPrice = Number.isFinite(quote.price) && quote.price > 0
-                    const hasBaseline = Number.isFinite(quote.previousClose) && quote.previousClose > 0
-                    const needsInitialData = !hasPrice || !hasBaseline
-                    const attemptedAt = snapshotRequestTimesRef.current[symbol] || 0
-                    if (needsInitialData && now - attemptedAt < 60000) return false
-                    const isSubscribed = subscribedSymbolsRef.current.has(symbol)
-                    const lastEventAt = Number(quote.lastEventAt) || 0
-                    const snapshotAt = Number(quote.snapshotAt) || 0
-                    const streamIsStale = isSubscribed && (!lastEventAt || now - lastEventAt >= STALE_STREAM_AFTER_MS)
-                    const staleSnapshotIsDue = streamIsStale && now - attemptedAt >= STALE_STREAM_SNAPSHOT_INTERVAL_MS
-                    const baselineSnapshotIsDue = now - snapshotAt >= BASELINE_SNAPSHOT_INTERVAL_MS
-                    return needsInitialData || !isSubscribed || staleSnapshotIsDue || baselineSnapshotIsDue
-                }).sort((a, b) => {
-                    const aHasPrice = Number.isFinite(quotesRef.current[a]?.price) && quotesRef.current[a].price > 0
-                    const bHasPrice = Number.isFinite(quotesRef.current[b]?.price) && quotesRef.current[b].price > 0
-                    if (aHasPrice !== bHasPrice) return aHasPrice ? 1 : -1
-                    return (snapshotRequestTimesRef.current[a] || 0) - (snapshotRequestTimesRef.current[b] || 0)
-                })
+                const eligible = getEligibleTargets()
 
                 if (eligible.length === 0) {
                     await wait(1000)
                     continue
                 }
 
-                const rateLimitDelay = Math.max(0, SNAPSHOT_INTERVAL_MS - (Date.now() - lastSnapshotRequestAtRef.current))
+                const rateLimitDelay = Math.max(
+                    0,
+                    SNAPSHOT_INTERVAL_MS - (Date.now() - lastSnapshotRequestAtRef.current),
+                    rateLimitCooldownUntil - Date.now()
+                )
                 if (rateLimitDelay) await wait(rateLimitDelay)
                 if (controller.signal.aborted) return
 
                 const symbol = eligible[0]
-                snapshotRequestTimesRef.current[symbol] = Date.now()
-                lastSnapshotRequestAtRef.current = Date.now()
-                try {
-                    const data = await fetchFinnhubQuote(symbol, apiKey, { maxAgeMs: 5000 })
-                    if (controller.signal.aborted) return
-                    const price = Number(data.c)
-                    const previousClose = Number(data.pc)
-                    const validPrice = Number.isFinite(price) && price > 0
-                    const validPreviousClose = Number.isFinite(previousClose) && previousClose > 0
-                    if (validPrice || validPreviousClose) {
-                        const previous = quotesRef.current[symbol] || {}
-                        quotesRef.current[symbol] = {
-                            ...previous,
-                            price: validPrice ? price : previous.price,
-                            previousClose: validPreviousClose ? previousClose : previous.previousClose,
-                            change: Number.isFinite(Number(data.d)) ? Number(data.d) : previous.change,
-                            changePercent: Number.isFinite(Number(data.dp)) ? Number(data.dp) : previous.changePercent,
-                            high: Number(data.h) || null,
-                            low: Number(data.l) || null,
-                            cachedAt: null,
-                            snapshotAt: Date.now(),
-                            error: null
-                        }
-                    }
-                } catch (error) {
-                    if (error?.name === 'AbortError') return
-                    if (error?.status === 429) {
-                        const previous = quotesRef.current[symbol] || {}
-                        const nextQuote = { ...previous, error: 'RATE LIMITED', healthAt: Date.now() }
-                        quotesRef.current[symbol] = nextQuote
-                        quoteStore.publish(symbol, nextQuote)
-                        await wait(5000)
-                    }
-                }
+                await requestSnapshot(symbol)
             }
         }
 
@@ -1348,9 +1520,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             </div>
 
             <footer className="finnhub-diagnostic-footer">
-                <span>★ PRIORITIZES A SYMBOL FOR LIVE STREAMING</span>
+                <span>★ PRIORITIZES LIVE STREAMING + DAILY STARTUP</span>
                 <span>DRAG ANY TILE · RESIZE FROM LOWER CORNERS</span>
-                <span>SNAPSHOT-ONLY TILES ROTATE AT 48/MIN · LIVE TICKS USE ONE WEBSOCKET</span>
+                <span>PRIORITY STARTUP BURST · SNAPSHOT-ONLY TILES ROTATE AT 48/MIN</span>
             </footer>
 
             <BreakingNewsTicker systemAlerts={systemAlerts} />
