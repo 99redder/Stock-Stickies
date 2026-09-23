@@ -8,6 +8,10 @@ Stock Stickies has **two separate React applications in this repository**:
 
 Both apps authenticate against the same Firebase project and read the same `users/{uid}` Firestore document. The mobile app also calls separate Cloudflare Workers for brokerage/Plaid data and Ask K. A desktop deployment does **not** deploy mobile, and a mobile deployment does **not** deploy desktop.
 
+The platform is open to anyone who signs up ("bring your own API keys"). One account — the
+**owner** (Firebase UID `tQ4KeGwCjsb5CSbrFwmWYWX3BvI2`) — additionally has Plaid/Robinhood
+brokerage features and a fixed three-account setup. See **Owner vs. Regular Accounts**.
+
 ---
 
 ## Tech Stack
@@ -17,9 +21,9 @@ Both apps authenticate against the same Firebase project and read the same `user
 | Build | Vite 7 | Vite 7 + Cloudflare/Sites plugins |
 | Styling | Tailwind CSS v4 | Purpose-built CSS in `mobile/src/styles.css` |
 | Auth/data | Firebase Auth + Firestore | Same Firebase Auth + read-only Firestore subscription |
-| Hosting | GitHub Pages | OpenAI Sites custom domain |
-| Brokerage | Portfolio notes plus Finnhub pricing | Plaid/Robinhood data through `rentals-api` Worker |
-| AI | Ask K portfolio context | Ask K Worker, with all accounts supplied |
+| Hosting | Cloudflare Pages (`stock-stickies`); GitHub Pages is a manual fallback | OpenAI Sites custom domain |
+| Brokerage | Portfolio notes plus Finnhub pricing (owner: plus Plaid sync) | Notes + user's Finnhub key; owner also gets Plaid/Robinhood data via `rentals-api` |
+| AI | Ask K portfolio context | Ask K Worker (Firebase sign-in required; non-owners capped per day) |
 | PWA | No | Manifest, service worker, installable Home Screen app |
 
 Shared services include Firebase v12, Firebase App Check/reCAPTCHA v3, Finnhub, MarketAux, and Cloudflare Workers. Desktop also uses Chart.js and `html2canvas-pro`.
@@ -36,8 +40,15 @@ Sticky-Notes/
 ├── claude.md                          # This project/agent reference
 ├── ENCRYPTION_IMPLEMENTATION.md
 ├── SECURITY_RECOMMENDATIONS.md
-├── CNAME                              # GitHub Pages domain → www.stockstickies.com
-├── .github/workflows/deploy.yml       # Desktop-only GitHub Pages workflow
+├── CNAME                              # www.stockstickies.com (copied into dist/ on deploy)
+├── wrangler.jsonc                     # Cloudflare Pages project config (desktop)
+├── .github/workflows/deploy.yml       # Manual-only fallback GitHub Pages workflow
+├── functions/api/                     # Cloudflare Pages Functions (public, no auth):
+│   ├── news/breaking.js               #   breaking-news feed for the Live Dashboard
+│   └── treasury/dgs30.js              #   30-year Treasury yield (DGS30 widget)
+├── worker/                            # Ask K Worker (stock-stickies-askk) — deploy with
+│   ├── wrangler.toml                  #   `npx wrangler deploy --config wrangler.toml` from worker/
+│   └── src/index.js                   #   (plain `wrangler` there picks up the Pages config)
 ├── public/
 │   ├── robots.txt                     # SEO: allow all, link to sitemap
 │   ├── sitemap.xml                    # SEO: canonical URL for the SPA
@@ -47,11 +58,19 @@ Sticky-Notes/
 │       └── stock-stickies-google-cloud-logo-512.png
 ├── src/
 │   ├── main.jsx                       # React root render (ReactDOM.createRoot)
-│   ├── App.jsx                        # ENTIRE application (~3840 lines) — see map below
+│   ├── App.jsx                        # Main application (~7,900 lines) — see map below
 │   ├── App.css
 │   ├── index.css
+│   ├── utils/
+│   │   ├── ytdShareCard.js            # Re-exports mobile/src/ytdShareCard.js
+│   │   └── finnhubQuoteCache.js       # In-memory quote cache / request de-dup
 │   └── components/
-│       └── NoteCard.jsx               # Draggable note card component
+│       ├── NoteCard.jsx               # Draggable note card component
+│       ├── OnboardingWalkthrough.jsx  # First-run walkthrough + Manage accounts modal
+│       ├── FinnhubDiagnosticDashboard.jsx (+ .css)  # Live Dashboard (all users, desktop only)
+│       ├── AskK.jsx                   # Ask K chat panel
+│       ├── RobinhoodSync.jsx          # Plaid "Update positions" (owner only)
+│       └── TodayAgenda.jsx            # Look-ahead planner agenda (owner only)
 ├── assets/                            # Mirror of public/assets (keep in sync)
 └── mobile/                            # Separate mobile companion application
     ├── .openai/hosting.json           # Existing Sites project identity; never replace/invent
@@ -83,7 +102,21 @@ npm run build      # Produces root dist/
 npm run preview
 ```
 
-Pushing `main` triggers `.github/workflows/deploy.yml`. GitHub Actions uses Node 20, injects the desktop Firebase/reCAPTCHA secrets at build time, builds the root project, copies `CNAME` into `dist/`, and deploys that artifact to GitHub Pages. The workflow does not enter or deploy `mobile/`.
+Production desktop is **Cloudflare Pages** (project `stock-stickies`, config in
+`wrangler.jsonc`). Pushing `main` triggers the Pages git-integration build, which can lag. For
+an immediate, deterministic deploy after committing:
+
+```bash
+npm run build
+cp CNAME dist/CNAME
+npx wrangler pages deploy dist --project-name stock-stickies --branch main --commit-dirty=true
+```
+
+Verify by comparing the live bundle hash (`curl -s https://www.stockstickies.com/ | grep -o
+'index-[^"]*\.js'`) with `dist/index.html`. Build from **committed** code only — stash any
+uncommitted work before `npm run build`, or it ships. `wrangler pages deploy` also bundles
+`functions/`. `.github/workflows/deploy.yml` (GitHub Pages) is a `workflow_dispatch`-only
+fallback. Neither path deploys `mobile/`.
 
 ### Mobile Build and Deployment
 
@@ -107,7 +140,10 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 
 ## src/App.jsx — Navigation Map (~3840 lines)
 
-**This is a single-file React component.** All logic, state, hooks, and JSX live in `StickyNotesApp` (line 330–3838) plus top-level helpers.
+**This is a single-file React component.** All logic, state, hooks, and JSX live in `StickyNotesApp` plus top-level helpers.
+
+> The line numbers in this map date from the ~3,840-line version; the file is now ~7,900
+> lines. Treat them as ordering hints and search by name (`grep -n`) before editing.
 
 ### Top-level constants & utilities (Lines 1–329)
 | Lines | What |
@@ -206,6 +242,43 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 7. **Dark Mode** — Toggle; synced to `<html>` class and `localStorage`
 8. **Cloud Sync** — Firestore real-time sync with offline support; sync status indicator in UI
 9. **Shares Privacy Mode** — Toggle to hide share counts from view
+10. **Live Dashboard** — Streaming Finnhub quote widgets in themed groups (all users, desktop only)
+11. **Onboarding walkthrough** — Keys + accounts setup on first sign-in (see below)
+12. **Ask K** — AI portfolio assistant (all users; owner unlimited, others capped per day)
+13. **User-named accounts** — or one combined portfolio (owner keeps a fixed set)
+
+---
+
+## Owner vs. Regular Accounts
+
+`OWNER_FIREBASE_UID` (desktop `src/App.jsx`), `OWNER_UID` (mobile), `STOCK_STICKIES_OWNER_UID`
+(`rentals-api`), and `OWNER_UID` (Ask K Worker) all hold the owner's Firebase UID.
+
+| Feature | Owner | Everyone else |
+|---|---|---|
+| Notes, categories, portfolio, watch list, sectors, CSP tracking | ✓ | ✓ |
+| Live Dashboard (desktop only) | ✓ | ✓ |
+| Ask K | Unlimited | 50 questions / UTC day |
+| Accounts | Fixed Individual / Traditional IRA / Roth IRA | Own named accounts, or none |
+| Robinhood sync (Plaid), cost basis, YTD, risk stats, Share YTD | ✓ | — |
+| Today agenda (look-ahead planner) | ✓ | — |
+| Mobile app | Full, including brokerage data | Notes + Finnhub prices, own accounts |
+
+Client-side checks (`isOwnerPortfolioUser` / `isOwnerAccount`, mobile `isOwner`) only hide UI.
+**Real enforcement is server-side**:
+
+- `rentals-api` `/api/stock-stickies/*` — `verifyStockStickiesOwner` verifies the Firebase ID
+  token (RS256 signature against Google's keys, `aud`, `iss`, `exp`, `iat`) **and** requires
+  `sub === STOCK_STICKIES_OWNER_UID` before any route runs. Other `rentals-api` routes use a
+  separate admin-password session or a secret token.
+- Ask K Worker — verifies the Firebase ID token on every request; owner is unlimited.
+- look-ahead planner Worker (Today agenda) — verifies the token and an allow-listed UID.
+
+Owner-specific *content* must also stay owner-only: account strategy text
+(`getAccountStrategy(id, isOwner)` returns `strategy` for the owner, neutral
+`generalStrategy` for others — used in the Ask K payload, portfolio export, and tooltips) and
+the Ask K `OWNER_ACCOUNT_CONTEXT` prompt. Never put the owner's strategy, numbers, or setup
+into anything another user's client or prompt receives.
 
 ---
 
@@ -219,21 +292,52 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
   color: string,         // Tailwind bg class (e.g., 'bg-blue-200')
   classified: boolean,   // true if note has been assigned to a category
   shares?: number,       // Optional share count for portfolio tracking
-  account?: string       // Brokerage account id: 'individual' | 'traditional' | 'roth'
-}                        // Missing/invalid → treated as 'unassigned'
+  account?: string       // Account id: owner 'individual' | 'traditional' | 'roth';
+                         // other users 'acct-…' ids from customAccounts (or a built-in id
+                         // on legacy notes). Missing/unknown → treated as 'unassigned'
+}
 ```
 
 ---
 
 ## Brokerage Accounts
-Positions are assigned to one of three accounts (`ACCOUNTS` in `src/App.jsx`), each with
-its own investing intent:
+
+### Owner: fixed built-in accounts
+The owner's positions use three fixed accounts (`BUILTIN_ACCOUNTS` in `src/App.jsx`), each
+with its own investing intent. Plaid sync and `rentals-api` map to these exact ids, so they
+are a permanent one-off: the owner is never asked about accounts, and the custom-account
+fields are never written to the owner's document.
 
 | id | Label | Intent |
 |---|---|---|
 | `individual` | Individual | Taxable brokerage — swing trades, shorter horizon |
 | `traditional` | Traditional IRA | Long-term buy-and-hold core of quality names |
 | `roth` | Roth IRA | Speculative "moon shot" names and most cash secured puts — tax-free growth upside |
+
+### Everyone else: user-named accounts, or none
+The onboarding walkthrough asks "How do you keep your investments?":
+
+- **All in one place** → `accountSetup.mode = 'single'`. `ACCOUNTS` is empty and
+  `accountsEnabled` is false: account pickers, pills, portfolio account chips, the
+  "Portfolio" (by-account) grouping button, the export's account column, and Ask K's account
+  fields are all hidden. `shownNotesGroupMode` falls back to category grouping without
+  overwriting the saved `notesGroupMode`.
+- **In separate accounts** → `mode = 'multiple'`; the user names up to 8 accounts (quick-add
+  suggestions or custom, ≤30 chars) stored in `customAccounts` as `{ id: 'acct-…', label }`.
+
+Persisted fields (non-owner only, via `accountFieldsForSave`): `customAccounts`
+(`sanitizeUserAccounts`) and `accountSetup` = `{ mode, completedAt }`
+(`sanitizeAccountSetup`). They are wired into every persistence path like `sectorAssignments`
+(onSnapshot load, autosave, `beforeunload`, `syncNow`, backup restore, logout reset).
+`saveUserDoc` writes with `merge: false`, so non-owner save objects must always include both.
+
+Effective accounts are computed inside the component (`ACCOUNTS`, `ACCOUNT_IDS`,
+`getNoteAccount`, `getAccountLabel`, `getPutAccount` are memoized there, not module-level):
+owner → built-ins; chosen setup → `customAccounts` or none; not yet chosen → built-ins only if
+the user's notes already use built-in ids (legacy), otherwise none. **Manage accounts** on
+the Notes tab reopens the question. Nothing is destructive: switching to one portfolio keeps
+account names and each note's `account` (switching back restores them), and removing an
+account just shows its notes as Unassigned.
 
 Notes created before accounts existed have no `account` field and fall into an
 **Unassigned** bucket rather than defaulting into a real account.
@@ -334,8 +438,9 @@ count and clears `unlockedNotes`); it stays hidden otherwise rather than sitting
 no-op.
 
 Cash secured puts carry their own `account` field (`getPutAccount`), chosen in the add/edit
-modal and shown as a pill on each row. Legacy puts written before the field existed fall
-back to `roth` rather than Unassigned, since every one of them was in the Roth. Per-account
+modal and shown as a pill on each row (both hidden when accounts are off). The owner's legacy
+puts written before the field existed fall back to `roth`, since every one of them was in the
+Roth; other users' fall back to Unassigned. Per-account
 obligation totals live in `putObligationByAccount`. The donut's centre callout and the
 footnote under the chart use `shownPutObligation`, which follows the account filter — a
 single-account view must not report the whole book's obligation. The CSP sidebar panel
@@ -350,8 +455,104 @@ remove them.
 
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
-payload includes an `accounts` array with per-account totals and strategy text. The account
-intents are also described in the Ask K worker system prompt (`worker/src/index.js`).
+payload includes an `accounts` array with per-account totals and strategy text (owner
+strategy for the owner, neutral text for others). For single-portfolio users `askKPayload`
+strips all account fields. The owner's account intents live only in the Worker's
+owner-only `OWNER_ACCOUNT_CONTEXT` (see Ask K).
+
+---
+
+## Onboarding Walkthrough
+
+`src/components/OnboardingWalkthrough.jsx`, rendered from `App.jsx` as `onboardingModal`
+(also inside the full-screen dashboard view). `onboardingOpen` is `false | 'welcome' | 'keys'
+| 'accounts'`:
+
+- `'welcome'` — steps: Welcome → Finnhub key (required; **Test & save** does a real AAPL
+  quote, 401/403 = rejected) → MarketAux key (optional) → Accounts (non-owners only) →
+  Dashboard (only when the user has no saved `diagnosticDashboard`) → Get started. Opens automatically once per sign-in while the Finnhub key is missing **or** a
+  non-owner hasn't answered the accounts question (`needsAccountSetup`). It skips ahead to the
+  first unfinished step.
+- `'keys'` — opened by the Live Dashboard's missing-key notice ("Set up API keys →"); starts
+  at the Finnhub step.
+- `'accounts'` — standalone **Manage accounts** (Save/Cancel), pre-filled with current
+  names and per-account note counts.
+
+The **Dashboard** step asks whether to start with a set: **Starter pack** (recommended —
+market + Mag 7 + the owner's AI Trade, Space, and Nuclear groups; 37 widgets, under
+Finnhub's free 50-symbol stream cap) or **Just the basics** (market + Mag 7). The choice goes
+through `saveDashboardStarter` → the dashboard module's exported `buildStarterDashboard(pack)`
+(loaded on demand) → `setDiagnosticDashboard`, and `dashboardMountKey` remounts a
+dashboard that is already open. Packs are defined in `STARTER_PACK_THEME_IDS`.
+
+`apiKeysChecked` waits for the async key decryption (and is set immediately for brand-new
+users with no document) so the modal never flashes for users who already have keys. Keys
+typed here go through the normal `setFinnhubApiKey` / `setMarketauxApiKey` state and
+encrypted autosave. The Quick Start Guide remains the long-form reference.
+
+---
+
+## Live Dashboard
+
+`FinnhubDiagnosticDashboard.jsx` — available to **every** signed-in user on desktop; the tab
+is hidden below the `md` breakpoint and mobile has no dashboard. It needs only the user's
+Finnhub key plus the public Pages Functions (`/api/news/breaking`, `/api/treasury/dgs30`).
+Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fallback).
+
+- Onboarding can install a starter pack instead (see Onboarding Walkthrough).
+- Otherwise, new dashboards and **RESET GROUPS** start with `createStarterWidgets()` — the
+  `market` (SPY, IWM, QQQ, VIX, GLD, BTC, DGS30) and `mag7` themes (14 widgets). All other
+  themes (drones, robotics, AI, space, financials, nuclear, energy, defensive, China,
+  healthcare, defense) remain in the group picker.
+- `createGodelLayout` places clusters by the count of *present* themes, so a small dashboard
+  packs side by side; full layouts are unchanged.
+- Saved dashboards are versioned (`DASHBOARD_VERSION = 13`). `migrateDashboardThemes` adds
+  Healthcare (v11) and Defense (v12) once to older layouts and rebalances sections older
+  versions stacked in column zero (v13). The starter/reset paths bypass migration.
+- With no key, the amber notice "Add your free Finnhub API key…" carries a **Set up API
+  keys →** action (`onSetupApiKeys`) that opens the walkthrough at the Finnhub step.
+
+---
+
+## Ask K
+
+Desktop `AskK.jsx` and mobile `AskK` send the user's portfolio plus a Firebase ID token
+(`Authorization: Bearer`) to `https://stock-stickies-askk.99redder.workers.dev/api/ask-k`.
+The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
+
+- **Requires sign-in.** `verifyFirebaseIdToken` checks signature/`aud`/`iss`/`exp`; missing or
+  invalid tokens get 401. Origin checks are only a browser courtesy.
+- **Limits non-owners.** `OWNER_UID` is unlimited; others get `NON_OWNER_DAILY_LIMIT`
+  (50) questions per UTC day, counted before the provider call in the `ASKK_USAGE` KV
+  namespace (`usage:{uid}:{YYYY-MM-DD}`, 2-day TTL). Over the limit → 429. Responses include
+  `usage: { limit, remaining }`; desktop shows "N of 50 questions left today".
+- **Only sees the caller's data.** The Worker has no storage/database bindings besides the
+  usage counter; it analyzes only the portfolio in the request, and the prompt tells it it
+  cannot see other users. Owner-only prompt context (`OWNER_ACCOUNT_CONTEXT`: account
+  intents, USD/SGOV cash, where puts are written) is sent only when `sub === OWNER_UID`;
+  others get `GENERAL_ACCOUNT_CONTEXT`.
+- Provider errors are logged (`askk_provider_error`), never echoed (no base URL/model leak).
+- Secrets: `STOCKSTICKIES_ASKK_API_KEY`, `STOCKSTICKIES_ASKK_BASE_URL`,
+  `STOCKSTICKIES_ASKK_MODEL`. Vars: `FIREBASE_PROJECT_ID`, `OWNER_UID`,
+  `NON_OWNER_DAILY_LIMIT`, `ALLOWED_ORIGINS`.
+
+---
+
+## Security Notes
+
+- **Firestore rules** (console, project `red-s-stickies`, reviewed 2026-09-23):
+  `users/{userId}` and `users/{userId}/snapshots/{snapshotId}` are read/write only when
+  `request.auth.uid == userId`; everything else `allow read, write: if false`. These rules are
+  the real protection for users' API keys (below) — do not loosen them.
+- **API-key "encryption" is obfuscation.** The AES-GCM key is derived from the user's UID plus
+  constants shipped in the client bundle, so anyone able to read a user document could
+  decrypt it. The `beforeunload` emergency save also writes keys in plain text. Keys are never
+  logged, never stored in localStorage, and only sent directly to finnhub.io / MarketAux.
+- **Known low-risk gap:** some localStorage caches (dashboard layout fallback,
+  `portfolio_prices_cache`) are not per-user, so a second person on a shared browser could
+  inherit cached tickers/layout.
+- No secrets are committed: only `.env.example` templates; Firebase web config is public by
+  design.
 
 ---
 
@@ -383,6 +584,15 @@ mobile changes.
   totals; expanding an account a second time reveals the component breakdown.
 
 ### Authentication and Shared Firestore Data
+
+Mobile is open to **every** account. Plaid/Robinhood balances, YTD, and Share YTD are
+owner-only (the brokerage fetch is skipped entirely unless `user.uid === OWNER_UID`).
+Everyone else sees their own notes priced with their own Finnhub key, grouped by the
+accounts they named on desktop (`customAccounts` / `accountSetup`, same rules as desktop), or
+as one portfolio (no account chips; labels read "Portfolio"; put collateral counts toward the
+balance). New users with no document, no key, or no positions get guidance pointing them to
+stockstickies.com on a computer. Account helpers (`ACCOUNTS`, `getAccount`,
+`getAccountLabel`, `getPutAccount`) live inside `App`, not at module level.
 
 Mobile uses the same Firebase Auth users and the same `users/{uid}` document as desktop.
 The login supports email/password, password reset, and Google sign-in. After login, the
@@ -438,8 +648,10 @@ verified build-time environment injection mechanism.
 The mobile app sends the signed-in user's Firebase ID token to:
 
 - `https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/holdings` for
-  Plaid/Robinhood accounts, holdings, cost basis, transactions, YTD data, and snapshots.
-- `https://stock-stickies-askk.99redder.workers.dev/api/ask-k` for Ask K.
+  Plaid/Robinhood accounts, holdings, cost basis, transactions, YTD data, and snapshots
+  (owner only — not called for other users).
+- `https://stock-stickies-askk.99redder.workers.dev/api/ask-k` for Ask K (token required;
+  Builds ≤ 38 sent no token and now get 401).
 
 The current URLs include a `client=mobile-build-9` query marker. That marker identifies the
 client contract; it is not the visible mobile release number and does not need to match the
@@ -534,6 +746,7 @@ frontend. The Worker uses these KV namespaces:
 stock_stickies:plaid:robinhood:performance:config
 stock_stickies:plaid:robinhood:performance:snapshots:
 stock_stickies:plaid:robinhood:performance:transactions:
+stock_stickies:plaid:robinhood:performance:daily:        # end-of-day values for risk stats
 ```
 
 The performance config supports `manualExternalFlows[year]` for institution exports that
@@ -567,6 +780,32 @@ history.” It must not show a raw balance decline as a large YTD loss. A Robinh
 transaction CSV can be used to reconcile the missing Individual cash flows; statement
 balances alone are insufficient.
 
+### Daily Risk Metrics (Sharpe, Max Drawdown, Beta)
+
+`performance:daily:{year}` holds one end-of-day record per trading day:
+`{ accounts: { id: { value, externalFlow } }, spy, riskFreeRate, source, snapshotFetchedAt }`.
+
+- **Backfill (`source: 'backfill'`):** Jan 1 – Sep 22 2026 rebuilt from Robinhood activity
+  CSVs: holdings rolled backward from the Sep 22 Plaid holdings, priced with Yahoo daily
+  closes (split-unadjusted), options marked with Black-Scholes using IVs implied by the
+  account's own fills. It reconciled to the configured Jan 1 opening values (Traditional
+  −$190, Roth −$9) and to live snapshots (~0.08% median gap). Individual covers only
+  Jan 2 – Jul 24 (anchored to its Jan 1 value); after that Plaid's Individual balance was
+  unreliable (crypto moves, pending ACH), and the account was wound down. Its rebuilt gain
+  through Jul 24 ($2,637) differs from Robinhood's reported $1,561 — unexplained.
+- **Going forward (`source: 'snapshot'`):** `updateStockStickiesDailyRisk` (called from
+  `buildStockStickiesPerformance`) appends a day only for post-close snapshots
+  (`stockStickiesCloseDateForTimestamp`: before 9:30 ET → prior weekday, after 4:00 PM ET →
+  that day, mid-session → skipped), with that period's external flows and the SPY / ^IRX
+  closes fetched from Yahoo. Backfilled days are never overwritten, and a day is skipped if
+  that snapshot was already recorded.
+- `stockStickiesRiskMetrics` computes flow-adjusted daily returns (start-of-day flows; days
+  starting under $1,000 skipped), then annualized Sharpe vs the T-bill rate, max drawdown,
+  beta vs SPY, volatility, and time-weighted return (≥20 days). The combined series is
+  value-weighted across accounts. Returned as `risk` on each account and on `total`.
+- `stockStickiesBenchmarkReturn` returns `performance.benchmark`: SPY's price return from
+  the prior year-end close to the latest stored close, so the card compares the same dates.
+
 ### YTD Social Share Card
 
 Desktop and mobile expose a **Share YTD** control for the currently selected portfolio
@@ -580,6 +819,13 @@ card includes the current Stock Stickies mark/wordmark, profile photo or initial
 nickname/email-prefix fallback, account scope, YTD dollar gain, available cash-flow-
 adjusted return percentage, as-of date, and `www.stockstickies.com`. It deliberately omits
 balances, positions, account numbers, and disclaimer copy.
+
+Below the S&P comparison pill the card draws a row of neutral stat tiles from the scope's
+`risk` block — **Sharpe ratio**, **Max drawdown**, **Beta vs SPY** — with a "From daily
+closes · <first> – <last>" caption (red/green stays reserved for gain/loss). The S&P YTD figure
+comes from `performance.benchmark.ytdReturnPercent` (the Worker's daily closes); the old
+Finnhub `yearToDatePriceReturnDaily` lookup lagged several trading days and was removed. If no
+benchmark is available the S&P pill is hidden. Share YTD remains owner-only.
 
 The control opens a preview with **Copy image** and **Share / Save** actions. Copy image
 writes the PNG directly to the system clipboard when the browser supports image clipboard
@@ -595,7 +841,8 @@ photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-The visible release was **Build 36** when this guide was updated. Every mobile release must
+Source is at **Build 39** (commit `1daadb6`) as of 2026-09-23; its Sites release was still
+pending when this guide was updated — check `version.json` on the custom domain. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |
@@ -654,6 +901,8 @@ the PWA should be a last resort.
 | Old login/logo/icon | Confirm the Sites artifact came from current `mobile/`, manifest uses `app-icon-v2`, then clear the installed manifest/SW via `reset.html` |
 | “Firebase is not configured for this app” | Confirm the source fallback config survived and the built JS contains production config; runtime-only Sites env values are insufficient for Vite |
 | Ask K cannot be reached | Inspect Ask K Worker reachability, URL/client contract, Firebase token, CORS, and the browser network response |
+| Ask K says "Please sign in" | Client isn't sending a Firebase ID token (mobile Build ≤ 38, or signed out) |
+| Ask K says the daily limit is used | Non-owner hit `NON_OWNER_DAILY_LIMIT`; resets at midnight UTC |
 | Cash is too high by exactly the CSP amount | CSP was probably added to a Plaid cash pool that already includes reserved collateral |
 | Individual YTD shows a large loss after withdrawals | External cash-flow history is incomplete; hide/flag YTD until transactions are reconciled |
 | Installed PWA will not update | Verify `version.json`, `_headers`, SW registration, cache-name behavior, then use `/reset.html`; reinstall only if browser reset is blocked |
@@ -756,6 +1005,11 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
 8. Verify per-position/account/portfolio Unrealized P&L and missing-basis behavior.
 9. Verify scheduled stock-price updates, Finnhub data, MarketAux news, and watch list.
 10. Check cloud-sync state, refresh persistence, and logout/login reload behavior.
+11. With a **non-owner** test account: walkthrough appears on first sign-in, Finnhub
+    Test & save, accounts question (one portfolio and named accounts), Manage accounts,
+    Live Dashboard starter set, Ask K daily counter; no Robinhood/Today/YTD UI.
+12. As the **owner**: no walkthrough accounts step, built-in accounts unchanged, Robinhood
+    sync, YTD share card with Sharpe / drawdown / beta tiles and current SPY YTD.
 
 ### Mobile
 
@@ -777,6 +1031,8 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
 13. Check `version.json` through the custom domain, foreground/background an installed
     iPhone PWA, and confirm it updates without deletion/reinstallation.
 14. Test offline fallback and `/reset.html`.
+15. Sign in as a non-owner: no brokerage request, own accounts or single "Portfolio",
+    Finnhub-priced positions, no YTD/Share YTD, Ask K works.
 
 ---
 
@@ -820,3 +1076,22 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
   counting CSP collateral already contained in the Plaid brokerage cash pool.
 - Preserved production Firebase client configuration in static builds and restored Ask K
   Worker connectivity.
+
+### Opening the Platform to Other Users (September 2026)
+
+- **Share card risk stats:** Sharpe / max drawdown / beta tiles on the YTD card, computed by
+  `rentals-api` from a new daily-values KV store backfilled from Robinhood CSVs and extended
+  nightly. SPY YTD now comes from the same store (fixes a stale Finnhub figure).
+- **Live Dashboard for everyone** (desktop only), with a 14-widget starter set, a "Set up API
+  keys" action on the missing-key notice, and Healthcare/Defense groups (dashboard v13).
+- **Onboarding walkthrough** that repeats until the Finnhub key is saved and the accounts
+  question is answered, and offers a Live Dashboard starter pack.
+- **User-named accounts or one combined portfolio**; the owner's three accounts stay a fixed
+  one-off.
+- **Security audit:** Ask K was an unauthenticated proxy on the owner's LLM key — it now
+  requires Firebase sign-in, caps non-owners at 50/day, and keeps owner context owner-only;
+  owner account-strategy text no longer reaches other users. Plaid routes, Firestore rules,
+  and key handling were verified (see Security Notes).
+- **Mobile open to all accounts** (Build 39), with Plaid-backed features owner-only.
+- Shelved for now: manual cost-basis / performance entry for regular users, and multi-user
+  brokerage connections (Plaid Link or SnapTrade would need a multi-tenant Worker rewrite).

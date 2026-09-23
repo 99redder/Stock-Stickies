@@ -934,6 +934,17 @@ const firebaseConfig = {
             const [hideToolbarPanel, setHideToolbarPanel] = useState(false);
             const [sharesPrivacyMode, setSharesPrivacyMode] = useState('show'); // 'show' | 'hide'
             const [diagnosticDashboard, setDiagnosticDashboard] = useState(null);
+            // Bumped when onboarding installs a starter dashboard, so a mounted dashboard
+            // re-reads it (the component only reads persistedDashboard on mount).
+            const [dashboardMountKey, setDashboardMountKey] = useState(0);
+            const saveDashboardStarter = (pack) => {
+                loadFinnhubDiagnosticDashboard()
+                    .then(({ buildStarterDashboard }) => {
+                        setDiagnosticDashboard(buildStarterDashboard(pack));
+                        setDashboardMountKey(key => key + 1);
+                    })
+                    .catch(error => console.error('Unable to set up the starter dashboard:', error));
+            };
             const [draggingCategory, setDraggingCategory] = useState(null);
             const [dragOverCategory, setDragOverCategory] = useState(null);
             const chartRef = useRef(null);
@@ -4955,6 +4966,8 @@ const firebaseConfig = {
                     <OnboardingWalkthrough
                         mode={onboardingOpen}
                         includeAccountsStep={!isOwnerAccount}
+                        includeDashboardStep={!diagnosticDashboard}
+                        onSaveDashboardStarter={saveDashboardStarter}
                         finnhubApiKey={finnhubApiKey}
                         marketauxApiKey={marketauxApiKey}
                         validateApiKey={validateApiKey}
@@ -4980,6 +4993,7 @@ const firebaseConfig = {
                         {onboardingModal}
                         <Suspense fallback={dashboardLoadingFallback}>
                             <FinnhubDiagnosticDashboard
+                                key={dashboardMountKey}
                                 apiKey={finnhubApiKey}
                                 persistedDashboard={diagnosticDashboard}
                                 onDashboardChange={setDiagnosticDashboard}
@@ -6546,6 +6560,7 @@ const firebaseConfig = {
                         {mainTab === 'dashboard' ? (
                             <Suspense fallback={dashboardLoadingFallback}>
                                 <FinnhubDiagnosticDashboard
+                                    key={dashboardMountKey}
                                     apiKey={finnhubApiKey}
                                     persistedDashboard={diagnosticDashboard}
                                     onDashboardChange={setDiagnosticDashboard}

@@ -9,6 +9,7 @@ const STEP_LABELS = {
     finnhub: 'Finnhub key',
     news: 'News key',
     accounts: 'Accounts',
+    dashboard: 'Dashboard',
     done: 'Get started',
 }
 
@@ -82,6 +83,7 @@ async function testFinnhubKey(key) {
 export default function OnboardingWalkthrough({
     mode = 'welcome',
     includeAccountsStep = false,
+    includeDashboardStep = false,
     finnhubApiKey,
     marketauxApiKey,
     validateApiKey,
@@ -93,6 +95,7 @@ export default function OnboardingWalkthrough({
     onSaveFinnhubKey,
     onSaveMarketauxKey,
     onSaveAccounts,
+    onSaveDashboardStarter,
     onClose,
     onOpenDashboard,
     onOpenQuickStart,
@@ -101,10 +104,15 @@ export default function OnboardingWalkthrough({
     const standaloneAccounts = mode === 'accounts'
     const steps = standaloneAccounts
         ? ['accounts']
-        : ['welcome', 'finnhub', 'news', ...(includeAccountsStep ? ['accounts'] : []), 'done']
+        : [
+            'welcome', 'finnhub', 'news',
+            ...(includeAccountsStep ? ['accounts'] : []),
+            ...(includeDashboardStep ? ['dashboard'] : []),
+            'done',
+        ]
     const initialStep = standaloneAccounts ? 'accounts'
         : mode === 'keys' ? 'finnhub'
-            : finnhubApiKey ? (includeAccountsStep ? 'accounts' : 'news')
+            : finnhubApiKey ? (includeAccountsStep ? 'accounts' : includeDashboardStep ? 'dashboard' : 'news')
                 : 'welcome'
     const [step, setStep] = useState(Math.max(0, steps.indexOf(initialStep)))
     const stepKey = steps[step]
@@ -115,6 +123,7 @@ export default function OnboardingWalkthrough({
     const [accountChoice, setAccountChoice] = useState(currentMode)
     const [accountDrafts, setAccountDrafts] = useState(() => currentAccounts.map((a) => ({ id: a.id, label: a.label })))
     const [newAccountLabel, setNewAccountLabel] = useState('')
+    const [dashboardPack, setDashboardPack] = useState('starter')
 
     const saveFinnhub = async (skipTest = false) => {
         const key = finnhubDraft.trim()
@@ -181,6 +190,7 @@ export default function OnboardingWalkthrough({
             : true
     const goNext = () => {
         if (stepKey === 'accounts' && !commitAccounts()) return
+        if (stepKey === 'dashboard') onSaveDashboardStarter(dashboardPack)
         setStep(step + 1)
     }
     const inputClass = 'w-full rounded-lg border-2 border-gray-600 bg-gray-800 px-3 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400'
@@ -424,6 +434,22 @@ export default function OnboardingWalkthrough({
                                     <p className="text-xs text-gray-500">New positions start unassigned — pick the account from each note’s card (click the lock).</p>
                                 </div>
                             )}
+                        </>
+                    )}
+
+                    {stepKey === 'dashboard' && (
+                        <>
+                            <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">Start your Live Dashboard</h2>
+                            <p className="text-gray-400">The Live Dashboard streams real-time prices in groups of tickers. Not sure what to add yet? Pick a set to start with — you can add, remove, or regroup widgets any time with <span className="text-gray-200">+ Add Widget</span>.</p>
+                            <div className="space-y-3">
+                                <OptionCard selected={dashboardPack === 'starter'} onSelect={() => setDashboardPack('starter')} title="Starter pack (recommended)">
+                                    Market overview (SPY, QQQ, IWM, VIX, gold, bitcoin, 30-year Treasury) and the Mag 7, plus three popular themes: AI Trade, Space, and Nuclear.
+                                </OptionCard>
+                                <OptionCard selected={dashboardPack === 'basics'} onSelect={() => setDashboardPack('basics')} title="Just the basics">
+                                    Market overview and the Mag 7 — a lighter board you can build on yourself.
+                                </OptionCard>
+                            </div>
+                            <p className="text-xs text-gray-500">The dashboard is a desktop feature.</p>
                         </>
                     )}
 

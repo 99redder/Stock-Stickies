@@ -84,6 +84,13 @@ const createDefaultWidgets = () => DASHBOARD_THEMES.flatMap((theme) => theme.sym
 const STARTER_THEME_IDS = new Set(['market', 'mag7'])
 const createStarterWidgets = () => createDefaultWidgets().filter((widget) => STARTER_THEME_IDS.has(widget.themeId))
 
+// Picked during onboarding: 'basics' is the market overview + Mag 7; 'starter' adds three
+// of the owner's themed groups (~37 symbols, under Finnhub's free 50-symbol stream cap).
+const STARTER_PACK_THEME_IDS = {
+    basics: ['market', 'mag7'],
+    starter: ['market', 'mag7', 'ai', 'space', 'nuclear'],
+}
+
 const createGodelLayout = (widgets, totalColumns) => {
     const layout = []
     const clusterColumns = totalColumns >= 24 ? 3 : totalColumns >= 12 ? 2 : 1
@@ -130,6 +137,14 @@ const createGodelLayout = (widgets, totalColumns) => {
 const createDashboardLayouts = (widgets) => Object.fromEntries(
     Object.entries(GRID_COLUMNS).map(([breakpoint, columns]) => [breakpoint, createGodelLayout(widgets, columns)])
 )
+
+// A saved-dashboard object (same shape the component persists) for an onboarding pack.
+// eslint-disable-next-line react-refresh/only-export-components
+export const buildStarterDashboard = (pack) => {
+    const themeIds = new Set(STARTER_PACK_THEME_IDS[pack] || STARTER_PACK_THEME_IDS.basics)
+    const widgets = createDefaultWidgets().filter((widget) => themeIds.has(widget.themeId))
+    return { version: DASHBOARD_VERSION, widgets, layouts: createDashboardLayouts(widgets), savedAt: Date.now() }
+}
 
 const layoutItemsCollide = (item, other) => (
     item.i !== other.i
