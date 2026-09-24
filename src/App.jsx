@@ -97,7 +97,6 @@ import NoteCard from './components/NoteCard.jsx'
 import { clearFinnhubQuoteCache, fetchFinnhubQuote } from './utils/finnhubQuoteCache.js'
 import { BACKUP_RETENTION, selectBackupsToPrune } from './utils/backupRetention.js'
 
-const TodayAgenda = lazy(() => import('./components/TodayAgenda.jsx'))
 const RobinhoodSync = lazy(() => import('./components/RobinhoodSync.jsx'))
 const AskK = lazy(() => import('./components/AskK.jsx'))
 const OnboardingWalkthrough = lazy(() => import('./components/OnboardingWalkthrough.jsx'))
@@ -779,7 +778,7 @@ const firebaseConfig = {
                 document.body.style.backgroundColor = bgColor;
             }, [darkMode]);
 
-            // Quick Start Guide (logged-in only)
+            // User Guide (logged-in only)
             const [quickStartOpen, setQuickStartOpen] = useState(false);
             // First-run walkthrough: opens once per sign-in until a Finnhub key is saved.
             // apiKeysChecked waits for the async key decryption so it never flashes for
@@ -2655,6 +2654,16 @@ const firebaseConfig = {
                         finnhubApiKey: data.finnhubApiKey || null,
                         marketauxApiKey: data.marketauxApiKey || null
                     });
+                    // Back up what's there now, so a restore can itself be undone.
+                    const userRef = doc(db, 'users', auth.currentUser.uid);
+                    const current = await getDoc(userRef);
+                    if (current.exists) {
+                        await addDoc(collection(userRef, 'snapshots'), {
+                            ...current.data(),
+                            backupCreatedAt: serverTimestamp(),
+                            backupReason: 'pre-restore'
+                        });
+                    }
                     // Cancel any pending autosave so stale in-memory state can't overwrite the
                     // restore, and let the listener apply the restored document.
                     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -5081,7 +5090,7 @@ const firebaseConfig = {
                     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
                         <div className="bg-gray-900 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
                             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-                                <h2 className="text-xl font-bold text-white">Stock Stickies Quick Start Guide</h2>
+                                <h2 className="text-xl font-bold text-white">Stock Stickies User Guide</h2>
                                 <button onClick={() => setQuickStartOpen(false)} className="text-gray-400 hover:text-white">
                                     <X size={22} />
                                 </button>
@@ -5324,6 +5333,33 @@ const firebaseConfig = {
                                                 <text x="260" y="141" text-anchor="middle" font-size="14" font-weight="800" fill="#e5e7eb">?</text>
                                             </svg>
                                         </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h3 className="text-white font-semibold text-base">Backups &amp; restore</h3>
+                                    <div className="space-y-3 text-gray-300">
+                                        <p>
+                                            Stock Stickies backs up your whole account automatically — notes, categories, watch list,
+                                            cash secured puts, API keys, profile, and dashboard layout. A backup is saved when you make
+                                            changes (at most every 10 minutes) and before every <span className="text-white font-semibold">Update positions</span>.
+                                            Older backups are thinned out automatically: everything from the last 2 weeks, one a day for
+                                            3 months, and one a week for a year are kept, and your newest 30 are never removed.
+                                        </p>
+                                        <ol className="list-decimal list-inside space-y-1">
+                                            <li>Click <span className="text-white font-semibold">Backups</span> next to the User Guide button.</li>
+                                            <li>Backups are listed newest first — scroll for older ones. Each shows when it was taken, why, how many notes it has (and how many have text), how many categories are in use, and whether your Finnhub key, nickname, and photo are in it.</li>
+                                            <li>Pick the <span className="text-white font-semibold">newest backup that looks complete</span> — your usual note count, several categories, and your key, nickname, and photo present. A backup with 0 notes or everything in one category was taken after something went wrong.</li>
+                                            <li>Click <span className="text-white font-semibold">Restore</span>. It replaces all of your current data with that backup (your current state is backed up first, so a restore can be undone the same way).</li>
+                                            <li>If you track positions from a brokerage, run <span className="text-white font-semibold">Update positions</span> afterwards so share counts reflect any trades since the backup.</li>
+                                        </ol>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setQuickStartOpen(false); openBackupManager(); }}
+                                            className="rounded-lg border border-cyan-500/60 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500/10"
+                                        >
+                                            Open Backups
+                                        </button>
                                     </div>
                                 </div>
 
@@ -5971,7 +6007,7 @@ const firebaseConfig = {
                                 <button onClick={() => setBackupModalOpen(false)} className={`${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}><X size={24}/></button>
                             </div>
                             <div className="p-6">
-                                <p className={`text-sm leading-relaxed mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>These are your most recent automatic StickyNotes backups. Restoring one will overwrite your current live data with that saved snapshot.</p>
+                                <p className={`text-sm leading-relaxed mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>These are your most recent automatic Stock Stickies backups, newest first — scroll for older ones. Restoring one replaces your current data with that backup (your current state is backed up first).</p>
                                 <div className={`max-h-96 overflow-y-auto rounded-lg border ${darkMode ? 'border-gray-700 bg-gray-950' : 'border-gray-200 bg-gray-50'}`}>
                                     {backupsLoading ? (
                                         <div className={`p-4 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading backups…</div>
@@ -6309,13 +6345,6 @@ const firebaseConfig = {
                                                         >
                                                             Remove
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={openBackupManager}
-                                                            className={`w-full text-left px-2 py-1 rounded text-xs font-semibold ${darkMode ? 'text-cyan-300 hover:bg-gray-800' : 'text-cyan-700 hover:bg-gray-100'}`}
-                                                        >
-                                                            Backups & Restore
-                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
@@ -6329,17 +6358,7 @@ const firebaseConfig = {
                                                 Add profile photo
                                             </button>
                                         )}
-                                        {/* Always reachable — restoring must not depend on having a profile photo. */}
-                                        {!profilePhoto && (
-                                            <button
-                                                type="button"
-                                                onClick={openBackupManager}
-                                                className={`text-xs font-semibold px-2 py-1 rounded border ${darkMode ? 'border-cyan-700 text-cyan-300 hover:bg-gray-800' : 'border-cyan-400 text-cyan-700 hover:bg-cyan-50'}`}
-                                                title="View and restore automatic backups"
-                                            >
-                                                Backups
-                                            </button>
-                                        )}
+
                                     </span>
                                     <span className="ml-2">Welcome,&nbsp;</span>
                                     {editingNickname || !nickname ? (
@@ -6400,9 +6419,17 @@ const firebaseConfig = {
                                         type="button"
                                         onClick={() => setQuickStartOpen(true)}
                                         className={`ml-3 px-3 py-1 rounded-md text-xs font-extrabold tracking-wide border border-transparent bg-gradient-to-r from-fuchsia-500 via-purple-500 to-emerald-400 text-gray-900 shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60 ${darkMode ? 'ring-1 ring-white/10 shadow-fuchsia-500/25' : 'ring-1 ring-black/5 shadow-fuchsia-500/15'}`}
-                                        title="Open Quick Start Guide"
+                                        title="Open the User Guide"
                                     >
-                                        Quick Start Guide
+                                        User Guide
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={openBackupManager}
+                                        className={`ml-2 px-3 py-1 rounded-md text-xs font-extrabold tracking-wide border ${darkMode ? 'border-cyan-500/60 text-cyan-300 hover:bg-cyan-500/10' : 'border-cyan-500 text-cyan-700 hover:bg-cyan-50'}`}
+                                        title="View and restore automatic backups of your account"
+                                    >
+                                        Backups
                                     </button>
                                     {mainTab === 'notes' && (
                                         <>
@@ -6559,14 +6586,6 @@ const firebaseConfig = {
                                             )}
                                         </div>
                                     </div>
-                                )}
-                                {isOwnerPortfolioUser && (
-                                    <Suspense fallback={null}>
-                                        <TodayAgenda
-                                            key={auth?.currentUser?.uid || 'signed-out'}
-                                            authUser={auth?.currentUser || null}
-                                        />
-                                    </Suspense>
                                 )}
                                 <div className="fixed top-5 right-5 z-40 flex items-center gap-3">
                                     {isOwnerPortfolioUser && (

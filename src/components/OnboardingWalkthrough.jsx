@@ -475,8 +475,8 @@ export default function OnboardingWalkthrough({
                             </div>
                             <p className="text-xs text-gray-500">
                                 Want the full tour? The{' '}
-                                <button type="button" onClick={onOpenQuickStart} className="font-semibold text-cyan-300 underline hover:text-cyan-200">Quick Start Guide</button>
-                                {' '}button next to your name covers everything in detail.
+                                <button type="button" onClick={onOpenQuickStart} className="font-semibold text-cyan-300 underline hover:text-cyan-200">User Guide</button>
+                                {' '}button next to your name covers everything in detail, including how to restore a backup.
                             </p>
                         </>
                     )}

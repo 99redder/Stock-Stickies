@@ -69,8 +69,7 @@ Sticky-Notes/
 │       ├── OnboardingWalkthrough.jsx  # First-run walkthrough + Manage accounts modal
 │       ├── FinnhubDiagnosticDashboard.jsx (+ .css)  # Live Dashboard (all users, desktop only)
 │       ├── AskK.jsx                   # Ask K chat panel
-│       ├── RobinhoodSync.jsx          # Plaid "Update positions" (owner only)
-│       └── TodayAgenda.jsx            # Look-ahead planner agenda (owner only)
+│       └── RobinhoodSync.jsx          # Plaid "Update positions" (owner only)
 ├── assets/                            # Mirror of public/assets (keep in sync)
 └── mobile/                            # Separate mobile companion application
     ├── .openai/hosting.json           # Existing Sites project identity; never replace/invent
@@ -253,15 +252,17 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 
 Every save path writes a full copy of the user document to `users/{uid}/snapshots` (autosave
 at most once per 10 minutes per session when notes/categories changed; `manual-sync` and
-`pre-plaid-apply` on each **Update positions**; `restore-backup` on restore). The **Backups**
-modal lists the newest 60 (scrollable) with note/text counts, categories in use, and whether
+`pre-plaid-apply` on each **Update positions**; on restore, `pre-restore` (the state being
+replaced, so a restore can be undone) and `restore-backup` (the restored state)). The
+**Backups** button in the header (next to **User Guide**) opens a modal that lists the newest 60 (scrollable) with note/text counts, categories in use, and whether
 the Finnhub key, nickname, and photo are present, so a full backup can be told apart from a
 partial one.
 
 `src/utils/backupRetention.js` (`selectBackupsToPrune`, tests in
 `backupRetention.test.mjs`, run with `npm test`) prunes conservatively: never the newest 30;
 everything from the last 14 days; the newest per local day for 90 days; the newest per
-week for a year; `restore-backup` backups for 90 days; nothing older than a year. A
+week for a year; `restore-backup` / `pre-restore` backups for 90 days; nothing older than
+a year. A
 background effect runs it at most once a week per user (localStorage
 `stock-stickies-backup-prune-{uid}`), 30s after load, fetching only backups older than 14 days
 plus the newest 30, and deletes in batches of 400. A dry run on the owner's 1,027 backups
@@ -281,7 +282,6 @@ kept 189.
 | Ask K | Unlimited | 50 questions / UTC day |
 | Accounts | Fixed Individual / Traditional IRA / Roth IRA | Own named accounts, or none |
 | Robinhood sync (Plaid), cost basis, YTD, risk stats, Share YTD | ✓ | — |
-| Today agenda (look-ahead planner) | ✓ | — |
 | Mobile app | Full, including brokerage data | Notes + Finnhub prices, own accounts |
 
 Client-side checks (`isOwnerPortfolioUser` / `isOwnerAccount`, mobile `isOwner`) only hide UI.
@@ -292,7 +292,6 @@ Client-side checks (`isOwnerPortfolioUser` / `isOwnerAccount`, mobile `isOwner`)
   `sub === STOCK_STICKIES_OWNER_UID` before any route runs. Other `rentals-api` routes use a
   separate admin-password session or a secret token.
 - Ask K Worker — verifies the Firebase ID token on every request; owner is unlimited.
-- look-ahead planner Worker (Today agenda) — verifies the token and an allow-listed UID.
 
 Owner-specific *content* must also stay owner-only: account strategy text
 (`getAccountStrategy(id, isOwner)` returns `strategy` for the owner, neutral
@@ -508,7 +507,8 @@ dashboard that is already open. Packs are defined in `STARTER_PACK_THEME_IDS`.
 `apiKeysChecked` waits for the async key decryption (and is set immediately for brand-new
 users with no document) so the modal never flashes for users who already have keys. Keys
 typed here go through the normal `setFinnhubApiKey` / `setMarketauxApiKey` state and
-encrypted autosave. The Quick Start Guide remains the long-form reference.
+encrypted autosave. The **User Guide** (header button; formerly "Quick Start Guide") remains
+the long-form reference and includes a Backups & restore section.
 
 ---
 
@@ -959,7 +959,8 @@ backup. **Fix**: autosave, the `beforeunload` save, and `syncNow` all return ear
 `userDataReady`. **Rule**: never let any save path run before the user's document has been
 applied, and treat any new autosave dependency as something that can fire before load.
 Restore now restores every field in a backup and cancels a pending autosave first;
-**Backups** has its own button (it used to live only in the profile-photo menu).
+**Backups** now has its own header button next to User Guide (it used to live only in the
+profile-photo menu).
 
 ### Problem: Notes moving to wrong category on color change
 `setCategories()` triggering orphan repair before `setNotes()` completes caused notes to appear orphaned.
@@ -1126,3 +1127,7 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
 - **Mobile open to all accounts** (Build 39, released 2026-09-23), with Plaid-backed features owner-only.
 - Shelved for now: manual cost-basis / performance entry for regular users, and multi-user
   brokerage connections (Plaid Link or SnapTrade would need a multi-tenant Worker rewrite).
+- **Sep 24 follow-ups:** fixed the sign-in wipe (see Race Condition Fixes), backup retention,
+  restore now backs up the replaced state first, "Quick Start Guide" renamed **User Guide**
+  with a Backups & restore section, a dedicated **Backups** header button, and the owner-only
+  Look Ahead (Today agenda) panel removed from Stock Stickies.

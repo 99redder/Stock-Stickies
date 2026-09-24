@@ -6,7 +6,7 @@
 //   - keep every backup from the last KEEP_ALL_DAYS days
 //   - keep the newest backup of each day for DAILY_DAYS days
 //   - keep the newest backup of each week for WEEKLY_DAYS days
-//   - keep 'restore-backup' backups for PROTECTED_DAYS days
+//   - keep 'restore-backup' / 'pre-restore' backups for PROTECTED_DAYS days
 //   - delete anything else, including everything older than WEEKLY_DAYS
 
 export const BACKUP_RETENTION = {
@@ -14,7 +14,7 @@ export const BACKUP_RETENTION = {
   KEEP_ALL_DAYS: 14,
   DAILY_DAYS: 90,
   WEEKLY_DAYS: 365,
-  PROTECTED_REASONS: ['restore-backup'],
+  PROTECTED_REASONS: ['restore-backup', 'pre-restore'],
   PROTECTED_DAYS: 90,
 }
 
