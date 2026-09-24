@@ -265,7 +265,10 @@ week for a year; `restore-backup` / `pre-restore` backups for 90 days; nothing o
 a year. A
 background effect runs it at most once a week per user (localStorage
 `stock-stickies-backup-prune-{uid}`), 30s after load, fetching only backups older than 14 days
-plus the newest 30, and deletes in batches of 400. A dry run on the owner's 1,027 backups
+plus the newest 30, and deletes in batches of 20 (halving on "Transaction too big" — each
+delete also removes every index entry of these large documents, so batches of 400 were
+rejected). The Backups window has a **Clean up old backups** button that runs the same
+`runBackupCleanup` on demand and shows progress, the result, or the exact error. A dry run on the owner's 1,027 backups
 kept 189.
 
 ---

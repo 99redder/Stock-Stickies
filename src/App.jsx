@@ -2556,50 +2556,87 @@ const firebaseConfig = {
                 }
             };
 
-            // Weekly background cleanup of this user's own automatic backups (policy and
-            // safety rules in utils/backupRetention.js). Only backups older than the
-            // keep-everything window are fetched, plus the newest few so they're never pruned.
+            // Cleanup of this user's own automatic backups (policy and safety rules in
+            // utils/backupRetention.js). Only backups older than the keep-everything window
+            // are fetched, plus the newest few so they're never pruned. Runs weekly in the
+            // background and on demand from the Backups window, which shows its progress.
+            const runBackupCleanup = useCallback(async ({ onProgress = () => {}, isCancelled = () => false } = {}) => {
+                if (!db || !auth?.currentUser) throw new Error('Sign in again to clean up backups.');
+                const uid = auth.currentUser.uid;
+                const snapshotsRef = collection(db, 'users', uid, 'snapshots');
+                const keepAllCutoff = Timestamp.fromMillis(Date.now() - BACKUP_RETENTION.KEEP_ALL_DAYS * 24 * 60 * 60 * 1000);
+                onProgress('Checking your backups…');
+                const [newest, older] = await Promise.all([
+                    getDocs(query(snapshotsRef, orderBy('backupCreatedAt', 'desc'), limit(BACKUP_RETENTION.KEEP_NEWEST))),
+                    getDocs(query(snapshotsRef, where('backupCreatedAt', '<', keepAllCutoff), orderBy('backupCreatedAt', 'desc'))),
+                ]);
+                if (isCancelled()) return null;
+                const byId = new Map();
+                [...newest.docs, ...older.docs].forEach(docSnap => {
+                    const data = docSnap.data() || {};
+                    byId.set(docSnap.id, {
+                        id: docSnap.id,
+                        createdAtMs: data.backupCreatedAt?.toMillis ? data.backupCreatedAt.toMillis() : null,
+                        reason: data.backupReason || '',
+                    });
+                });
+                const pruneIds = selectBackupsToPrune([...byId.values()], Date.now());
+                // Small batches: a delete also removes every index entry of these large
+                // documents, and Firestore rejects big commits ("Transaction too big").
+                // Halve the batch size if it still does.
+                let batchSize = 20;
+                for (let i = 0; i < pruneIds.length;) {
+                    if (isCancelled()) return null;
+                    onProgress(`Removing old backups… ${i} of ${pruneIds.length}`);
+                    const chunk = pruneIds.slice(i, i + batchSize);
+                    const batch = writeBatch(db);
+                    chunk.forEach(id => batch.delete(doc(db, 'users', uid, 'snapshots', id)));
+                    try {
+                        await batch.commit();
+                        i += chunk.length;
+                    } catch (error) {
+                        const tooBig = /too big|too large|size/i.test(String(error?.message || ''));
+                        if (!tooBig || batchSize === 1) throw error;
+                        batchSize = Math.max(1, Math.floor(batchSize / 2));
+                    }
+                }
+                try { localStorage.setItem(`stock-stickies-backup-prune-${uid}`, String(Date.now())); } catch { /* storage unavailable */ }
+                console.info(`Backup cleanup: checked ${byId.size}, removed ${pruneIds.length}.`);
+                return { checked: byId.size, removed: pruneIds.length };
+            }, []);
+
             useEffect(() => {
                 if (!currentUser || !userDataReady || !db || !auth?.currentUser) return undefined;
-                const uid = auth.currentUser.uid;
-                const storageKey = `stock-stickies-backup-prune-${uid}`;
                 let lastRun = 0;
-                try { lastRun = Number(localStorage.getItem(storageKey)) || 0; } catch { /* storage unavailable */ }
+                try { lastRun = Number(localStorage.getItem(`stock-stickies-backup-prune-${auth.currentUser.uid}`)) || 0; } catch { /* storage unavailable */ }
                 if (Date.now() - lastRun < 7 * 24 * 60 * 60 * 1000) return undefined;
                 let cancelled = false;
-                const timer = window.setTimeout(async () => {
-                    try {
-                        const snapshotsRef = collection(db, 'users', uid, 'snapshots');
-                        const keepAllCutoff = Timestamp.fromMillis(Date.now() - BACKUP_RETENTION.KEEP_ALL_DAYS * 24 * 60 * 60 * 1000);
-                        const [newest, older] = await Promise.all([
-                            getDocs(query(snapshotsRef, orderBy('backupCreatedAt', 'desc'), limit(BACKUP_RETENTION.KEEP_NEWEST))),
-                            getDocs(query(snapshotsRef, where('backupCreatedAt', '<', keepAllCutoff), orderBy('backupCreatedAt', 'desc'))),
-                        ]);
-                        if (cancelled) return;
-                        const byId = new Map();
-                        [...newest.docs, ...older.docs].forEach(docSnap => {
-                            const data = docSnap.data() || {};
-                            byId.set(docSnap.id, {
-                                id: docSnap.id,
-                                createdAtMs: data.backupCreatedAt?.toMillis ? data.backupCreatedAt.toMillis() : null,
-                                reason: data.backupReason || '',
-                            });
-                        });
-                        const pruneIds = selectBackupsToPrune([...byId.values()], Date.now());
-                        for (let i = 0; i < pruneIds.length && !cancelled; i += 400) {
-                            const batch = writeBatch(db);
-                            pruneIds.slice(i, i + 400).forEach(id => batch.delete(doc(db, 'users', uid, 'snapshots', id)));
-                            await batch.commit();
-                        }
-                        if (cancelled) return;
-                        try { localStorage.setItem(storageKey, String(Date.now())); } catch { /* storage unavailable */ }
-                        if (pruneIds.length) console.info(`Pruned ${pruneIds.length} old backups.`);
-                    } catch (error) {
-                        console.warn('Backup cleanup skipped:', error);
-                    }
+                const timer = window.setTimeout(() => {
+                    console.info('Backup cleanup: starting weekly run.');
+                    runBackupCleanup({ isCancelled: () => cancelled })
+                        .catch(error => console.warn('Backup cleanup skipped:', error));
                 }, 30000);
                 return () => { cancelled = true; window.clearTimeout(timer); };
-            }, [currentUser, userDataReady]);
+            }, [currentUser, userDataReady, runBackupCleanup]);
+
+            const [backupCleanupStatus, setBackupCleanupStatus] = useState('');
+            const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
+            const cleanUpBackupsNow = async () => {
+                if (backupCleanupRunning) return;
+                setBackupCleanupRunning(true);
+                try {
+                    const result = await runBackupCleanup({ onProgress: setBackupCleanupStatus });
+                    setBackupCleanupStatus(result.removed
+                        ? `Removed ${result.removed} old backup${result.removed === 1 ? '' : 's'}; kept everything the retention policy protects.`
+                        : 'Nothing to remove — your backups are already within the retention policy.');
+                    await loadBackupSnapshots();
+                } catch (error) {
+                    console.warn('Backup cleanup failed:', error);
+                    setBackupCleanupStatus(`Cleanup failed: ${error?.code ? `${error.code} — ` : ''}${error?.message || error}`);
+                } finally {
+                    setBackupCleanupRunning(false);
+                }
+            };
 
             const openBackupManager = async () => {
                 setProfilePhotoMenuOpen(false);
@@ -6008,6 +6045,18 @@ const firebaseConfig = {
                             </div>
                             <div className="p-6">
                                 <p className={`text-sm leading-relaxed mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>These are your most recent automatic Stock Stickies backups, newest first — scroll for older ones. Restoring one replaces your current data with that backup (your current state is backed up first).</p>
+                                <div className="mb-4 flex flex-wrap items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={cleanUpBackupsNow}
+                                        disabled={backupCleanupRunning}
+                                        className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${darkMode ? 'border-gray-600 text-gray-200 hover:border-gray-400' : 'border-gray-300 text-gray-700 hover:border-gray-500'} disabled:cursor-wait disabled:opacity-60`}
+                                        title="Keeps the newest 30, everything from 2 weeks, one a day for 3 months, one a week for a year"
+                                    >
+                                        {backupCleanupRunning ? 'Cleaning up…' : 'Clean up old backups'}
+                                    </button>
+                                    {backupCleanupStatus && <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{backupCleanupStatus}</span>}
+                                </div>
                                 <div className={`max-h-96 overflow-y-auto rounded-lg border ${darkMode ? 'border-gray-700 bg-gray-950' : 'border-gray-200 bg-gray-50'}`}>
                                     {backupsLoading ? (
                                         <div className={`p-4 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading backups…</div>
