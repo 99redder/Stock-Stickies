@@ -1219,6 +1219,10 @@ const firebaseConfig = {
             }, [currentUser]);
 
             useEffect(() => {
+                // Never save before this session has loaded the user's document: the state
+                // is still the empty defaults, and saveUserDoc overwrites (merge: false).
+                // Saving here once wiped the owner's portfolio right after sign-in.
+                if (!userDataReady) return;
                 if (currentUser && auth.currentUser && db) {
                     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
@@ -1301,7 +1305,7 @@ const firebaseConfig = {
                         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                     };
                 }
-            }, [notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, accountFieldsForSave, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
+            }, [userDataReady, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, accountFieldsForSave, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
@@ -1310,6 +1314,7 @@ const firebaseConfig = {
                 // Firestore persistence (IndexedDB) queues the write locally even if the tab closes
                 // before the server ACK, so the data survives.
                 const handleBeforeUnload = () => {
+                    if (!userDataReady) return; // nothing loaded yet — never overwrite with defaults
                     if (currentUser && auth.currentUser && db) {
                         const userId = auth.currentUser.uid;
                         const updateData = sanitizeUserDocForSave({
@@ -1352,7 +1357,7 @@ const firebaseConfig = {
 
                 window.addEventListener('beforeunload', handleBeforeUnload);
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-            }, [currentUser, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, accountFieldsForSave, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
+            }, [currentUser, userDataReady, notes, colorLabels, categories, nextId, collapsedCategories, collapsedAccounts, accountThemes, sectorThemes, sectorAssignments, accountFieldsForSave, darkMode, finnhubApiKey, marketauxApiKey, watchList, watchListNotes, radarList, radarNotes, cashSecuredPuts, cashSecuredPutsSortMode, nickname, profilePhoto, notesGroupMode, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, hideLegendPanel, hideToolbarPanel, sharesPrivacyMode, diagnosticDashboard]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -1545,6 +1550,7 @@ const firebaseConfig = {
             };
 
             const syncNow = async () => {
+                if (!userDataReady) return; // nothing loaded yet — never overwrite with defaults
                 if (currentUser && auth.currentUser && db) {
                     const userId = auth.currentUser.uid;
 
@@ -2561,7 +2567,15 @@ const firebaseConfig = {
                     const snap = await getDoc(ref);
                     if (!snap.exists) throw new Error('Backup snapshot not found');
                     const data = snap.data() || {};
+                    // Restore the whole backup (CSPs, dashboard layout, etc.), not a fixed field
+                    // list; the fields below are re-sanitized on top.
+                    const { backupCreatedAt: _createdAt, backupReason: _reason, ...backupFields } = data;
+                    if (isOwnerAccount) {
+                        delete backupFields.customAccounts;
+                        delete backupFields.accountSetup;
+                    }
                     const restorePayload = sanitizeUserDocForSave({
+                        ...backupFields,
                         notes: data.notes || [],
                         colorLabels: data.colorLabels || DEFAULT_COLOR_LABELS,
                         categories: data.categories || DEFAULT_COLORS,
@@ -2592,6 +2606,11 @@ const firebaseConfig = {
                         finnhubApiKey: data.finnhubApiKey || null,
                         marketauxApiKey: data.marketauxApiKey || null
                     });
+                    // Cancel any pending autosave so stale in-memory state can't overwrite the
+                    // restore, and let the listener apply the restored document.
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                    isSavingRef.current = false;
+                    lastAppliedSnapshotRef.current = null;
                     await saveUserDoc(auth.currentUser.uid, auth.currentUser.email || currentUser, restorePayload, {
                         reason: 'restore-backup',
                         forceBackup: true,
