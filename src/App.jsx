@@ -6274,6 +6274,17 @@ const firebaseConfig = {
                                                 Add profile photo
                                             </button>
                                         )}
+                                        {/* Always reachable — restoring must not depend on having a profile photo. */}
+                                        {!profilePhoto && (
+                                            <button
+                                                type="button"
+                                                onClick={openBackupManager}
+                                                className={`text-xs font-semibold px-2 py-1 rounded border ${darkMode ? 'border-cyan-700 text-cyan-300 hover:bg-gray-800' : 'border-cyan-400 text-cyan-700 hover:bg-cyan-50'}`}
+                                                title="View and restore automatic backups"
+                                            >
+                                                Backups
+                                            </button>
+                                        )}
                                     </span>
                                     <span className="ml-2">Welcome,&nbsp;</span>
                                     {editingNickname || !nickname ? (
