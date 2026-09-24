@@ -841,8 +841,8 @@ photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-Source is at **Build 39** (commit `1daadb6`) as of 2026-09-23; its Sites release was still
-pending when this guide was updated — check `version.json` on the custom domain. Every mobile release must
+The visible release is **Build 39** (released via Sites on 2026-09-23, from commit
+`91e207d`; `version.json` and the live asset hash were verified against the local build). Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |
@@ -1092,6 +1092,6 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
   requires Firebase sign-in, caps non-owners at 50/day, and keeps owner context owner-only;
   owner account-strategy text no longer reaches other users. Plaid routes, Firestore rules,
   and key handling were verified (see Security Notes).
-- **Mobile open to all accounts** (Build 39), with Plaid-backed features owner-only.
+- **Mobile open to all accounts** (Build 39, released 2026-09-23), with Plaid-backed features owner-only.
 - Shelved for now: manual cost-basis / performance entry for regular users, and multi-user
   brokerage connections (Plaid Link or SnapTrade would need a multi-tenant Worker rewrite).
