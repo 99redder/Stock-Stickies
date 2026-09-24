@@ -1,7 +1,7 @@
-# Stock Stickies Mobile — Agent Guide
+# Stock Stickies Mobile — Agent Guide (AGENTS.md)
 
-> `mobile/AGENTS.md` mirrors this file for Codex (which runs the Sites releases). Keep the
-> two in sync — change both in the same commit.
+> Mirror of `mobile/CLAUDE.md` for Codex and other AGENTS.md-aware agents. Keep the two in
+> sync — change both in the same commit.
 
 The read-only mobile companion PWA at **https://mobile.stockstickies.com**. This file covers
 what you need when working in `mobile/`. The root `claude.md` ("Mobile Companion
@@ -87,9 +87,11 @@ Current visible release: **Build 39** (released 2026-09-23 via Sites from commit
 3. `npm run build` **from `mobile/`**; confirm `dist/.openai/hosting.json` still contains
    `appgprj_6a64e76c7c4081919d6a6ae6fa349d49`.
 4. Commit and push the exact source state to `main`.
-5. Release with the **Sites** build → save version (with that commit SHA) → deploy workflow
-   to the existing project. Claude Code has no Sites tool — this is done from Codex. Never
-   create a second site or invent a project id. A GitHub push alone releases only desktop.
+5. Release with the **Sites** workflow: build/package that exact commit, **save a version
+   using the commit SHA**, then **deploy the saved version** to the existing project
+   `appgprj_6a64e76c7c4081919d6a6ae6fa349d49` (from `mobile/.openai/hosting.json`). Never
+   create a second site or substitute a guessed id. Wait for the deployment to reach a
+   terminal success state. A GitHub push alone releases only desktop.
 6. Verify `https://mobile.stockstickies.com/version.json?checked=<timestamp>` returns the new
    build, then check an installed iPhone PWA updates without reinstalling
    (`/reset.html` is the last-resort recovery).
