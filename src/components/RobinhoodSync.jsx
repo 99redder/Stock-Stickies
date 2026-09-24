@@ -410,6 +410,15 @@ function loadPlaidScript() {
   })
 }
 
+// The Eastern-time calendar day (YYYY-MM-DD) — the day boundary for the daily update.
+const easternDateKey = (date = new Date()) => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/New_York',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(date)
+const dailySyncStorageKey = (uid) => `stock-stickies-daily-position-sync-${uid}`
+
 export default function RobinhoodSync({
   authUser,
   notes,
@@ -512,41 +521,51 @@ export default function RobinhoodSync({
     })
   }, [])
 
+  // Page load only *reads* holdings (for YTD / performance / the sync modal). Writing
+  // position changes happens (a) when the user clicks Update positions, or (b) once per
+  // Eastern day: the rentals-api Worker fetches holdings from Plaid at midnight ET, and the
+  // first page load of the day applies that overnight snapshot. Both mark the day as done.
   useEffect(() => {
     if (!ready || !authUser || autoSyncStartedRef.current) return undefined
 
     // React StrictMode mounts effects twice in development. Deferring one tick lets
-    // the throwaway mount clean up before this page-load-only sync can start.
+    // the throwaway mount clean up before this page-load-only load can start.
     const timer = window.setTimeout(() => {
       if (autoSyncStartedRef.current) return
       autoSyncStartedRef.current = true
-      setAutoSyncState('syncing')
+      const dailyKey = dailySyncStorageKey(authUser.uid)
+      const today = easternDateKey()
+      let lastDailySync = ''
+      try { lastDailySync = localStorage.getItem(dailyKey) || '' } catch { /* storage unavailable */ }
+      const dailyDue = lastDailySync !== today
 
       void (async () => {
         try {
-          const connection = await apiFetch('/api/stock-stickies/plaid/status')
-          setStatus(connection)
-          if (!connection.investmentsEnabled) {
-            setAutoSyncState('needs-consent')
-            return
-          }
-
           const data = await apiFetch('/api/stock-stickies/plaid/holdings')
           setHoldings(data)
           applyPerformance(data.performance)
-          const automaticReconciliation = buildRobinhoodReconciliation(
+          setStatus(previous => ({ ...(previous || {}), investmentsEnabled: true }))
+          if (!dailyDue) return
+
+          // Only apply the overnight (or a later) snapshot. If today's hasn't landed
+          // yet, leave the day unmarked so a later page load tries again.
+          const snapshotDay = data.fetchedAt ? easternDateKey(new Date(data.fetchedAt)) : ''
+          if (snapshotDay !== today) return
+
+          setAutoSyncState('syncing')
+          const dailyReconciliation = buildRobinhoodReconciliation(
             notesRef.current,
             data.positions || [],
             cashSecuredPutsRef.current
           )
           if (
-            automaticReconciliation.updates.length ||
-            automaticReconciliation.additions.length ||
-            automaticReconciliation.cspUpdates.length ||
-            automaticReconciliation.cspAdditions.length ||
-            automaticReconciliation.coveredCallUpdates.length
+            dailyReconciliation.updates.length ||
+            dailyReconciliation.additions.length ||
+            dailyReconciliation.cspUpdates.length ||
+            dailyReconciliation.cspAdditions.length ||
+            dailyReconciliation.coveredCallUpdates.length
           ) {
-            const applied = await onApplyRef.current(automaticReconciliation)
+            const applied = await onApplyRef.current(dailyReconciliation)
             const priceRefresh = await onRefreshPricesRef.current?.(
               applied.priceRefreshNotes || notesRef.current
             )
@@ -556,9 +575,15 @@ export default function RobinhoodSync({
           } else {
             setAutoSyncState('current')
           }
+          try { localStorage.setItem(dailyKey, today) } catch { /* storage unavailable */ }
         } catch (syncError) {
-          console.error('Automatic Robinhood sync failed:', syncError)
-          setAutoSyncState(syncError?.needsConsent ? 'needs-consent' : 'failed')
+          console.error('Robinhood holdings load failed:', syncError)
+          if (syncError?.needsConsent) {
+            setStatus(previous => ({ ...(previous || {}), investmentsEnabled: false }))
+            setAutoSyncState('needs-consent')
+          } else if (dailyDue) {
+            setAutoSyncState('failed')
+          }
         }
       })()
     }, 0)
@@ -650,6 +675,10 @@ export default function RobinhoodSync({
           )
         : null
       if (applied) setResult({ ...applied, priceRefresh })
+      if (requestFreshData) {
+        // A manual fresh update counts as today's daily update.
+        try { localStorage.setItem(dailySyncStorageKey(authUser.uid), easternDateKey()) } catch { /* storage unavailable */ }
+      }
       setOpen(false)
       setSyncSummary({
         ok: true,
@@ -785,13 +814,13 @@ export default function RobinhoodSync({
           autoSyncState === 'syncing'
             ? 'Automatically syncing Robinhood positions'
             : autoSyncState === 'applied'
-              ? 'Robinhood positions were updated automatically'
+              ? 'Today’s automatic update applied the overnight Robinhood positions'
             : autoSyncState === 'current'
                 ? 'Stock Stickies matches Plaid’s latest available snapshot'
                 : autoSyncState === 'needs-consent'
                   ? 'Open to grant one-time Robinhood Investments permission'
                   : autoSyncState === 'failed'
-                    ? 'Automatic sync failed; open to retry'
+                    ? 'Today’s automatic update failed; click to update manually'
                   : 'Request fresh share quantities from Robinhood through Plaid'
         }
         aria-label="Sync Robinhood positions"

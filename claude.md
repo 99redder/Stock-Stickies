@@ -678,6 +678,17 @@ closed, and needing review, plus any warnings or errors. The detailed sync modal
 optional from that summary; positions absent from Plaid remain review-only and are
 not automatically deleted.
 
+**When positions are written.** Page load only *reads* holdings (to show YTD, risk stats,
+and the sync modal) — it never writes on refresh. Position changes are written (a) when the
+owner clicks **Update positions** (asks Plaid for fresh data), or (b) **once per Eastern
+day**: the `rentals-api` cron fetches holdings from Plaid at midnight ET, and the first page
+load of the day applies that overnight snapshot (updates/additions/CSPs/covered calls, with a
+backup; never removals). Only a snapshot fetched today (ET) is applied — if the overnight one
+hasn't landed, the day stays unmarked and a later load retries. Either path records the day
+in localStorage `stock-stickies-daily-position-sync-{uid}`, so a manual update also satisfies
+that day. Changes are written at first load, not at midnight itself — an unattended write
+would need Worker-side Firestore credentials and server-side reconciliation.
+
 Every successful manual `Update positions` run also refreshes prices for the complete
 post-reconciliation position list, even when share quantities already match. Newly
 imported positions are included in the same refresh, and the completion summary reports
