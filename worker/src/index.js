@@ -7,7 +7,7 @@
 // the ASKK_USAGE KV namespace. Ask K has no data access of its own: it only
 // sees the portfolio the signed-in user's own app sends with the question.
 
-const DEFAULT_NON_OWNER_DAILY_LIMIT = 50;
+const DEFAULT_NON_OWNER_DAILY_LIMIT = 5;
 
 export default {
   async fetch(request, env) {

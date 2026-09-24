@@ -318,7 +318,7 @@ up the replaced state first.
 |---|---|---|
 | Notes, categories, portfolio, watch list, sectors, CSP tracking | ✓ | ✓ |
 | Live Dashboard (desktop only) | ✓ | ✓ |
-| Ask K | Unlimited | 50 questions / UTC day |
+| Ask K | Unlimited | 5 questions / UTC day |
 | Accounts | Fixed Individual / Traditional IRA / Roth IRA | Own named accounts, or none |
 | Robinhood sync (Plaid), cost basis, YTD, risk stats, Share YTD | ✓ | — |
 | Mobile app | Full, including brokerage data | Notes + Finnhub prices, own accounts |
@@ -582,15 +582,20 @@ The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
 - **Requires sign-in.** `verifyFirebaseIdToken` checks signature/`aud`/`iss`/`exp`; missing or
   invalid tokens get 401. Origin checks are only a browser courtesy.
 - **Limits non-owners.** `OWNER_UID` is unlimited; others get `NON_OWNER_DAILY_LIMIT`
-  (50) questions per UTC day, counted before the provider call in the `ASKK_USAGE` KV
+  (5) questions per UTC day, counted before the provider call in the `ASKK_USAGE` KV
   namespace (`usage:{uid}:{YYYY-MM-DD}`, 2-day TTL). Over the limit → 429. Responses include
-  `usage: { limit, remaining }`; desktop shows "N of 50 questions left today".
+  `usage: { limit, remaining }`; desktop shows "N of 5 questions left today".
 - **Only sees the caller's data.** The Worker has no storage/database bindings besides the
   usage counter; it analyzes only the portfolio in the request, and the prompt tells it it
   cannot see other users. Owner-only prompt context (`OWNER_ACCOUNT_CONTEXT`: account
   intents, USD/SGOV cash, where puts are written) is sent only when `sub === OWNER_UID`;
   others get `GENERAL_ACCOUNT_CONTEXT`.
 - Provider errors are logged (`askk_provider_error`), never echoed (no base URL/model leak).
+- **Billing:** the provider is MiniMax on a **prepaid** credit balance (≈$25 loaded; $23.02 on
+  Sep 24, 2026) shared by Ask K on all of the owner's sites — the most important being the
+  survival node product page (`node.html`, eastern-shore-ai repo). Prepaid means no surprise
+  bill: when credits run out, requests fail. The low non-owner cap protects that shared
+  balance; the owner plans to revisit Stock Stickies' Ask K if it drops below ~$5.
 - Secrets: `STOCKSTICKIES_ASKK_API_KEY`, `STOCKSTICKIES_ASKK_BASE_URL`,
   `STOCKSTICKIES_ASKK_MODEL`. Vars: `FIREBASE_PROJECT_ID`, `OWNER_UID`,
   `NON_OWNER_DAILY_LIMIT`, `ALLOWED_ORIGINS`.
@@ -1174,7 +1179,7 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
 - **User-named accounts or one combined portfolio**; the owner's three accounts stay a fixed
   one-off.
 - **Security audit:** Ask K was an unauthenticated proxy on the owner's LLM key — it now
-  requires Firebase sign-in, caps non-owners at 50/day, and keeps owner context owner-only;
+  requires Firebase sign-in, caps non-owners per day (5 as of Sep 24), and keeps owner context owner-only;
   owner account-strategy text no longer reaches other users. Plaid routes, Firestore rules,
   and key handling were verified (see Security Notes).
 - **Mobile open to all accounts** (Build 39, released 2026-09-23), with Plaid-backed features owner-only.

@@ -32,7 +32,7 @@ Mobile is open to **every** Stock Stickies account.
 | Prices | Finnhub (+ Plaid prices for crypto) | Their own Finnhub key |
 | Accounts | Fixed Individual / Traditional IRA / Roth IRA | Accounts they named on desktop (`customAccounts` / `accountSetup`), or one "Portfolio" |
 | Plaid balances, YTD, Share YTD | ✓ | — (the brokerage fetch is skipped entirely) |
-| Ask K | Unlimited | 50 questions / UTC day |
+| Ask K | Unlimited | 5 questions / UTC day |
 
 Implementation notes (`src/App.jsx`):
 

@@ -6,7 +6,7 @@ compatibility_date = "2026-02-15"
 FIREBASE_PROJECT_ID = "red-s-stickies"
 # Unlimited Ask K; everyone else gets NON_OWNER_DAILY_LIMIT questions per UTC day.
 OWNER_UID = "tQ4KeGwCjsb5CSbrFwmWYWX3BvI2"
-NON_OWNER_DAILY_LIMIT = "50"
+NON_OWNER_DAILY_LIMIT = "5"
 ALLOWED_ORIGINS = "https://stockstickies.com,https://www.stockstickies.com,https://mobile.stockstickies.com,https://stock-stickies-mobile.eastern-shore-ai.chatgpt.site,http://localhost:5173,http://127.0.0.1:5173"
 
 # Ask K Assistant secrets (set via `wrangler secret put` from this folder):
