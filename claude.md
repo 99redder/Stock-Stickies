@@ -678,16 +678,19 @@ closed, and needing review, plus any warnings or errors. The detailed sync modal
 optional from that summary; positions absent from Plaid remain review-only and are
 not automatically deleted.
 
-**When positions are written.** Page load only *reads* holdings (to show YTD, risk stats,
-and the sync modal) — it never writes on refresh. Position changes are written (a) when the
-owner clicks **Update positions** (asks Plaid for fresh data), or (b) **once per Eastern
-day**: the `rentals-api` cron fetches holdings from Plaid at midnight ET, and the first page
-load of the day applies that overnight snapshot (updates/additions/CSPs/covered calls, with a
-backup; never removals). Only a snapshot fetched today (ET) is applied — if the overnight one
-hasn't landed, the day stays unmarked and a later load retries. Either path records the day
-in localStorage `stock-stickies-daily-position-sync-{uid}`, so a manual update also satisfies
-that day. Changes are written at first load, not at midnight itself — an unattended write
-would need Worker-side Firestore credentials and server-side reconciliation.
+**When positions are written.** Page load only *reads* holdings (`GET /plaid/holdings`,
+which fetches live from Plaid, for YTD, risk stats, and the sync modal) — it never writes on
+refresh. Position changes are written (a) when the owner clicks **Update positions**, or
+(b) once per **scheduled sync**: the `rentals-api` cron runs the same guarded paid
+`/investments/refresh` at **07:00 ET** (overnight moves) and **16:10 ET** (the day's trades),
+records the completed run in KV `stock_stickies:plaid:robinhood:scheduled-sync`, and returns
+it as `scheduledSync` from `/plaid/holdings`. On the next page load, if that sync is newer than
+the last one this browser applied (localStorage `stock-stickies-applied-position-sync-{uid}`),
+the app applies it once (updates/additions/CSPs/covered calls, with a backup; never removals).
+A manual update records itself too. Changes are written at that next load, not by the cron
+itself — an unattended write would need Worker-side Firestore credentials. Crons use 2
+multi-hour UTC expressions (`10 20,21` and `0 10,11,12`) with Eastern-time guards; the Workers
+Free plan allows only 5 cron triggers per account across all Workers.
 
 Every successful manual `Update positions` run also refreshes prices for the complete
 post-reconciliation position list, even when share quantities already match. Newly

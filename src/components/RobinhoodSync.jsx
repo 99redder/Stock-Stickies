@@ -410,14 +410,15 @@ function loadPlaidScript() {
   })
 }
 
-// The Eastern-time calendar day (YYYY-MM-DD) — the day boundary for the daily update.
-const easternDateKey = (date = new Date()) => new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'America/New_York',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-}).format(date)
-const dailySyncStorageKey = (uid) => `stock-stickies-daily-position-sync-${uid}`
+// Completion time (ISO) of the last position sync this browser applied — scheduled or
+// manual. A scheduled sync newer than this is applied once on the next page load.
+const appliedSyncStorageKey = (uid) => `stock-stickies-applied-position-sync-${uid}`
+const readAppliedSync = (uid) => {
+  try { return Date.parse(localStorage.getItem(appliedSyncStorageKey(uid)) || '') || 0 } catch { return 0 }
+}
+const markAppliedSync = (uid, completedAt) => {
+  try { localStorage.setItem(appliedSyncStorageKey(uid), completedAt || new Date().toISOString()) } catch { /* storage unavailable */ }
+}
 
 export default function RobinhoodSync({
   authUser,
@@ -521,10 +522,10 @@ export default function RobinhoodSync({
     })
   }, [])
 
-  // Page load only *reads* holdings (for YTD / performance / the sync modal). Writing
-  // position changes happens (a) when the user clicks Update positions, or (b) once per
-  // Eastern day: the rentals-api Worker fetches holdings from Plaid at midnight ET, and the
-  // first page load of the day applies that overnight snapshot. Both mark the day as done.
+  // Page load only *reads* holdings (for YTD / performance / the sync modal). Position
+  // changes are written (a) when the user clicks Update positions, or (b) once for each
+  // scheduled sync: the rentals-api Worker runs a fresh Plaid refresh at 07:00 and 16:10 ET,
+  // and the next page load applies it. Both record the sync so it's never applied twice.
   useEffect(() => {
     if (!ready || !authUser || autoSyncStartedRef.current) return undefined
 
@@ -533,11 +534,8 @@ export default function RobinhoodSync({
     const timer = window.setTimeout(() => {
       if (autoSyncStartedRef.current) return
       autoSyncStartedRef.current = true
-      const dailyKey = dailySyncStorageKey(authUser.uid)
-      const today = easternDateKey()
-      let lastDailySync = ''
-      try { lastDailySync = localStorage.getItem(dailyKey) || '' } catch { /* storage unavailable */ }
-      const dailyDue = lastDailySync !== today
+      const lastAppliedMs = readAppliedSync(authUser.uid)
+      let scheduledSyncDue = false
 
       void (async () => {
         try {
@@ -545,27 +543,25 @@ export default function RobinhoodSync({
           setHoldings(data)
           applyPerformance(data.performance)
           setStatus(previous => ({ ...(previous || {}), investmentsEnabled: true }))
-          if (!dailyDue) return
-
-          // Only apply the overnight (or a later) snapshot. If today's hasn't landed
-          // yet, leave the day unmarked so a later page load tries again.
-          const snapshotDay = data.fetchedAt ? easternDateKey(new Date(data.fetchedAt)) : ''
-          if (snapshotDay !== today) return
+          const scheduledCompletedAt = data.scheduledSync?.completedAt || ''
+          const scheduledMs = Date.parse(scheduledCompletedAt) || 0
+          scheduledSyncDue = scheduledMs > lastAppliedMs
+          if (!scheduledSyncDue) return
 
           setAutoSyncState('syncing')
-          const dailyReconciliation = buildRobinhoodReconciliation(
+          const scheduledReconciliation = buildRobinhoodReconciliation(
             notesRef.current,
             data.positions || [],
             cashSecuredPutsRef.current
           )
           if (
-            dailyReconciliation.updates.length ||
-            dailyReconciliation.additions.length ||
-            dailyReconciliation.cspUpdates.length ||
-            dailyReconciliation.cspAdditions.length ||
-            dailyReconciliation.coveredCallUpdates.length
+            scheduledReconciliation.updates.length ||
+            scheduledReconciliation.additions.length ||
+            scheduledReconciliation.cspUpdates.length ||
+            scheduledReconciliation.cspAdditions.length ||
+            scheduledReconciliation.coveredCallUpdates.length
           ) {
-            const applied = await onApplyRef.current(dailyReconciliation)
+            const applied = await onApplyRef.current(scheduledReconciliation)
             const priceRefresh = await onRefreshPricesRef.current?.(
               applied.priceRefreshNotes || notesRef.current
             )
@@ -575,13 +571,13 @@ export default function RobinhoodSync({
           } else {
             setAutoSyncState('current')
           }
-          try { localStorage.setItem(dailyKey, today) } catch { /* storage unavailable */ }
+          markAppliedSync(authUser.uid, scheduledCompletedAt)
         } catch (syncError) {
           console.error('Robinhood holdings load failed:', syncError)
           if (syncError?.needsConsent) {
             setStatus(previous => ({ ...(previous || {}), investmentsEnabled: false }))
             setAutoSyncState('needs-consent')
-          } else if (dailyDue) {
+          } else if (scheduledSyncDue) {
             setAutoSyncState('failed')
           }
         }
@@ -676,8 +672,8 @@ export default function RobinhoodSync({
         : null
       if (applied) setResult({ ...applied, priceRefresh })
       if (requestFreshData) {
-        // A manual fresh update counts as today's daily update.
-        try { localStorage.setItem(dailySyncStorageKey(authUser.uid), easternDateKey()) } catch { /* storage unavailable */ }
+        // A manual fresh update supersedes any scheduled sync completed before it.
+        markAppliedSync(authUser.uid, data.refresh?.completedAt)
       }
       setOpen(false)
       setSyncSummary({
@@ -814,13 +810,13 @@ export default function RobinhoodSync({
           autoSyncState === 'syncing'
             ? 'Automatically syncing Robinhood positions'
             : autoSyncState === 'applied'
-              ? 'Today’s automatic update applied the overnight Robinhood positions'
+              ? 'The latest scheduled update (7:00 AM / 4:10 PM ET) was applied'
             : autoSyncState === 'current'
                 ? 'Stock Stickies matches Plaid’s latest available snapshot'
                 : autoSyncState === 'needs-consent'
                   ? 'Open to grant one-time Robinhood Investments permission'
                   : autoSyncState === 'failed'
-                    ? 'Today’s automatic update failed; click to update manually'
+                    ? 'The scheduled update could not be applied; click to update manually'
                   : 'Request fresh share quantities from Robinhood through Plaid'
         }
         aria-label="Sync Robinhood positions"
