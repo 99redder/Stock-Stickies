@@ -1,5 +1,9 @@
 # Stock Stickies — Project Context
 
+> Root `AGENTS.md` mirrors this file for Codex and other AGENTS.md-aware agents, and
+> `mobile/CLAUDE.md` / `mobile/AGENTS.md` summarize the mobile app. Keep each mirror in
+> sync — change both files in the same commit.
+
 ## Overview
 Stock Stickies has **two separate React applications in this repository**:
 
@@ -37,7 +41,7 @@ Sticky-Notes/
 ├── vite.config.js                     # Vite config (react + tailwindcss plugins)
 ├── package.json                       # npm scripts: dev, build, lint, preview
 ├── eslint.config.js
-├── claude.md                          # This project/agent reference
+├── claude.md / AGENTS.md              # This project/agent reference (mirrored)
 ├── ENCRYPTION_IMPLEMENTATION.md
 ├── SECURITY_RECOMMENDATIONS.md
 ├── CNAME                              # www.stockstickies.com (copied into dist/ on deploy)
@@ -72,6 +76,7 @@ Sticky-Notes/
 │       └── RobinhoodSync.jsx          # Plaid "Update positions" (owner only)
 ├── assets/                            # Mirror of public/assets (keep in sync)
 └── mobile/                            # Separate mobile companion application
+    ├── CLAUDE.md / AGENTS.md          # Mobile agent guide (mirrored)
     ├── .openai/hosting.json           # Existing Sites project identity; never replace/invent
     ├── index.html
     ├── package.json
@@ -110,6 +115,9 @@ npm run build
 cp CNAME dist/CNAME
 npx wrangler pages deploy dist --project-name stock-stickies --branch main --commit-dirty=true
 ```
+
+(`npm run deploy:cloudflare` builds and runs the same Wrangler Direct Upload, but does not
+copy `CNAME` into `dist/`; deploys never depend on GitHub Actions.)
 
 Verify by comparing the live bundle hash (`curl -s https://www.stockstickies.com/ | grep -o
 'index-[^"]*\.js'`) with `dist/index.html`. Build from **committed** code only — stash any
