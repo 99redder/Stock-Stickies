@@ -2534,7 +2534,7 @@ const firebaseConfig = {
                     const snap = await getDocs(query(
                         collection(db, 'users', auth.currentUser.uid, 'snapshots'),
                         orderBy('backupCreatedAt', 'desc'),
-                        limit(20)
+                        limit(60)
                     ));
                     const rows = snap.docs.map((docSnap) => {
                         const data = docSnap.data() || {};
@@ -5932,12 +5932,18 @@ const firebaseConfig = {
                                         backupSnapshots.map((backup) => {
                                             const when = backup.backupCreatedAtMs ? new Date(backup.backupCreatedAtMs).toLocaleString() : 'Unknown time';
                                             const notesCount = Array.isArray(backup.notes) ? backup.notes.length : 0;
+                                            // Enough detail to tell a full backup from a partial one.
+                                            const categoriesUsed = new Set((Array.isArray(backup.notes) ? backup.notes : []).map(n => n?.color).filter(Boolean)).size;
+                                            const withText = (Array.isArray(backup.notes) ? backup.notes : []).filter(n => String(n?.text || '').trim()).length;
                                             return (
                                                 <div key={backup.id} className={`p-4 border-b last:border-b-0 ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                                                     <div className="flex items-center justify-between gap-4">
                                                         <div>
                                                             <div className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{when}</div>
-                                                            <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Reason: {backup.backupReason || 'autosave'} • Notes: {notesCount}</div>
+                                                            <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Reason: {backup.backupReason || 'autosave'} • Notes: {notesCount} ({withText} with text) • Categories used: {categoriesUsed}</div>
+                                                            <div className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                                                Finnhub key: {backup.finnhubApiKey ? 'yes' : 'no'} • Nickname: {backup.nickname || '—'} • Photo: {backup.profilePhoto ? 'yes' : 'no'}
+                                                            </div>
                                                         </div>
                                                         <button
                                                             type="button"
