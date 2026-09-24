@@ -249,6 +249,26 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 
 ---
 
+## Backups and Retention
+
+Every save path writes a full copy of the user document to `users/{uid}/snapshots` (autosave
+at most once per 10 minutes per session when notes/categories changed; `manual-sync` and
+`pre-plaid-apply` on each **Update positions**; `restore-backup` on restore). The **Backups**
+modal lists the newest 60 (scrollable) with note/text counts, categories in use, and whether
+the Finnhub key, nickname, and photo are present, so a full backup can be told apart from a
+partial one.
+
+`src/utils/backupRetention.js` (`selectBackupsToPrune`, tests in
+`backupRetention.test.mjs`, run with `npm test`) prunes conservatively: never the newest 30;
+everything from the last 14 days; the newest per local day for 90 days; the newest per
+week for a year; `restore-backup` backups for 90 days; nothing older than a year. A
+background effect runs it at most once a week per user (localStorage
+`stock-stickies-backup-prune-{uid}`), 30s after load, fetching only backups older than 14 days
+plus the newest 30, and deletes in batches of 400. A dry run on the owner's 1,027 backups
+kept 189.
+
+---
+
 ## Owner vs. Regular Accounts
 
 `OWNER_FIREBASE_UID` (desktop `src/App.jsx`), `OWNER_UID` (mobile), `STOCK_STICKIES_OWNER_UID`
@@ -929,6 +949,17 @@ Unclassified notes use `bg-gray-300`.
 ---
 
 ## Race Condition Fixes
+
+### Problem: Owner's document wiped on sign-in (Sep 24, 2026)
+The accounts change added `accountFieldsForSave` to the autosave dependencies. For the owner
+it changes identity the moment auth resolves, so autosave fired right after sign-in, set
+`isSavingRef` (which blocks the Firestore load), and 2s later wrote the empty default state
+over the document — `saveUserDoc` uses `merge: false`. Recovered from the Sep 23 2:31 PM
+backup. **Fix**: autosave, the `beforeunload` save, and `syncNow` all return early until
+`userDataReady`. **Rule**: never let any save path run before the user's document has been
+applied, and treat any new autosave dependency as something that can fire before load.
+Restore now restores every field in a backup and cancels a pending autosave first;
+**Backups** has its own button (it used to live only in the profile-photo menu).
 
 ### Problem: Notes moving to wrong category on color change
 `setCategories()` triggering orphan repair before `setNotes()` completes caused notes to appear orphaned.

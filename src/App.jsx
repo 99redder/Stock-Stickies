@@ -88,10 +88,14 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  Timestamp,
+  where,
+  writeBatch,
 } from 'firebase/firestore'
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check'
 import NoteCard from './components/NoteCard.jsx'
 import { clearFinnhubQuoteCache, fetchFinnhubQuote } from './utils/finnhubQuoteCache.js'
+import { BACKUP_RETENTION, selectBackupsToPrune } from './utils/backupRetention.js'
 
 const TodayAgenda = lazy(() => import('./components/TodayAgenda.jsx'))
 const RobinhoodSync = lazy(() => import('./components/RobinhoodSync.jsx'))
@@ -2552,6 +2556,51 @@ const firebaseConfig = {
                     setBackupsLoading(false);
                 }
             };
+
+            // Weekly background cleanup of this user's own automatic backups (policy and
+            // safety rules in utils/backupRetention.js). Only backups older than the
+            // keep-everything window are fetched, plus the newest few so they're never pruned.
+            useEffect(() => {
+                if (!currentUser || !userDataReady || !db || !auth?.currentUser) return undefined;
+                const uid = auth.currentUser.uid;
+                const storageKey = `stock-stickies-backup-prune-${uid}`;
+                let lastRun = 0;
+                try { lastRun = Number(localStorage.getItem(storageKey)) || 0; } catch { /* storage unavailable */ }
+                if (Date.now() - lastRun < 7 * 24 * 60 * 60 * 1000) return undefined;
+                let cancelled = false;
+                const timer = window.setTimeout(async () => {
+                    try {
+                        const snapshotsRef = collection(db, 'users', uid, 'snapshots');
+                        const keepAllCutoff = Timestamp.fromMillis(Date.now() - BACKUP_RETENTION.KEEP_ALL_DAYS * 24 * 60 * 60 * 1000);
+                        const [newest, older] = await Promise.all([
+                            getDocs(query(snapshotsRef, orderBy('backupCreatedAt', 'desc'), limit(BACKUP_RETENTION.KEEP_NEWEST))),
+                            getDocs(query(snapshotsRef, where('backupCreatedAt', '<', keepAllCutoff), orderBy('backupCreatedAt', 'desc'))),
+                        ]);
+                        if (cancelled) return;
+                        const byId = new Map();
+                        [...newest.docs, ...older.docs].forEach(docSnap => {
+                            const data = docSnap.data() || {};
+                            byId.set(docSnap.id, {
+                                id: docSnap.id,
+                                createdAtMs: data.backupCreatedAt?.toMillis ? data.backupCreatedAt.toMillis() : null,
+                                reason: data.backupReason || '',
+                            });
+                        });
+                        const pruneIds = selectBackupsToPrune([...byId.values()], Date.now());
+                        for (let i = 0; i < pruneIds.length && !cancelled; i += 400) {
+                            const batch = writeBatch(db);
+                            pruneIds.slice(i, i + 400).forEach(id => batch.delete(doc(db, 'users', uid, 'snapshots', id)));
+                            await batch.commit();
+                        }
+                        if (cancelled) return;
+                        try { localStorage.setItem(storageKey, String(Date.now())); } catch { /* storage unavailable */ }
+                        if (pruneIds.length) console.info(`Pruned ${pruneIds.length} old backups.`);
+                    } catch (error) {
+                        console.warn('Backup cleanup skipped:', error);
+                    }
+                }, 30000);
+                return () => { cancelled = true; window.clearTimeout(timer); };
+            }, [currentUser, userDataReady]);
 
             const openBackupManager = async () => {
                 setProfilePhotoMenuOpen(false);

@@ -8,6 +8,7 @@
     "build": "vite build && node scripts/check-bundle-budget.mjs",
     "deploy:cloudflare": "npm run build && wrangler pages deploy dist --project-name stock-stickies --branch main",
     "lint": "eslint .",
+    "test": "node --test src/utils/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
