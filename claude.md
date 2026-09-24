@@ -268,8 +268,36 @@ background effect runs it at most once a week per user (localStorage
 plus the newest 30, and deletes in batches of 20 (halving on "Transaction too big" — each
 delete also removes every index entry of these large documents, so batches of 400 were
 rejected). The Backups window has a **Clean up old backups** button that runs the same
-`runBackupCleanup` on demand and shows progress, the result, or the exact error. A dry run on the owner's 1,027 backups
-kept 189.
+`runBackupCleanup` on demand and shows progress, the result, or the exact error.
+
+The background run happens automatically — users never need the button. A run is recorded
+only after it succeeds, so a failed run retries on the next page load (errors go to the
+console as `Backup cleanup skipped:`). The once-a-week marker is per browser, so a second
+device may run it again in the same week and simply find nothing to remove. The first real
+run (Sep 24, 2026) took the owner from 1,029 backups to 194 — 838 removed, matching the
+dry run — and kept the Sep 23 backup used for the restore.
+
+### Inspecting backups outside the app (recovery runbook)
+
+When the app itself is the problem, read Firestore directly with the Firebase CLI's existing
+login (`firebase login`; project `red-s-stickies`). A small Node script can reuse that login
+via `require('<global node_modules>/firebase-tools/lib/auth.js')` →
+`getGlobalDefaultAccount()` → `getAccessToken(account.tokens.refresh_token, [])`, then call
+the Firestore REST API with `Authorization: Bearer <token>`:
+
+- List backups cheaply:
+  `GET …/documents/users/{uid}/snapshots?pageSize=300&mask.fieldPaths=backupCreatedAt&mask.fieldPaths=backupReason`
+- Inspect one backup (or the live doc) and summarize notes, text, category colors, watch
+  list, key/nickname/photo presence. A **complete** backup has the usual note count, several
+  categories, a watch list, and the key/nickname/photo; a wiped state shows 0 notes, and a
+  post-wipe **Update positions** re-import shows notes all in the first category with no
+  text or watch list.
+- API keys can be checked by decrypting with the same derivation the app uses
+  (PBKDF2 of `uid + '|StockStickies|2024'`, salt `StockStickiesSalt2024`, 100k iterations,
+  SHA-256 → AES-256-GCM) to compare two copies — never print the key.
+
+Keep these scripts read-only; do restores through the app's **Backups** window, which backs
+up the replaced state first.
 
 ---
 
@@ -1134,3 +1162,7 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
   restore now backs up the replaced state first, "Quick Start Guide" renamed **User Guide**
   with a Backups & restore section, a dedicated **Backups** header button, and the owner-only
   Look Ahead (Today agenda) panel removed from Stock Stickies.
+- **Backup cleanup fix:** batches of 400 deletes failed with "Transaction too big"; now 20 per
+  batch (halving on that error), plus a **Clean up old backups** button. First run removed
+  838 of the owner's 1,029 backups (194 remain).
+- **User Guide button:** plain gradient, no outline ring; focus ring only for keyboard focus.
