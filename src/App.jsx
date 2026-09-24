@@ -6467,7 +6467,7 @@ const firebaseConfig = {
                                     <button
                                         type="button"
                                         onClick={() => setQuickStartOpen(true)}
-                                        className={`ml-3 px-3 py-1 rounded-md text-xs font-extrabold tracking-wide border border-transparent bg-gradient-to-r from-fuchsia-500 via-purple-500 to-emerald-400 text-gray-900 shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60 ${darkMode ? 'ring-1 ring-white/10 shadow-fuchsia-500/25' : 'ring-1 ring-black/5 shadow-fuchsia-500/15'}`}
+                                        className={`ml-3 px-3 py-1 rounded-md text-xs font-extrabold tracking-wide bg-gradient-to-r from-fuchsia-500 via-purple-500 to-emerald-400 text-gray-900 shadow-lg hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/60 ${darkMode ? 'shadow-fuchsia-500/25' : 'shadow-fuchsia-500/15'}`}
                                         title="Open the User Guide"
                                     >
                                         User Guide
