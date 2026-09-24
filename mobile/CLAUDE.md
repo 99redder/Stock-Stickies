@@ -96,7 +96,7 @@ Current visible release: **Build 39** (released 2026-09-23 via Sites from commit
 
 ## Legacy repo
 
-The GitHub repo `99redder/stock-stickies-mobile` (last commit Jul 25, 2026) is an **old
-standalone copy** that predates this `mobile/` folder — it still has the removed allocation
+The GitHub repo `99redder/stock-stickies-mobile` (last commit Jul 25, 2026; **archived**,
+read-only, on 2026-09-24) is an **old standalone copy** that predates this `mobile/` folder — it still has the removed allocation
 donut and no Sites project id. Its local checkout (`~/Websites/Stock-Stickies-Mobile`) was
 removed on 2026-09-24. Don't clone, edit, or release from it; `mobile/` is the only source.
