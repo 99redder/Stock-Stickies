@@ -25,9 +25,15 @@ const MAX_REMEMBERED_DISMISSALS = 500
 const MAX_SYMBOL_LENGTH = 24
 const SUBSCRIPTION_PROBE_DELAY_MS = 350
 const SNAPSHOT_INTERVAL_MS = 1250
-const STARTUP_SNAPSHOT_BURST_SIZE = 8
+// Finnhub's free REST limit is 60 calls/minute (and 30/second) per key, shared with
+// the rest of the app. The startup burst spends part of that budget at once, then a
+// sliding one-minute window keeps the steady pace under it with some headroom.
+const STARTUP_SNAPSHOT_BURST_SIZE = 25
+const SNAPSHOT_REQUESTS_PER_MINUTE = 50
+// A streamed symbol with no trade for this long (since it last traded, or since it
+// was subscribed) gets a REST snapshot, then another every interval while quiet.
 const STALE_STREAM_AFTER_MS = 15000
-const STALE_STREAM_SNAPSHOT_INTERVAL_MS = 60000
+const STALE_STREAM_SNAPSHOT_INTERVAL_MS = 30000
 const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 const DASHBOARD_THEMES = [
@@ -576,7 +582,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
                         : isFresh
                             ? `LIVE · ${formatQuoteTime(liveTimestamp)}`
                             : quote?.cachedAt
-                                ? `CACHED · ${formatQuoteTime(quote.cachedAt)}`
+                                ? (streamEnabled ? 'SAVED · AWAITING TRADE' : 'SAVED · IN QUEUE')
                                 : quote?.lastEventAt
                                     ? `${!isCrypto && !isRegularUsMarketSession() ? 'MARKET CLOSED' : 'STREAM IDLE'} · ${formatQuoteTime(liveTimestamp)}`
                                     : quote?.snapshotAt
@@ -584,6 +590,15 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
                                         : connectionState === 'missing-key'
                                             ? 'API KEY NEEDED'
                                             : streamEnabled ? 'STREAM READY' : 'QUEUED'
+    const feedTitle = feedLabel.startsWith('SAVED')
+        ? streamEnabled
+            ? `Price saved at ${formatQuoteTime(quote.cachedAt)}. Streaming live, but no trade has arrived yet; a snapshot will refresh it shortly.`
+            : `Price saved at ${formatQuoteTime(quote.cachedAt)}. Beyond Finnhub's live-stream limit, so it refreshes with paced snapshots and is waiting its turn.`
+        : feedLabel.startsWith('SNAPSHOT ONLY')
+            ? "Beyond Finnhub's live-stream limit; refreshed with paced snapshots."
+            : feedLabel.startsWith('SNAPSHOT')
+                ? 'Streaming live, but no recent trade; showing the latest snapshot.'
+                : undefined
 
     const save = () => {
         const next = cleanSymbol(draft)
@@ -655,7 +670,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
                             {widget.priority ? '★' : '☆'}
                         </button>
                     )}
-                    <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`}>{feedLabel}</span>
+                    <span className={`quote-freshness ${isFresh ? 'is-live' : ''}`} title={feedTitle}>{feedLabel}</span>
                 </span>
                 {quote?.events ? (
                     <span className="quote-tick-count" title={`${quote.events.toLocaleString()} live trade events`}>
@@ -878,6 +893,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const reconnectTimerRef = useRef(null)
     const snapshotRequestTimesRef = useRef({})
     const lastSnapshotRequestAtRef = useRef(0)
+    const snapshotRequestLogRef = useRef([])
+    const subscribedAtRef = useRef({})
+    const layoutsRef = useRef(initial.layouts)
+    layoutsRef.current = layouts
     const subscriptionTimerRef = useRef(null)
     const lastSubscriptionAttemptRef = useRef('')
     const subscriptionCapRef = useRef(initialSubscriptionCap)
@@ -1154,6 +1173,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 lastSubscriptionAttemptRef.current = symbol
                 socket.send(JSON.stringify({ type: 'subscribe', symbol }))
                 subscribed.add(symbol)
+                subscribedAtRef.current[symbol] = Date.now()
             })
             setStreamedSymbols([...subscribed])
             return undefined
@@ -1165,6 +1185,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             lastSubscriptionAttemptRef.current = symbol
             socket.send(JSON.stringify({ type: 'subscribe', symbol }))
             subscribed.add(symbol)
+            subscribedAtRef.current[symbol] = Date.now()
             setStreamedSymbols([...subscribed])
             subscriptionTimerRef.current = setTimeout(subscribeNext, SUBSCRIPTION_PROBE_DELAY_MS)
         }
@@ -1179,17 +1200,38 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         if (!apiKey) return undefined
         const controller = new AbortController()
         const targetMetadata = new Map()
-        widgets.forEach((widget, index) => {
+        // Rank widgets by where they sit on screen (top-to-bottom, left-to-right in
+        // the wide layout) so the queue fills in what the user is looking at first.
+        const layoutPositions = new Map((layoutsRef.current?.lg || []).map((item) => [item.i, item]))
+        const screenRank = new Map([...widgets]
+            .sort((a, b) => {
+                const aItem = layoutPositions.get(a.id)
+                const bItem = layoutPositions.get(b.id)
+                return ((aItem?.y ?? Infinity) - (bItem?.y ?? Infinity)) || ((aItem?.x ?? 0) - (bItem?.x ?? 0))
+            })
+            .map((widget, rank) => [widget.id, rank]))
+        widgets.forEach((widget) => {
             if (isDailyMacroSymbol(widget.symbol)) return
             const symbol = providerSymbol(widget.symbol)
             if (!symbol || symbol.includes(':')) return
             const existing = targetMetadata.get(symbol)
+            const rank = screenRank.get(widget.id) ?? Infinity
             targetMetadata.set(symbol, {
-                index: existing?.index ?? index,
+                index: Math.min(existing?.index ?? Infinity, rank),
                 priority: Boolean(existing?.priority || widget.priority)
             })
         })
         const targets = [...targetMetadata.keys()]
+        // Symbols the stream will take once connected (same order and remembered cap
+        // as the subscription effect); the startup burst spends its budget elsewhere.
+        const expectedStreamedSymbols = (() => {
+            const cap = subscriptionCapRef.current
+            const streamable = widgets.filter((widget) => !isDailyMacroSymbol(widget.symbol))
+            const ordered = [...new Set([...streamable.filter((widget) => widget.priority), ...streamable.filter((widget) => !widget.priority)]
+                .map((widget) => providerSymbol(widget.symbol))
+                .filter(Boolean))]
+            return new Set(cap === null ? ordered : ordered.slice(0, cap))
+        })()
         const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
         let rateLimitCooldownUntil = 0
         const retryAfterBySymbol = {}
@@ -1206,8 +1248,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 const attemptedAt = snapshotRequestTimesRef.current[symbol] || 0
                 if (needsInitialData && now - attemptedAt < 60000) return false
                 const isSubscribed = subscribedSymbolsRef.current.has(symbol)
-                const lastEventAt = Number(quote.lastEventAt) || 0
-                const streamIsStale = isSubscribed && (!lastEventAt || now - lastEventAt >= STALE_STREAM_AFTER_MS)
+                const quietSince = Math.max(Number(quote.lastEventAt) || 0, subscribedAtRef.current[symbol] || 0)
+                const streamIsStale = isSubscribed && now - quietSince >= STALE_STREAM_AFTER_MS
                 const staleSnapshotIsDue = streamIsStale && now - attemptedAt >= STALE_STREAM_SNAPSHOT_INTERVAL_MS
                 const baselineSnapshotIsDue = quote.baselineCheckedDate !== checkedDate
                 return needsInitialData || !isSubscribed || staleSnapshotIsDue || baselineSnapshotIsDue
@@ -1236,6 +1278,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         const requestSnapshot = async (symbol) => {
             snapshotRequestTimesRef.current[symbol] = Date.now()
             lastSnapshotRequestAtRef.current = Date.now()
+            snapshotRequestLogRef.current.push(Date.now())
             try {
                 const data = await fetchFinnhubQuote(symbol, apiKey, { maxAgeMs: 5000 })
                 if (controller.signal.aborted) return
@@ -1278,16 +1321,23 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             }
         }
 
+        // Requests made in the last minute, across effect restarts (the log is a ref).
+        const requestsInLastMinute = () => {
+            const cutoff = Date.now() - 60000
+            const log = snapshotRequestLogRef.current
+            while (log.length && log[0] <= cutoff) log.shift()
+            return log.length
+        }
+
         const loadSnapshots = async () => {
-            const checkedDate = getEasternMarketDate()
-            const startupTargets = getEligibleTargets()
-                .filter((symbol) => {
-                    const quote = quotesRef.current[symbol] || {}
-                    const hasPrice = Number.isFinite(quote.price) && quote.price > 0
-                    const hasBaseline = Number.isFinite(quote.previousClose) && quote.previousClose > 0
-                    return !hasPrice || !hasBaseline || quote.baselineCheckedDate !== checkedDate
-                })
-                .slice(0, STARTUP_SNAPSHOT_BURST_SIZE)
+            // Startup burst: symbols that won't stream first (they have no other way
+            // to refresh), then the rest, each group in screen order.
+            const eligibleAtStart = getEligibleTargets()
+            const burstSize = Math.max(0, Math.min(STARTUP_SNAPSHOT_BURST_SIZE, SNAPSHOT_REQUESTS_PER_MINUTE - requestsInLastMinute()))
+            const startupTargets = [
+                ...eligibleAtStart.filter((symbol) => !expectedStreamedSymbols.has(symbol)),
+                ...eligibleAtStart.filter((symbol) => expectedStreamedSymbols.has(symbol))
+            ].slice(0, burstSize)
 
             if (startupTargets.length > 0) await Promise.all(startupTargets.map(requestSnapshot))
 
@@ -1303,12 +1353,20 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                     continue
                 }
 
+                const windowFullFor = requestsInLastMinute() >= SNAPSHOT_REQUESTS_PER_MINUTE
+                    ? snapshotRequestLogRef.current[0] + 60000 - Date.now() + 50
+                    : 0
                 const rateLimitDelay = Math.max(
                     0,
                     SNAPSHOT_INTERVAL_MS - (Date.now() - lastSnapshotRequestAtRef.current),
-                    rateLimitCooldownUntil - Date.now()
+                    rateLimitCooldownUntil - Date.now(),
+                    windowFullFor
                 )
-                if (rateLimitDelay) await wait(rateLimitDelay)
+                if (rateLimitDelay) {
+                    await wait(rateLimitDelay)
+                    // The eligible list is stale after a wait; pick again next pass.
+                    continue
+                }
                 if (controller.signal.aborted) return
 
                 const symbol = eligible[0]
