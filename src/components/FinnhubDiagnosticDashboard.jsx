@@ -170,47 +170,90 @@ const layoutHasCollisions = (layout) => Array.isArray(layout) && layout.some((it
     layout.slice(index + 1).some((other) => layoutItemsCollide(item, other))
 ))
 
+const isThemeHeaderItem = (item) => typeof item?.i === 'string' && item.i.startsWith('theme-heading-')
+
+const overlapsColumns = (item, x, w) => item.x < x + w && item.x + item.w > x
+
+// Places a widget inside its theme's section. A full section grows by one row: the
+// sections stacked below it in the same columns shift down to make room, so a new
+// tile never spills into the next group's empty slots.
+const appendWidgetToLayout = (layout, columns, existingWidgets, widget) => {
+    let nextLayout = [...layout]
+    let header = nextLayout.find((item) => item.i === themeHeaderId(widget.themeId))
+
+    if (!header) {
+        const clusterColumns = columns >= 24 ? 3 : columns >= 12 ? 2 : 1
+        const clusterGap = 1
+        const clusterWidth = Math.floor((columns - clusterGap * (clusterColumns - 1)) / clusterColumns)
+        const bottom = nextLayout.reduce((maximum, item) => Math.max(maximum, item.y + item.h), 0)
+        header = { i: themeHeaderId(widget.themeId), x: 0, y: bottom + 1, w: clusterWidth, h: 1, static: true }
+        nextLayout.push(header)
+    }
+
+    const themeWidgetIds = new Set(existingWidgets.filter((item) => item.themeId === widget.themeId && item.id !== widget.id).map((item) => item.id))
+    const themeLayoutItems = nextLayout.filter((item) => themeWidgetIds.has(item.i))
+    const template = themeLayoutItems[0]
+    const width = Math.min(template?.w || Math.max(2, Math.floor(header.w / (header.w >= 9 ? 3 : header.w >= 6 ? 2 : 1))), header.w)
+    const height = template?.h || 2
+    const sectionIds = new Set([header.i, ...themeLayoutItems.map((item) => item.i)])
+    const sectionBottom = Math.max(header.y + 1, ...themeLayoutItems.map((item) => item.y + item.h))
+    const makeItem = (x, y) => ({ i: widget.id, x, y, w: width, h: height, minW: 2, minH: 2, maxW: 8, maxH: 5 })
+
+    // A free slot inside the section's current rows.
+    for (let y = header.y + 1; y + height <= sectionBottom; y += height) {
+        for (let x = header.x; x + width <= header.x + header.w; x += width) {
+            const candidate = makeItem(x, y)
+            if (!nextLayout.some((item) => layoutItemsCollide(candidate, item))) return [...nextLayout, candidate]
+        }
+    }
+
+    // Otherwise add a row under the section, pushing what sits below it down.
+    const placement = makeItem(header.x, sectionBottom)
+    const shiftBelow = (items, onlySectionColumns) => items.map((item) => (
+        !sectionIds.has(item.i) && item.y + item.h > sectionBottom && (!onlySectionColumns || overlapsColumns(item, header.x, header.w))
+            ? { ...item, y: item.y + height }
+            : item
+    ))
+    let shifted = shiftBelow(nextLayout, true)
+    if (layoutHasCollisions([...shifted, placement])) shifted = shiftBelow(nextLayout, false)
+    return [...shifted, placement]
+}
+
 const appendWidgetToLayouts = (currentLayouts, existingWidgets, widget) => Object.fromEntries(
     Object.entries(GRID_COLUMNS).map(([breakpoint, columns]) => {
         const layout = Array.isArray(currentLayouts?.[breakpoint]) ? currentLayouts[breakpoint] : createGodelLayout(existingWidgets, columns)
-        const nextLayout = [...layout]
-        let header = nextLayout.find((item) => item.i === themeHeaderId(widget.themeId))
-
-        if (!header) {
-            const clusterColumns = columns >= 24 ? 3 : columns >= 12 ? 2 : 1
-            const clusterGap = 1
-            const clusterWidth = Math.floor((columns - clusterGap * (clusterColumns - 1)) / clusterColumns)
-            const bottom = nextLayout.reduce((maximum, item) => Math.max(maximum, item.y + item.h), 0)
-            header = { i: themeHeaderId(widget.themeId), x: 0, y: bottom + 1, w: clusterWidth, h: 1, static: true }
-            nextLayout.push(header)
-        }
-
-        const themeWidgetIds = new Set(existingWidgets.filter((item) => item.themeId === widget.themeId).map((item) => item.id))
-        const themeLayoutItems = nextLayout.filter((item) => themeWidgetIds.has(item.i))
-        const template = themeLayoutItems[0]
-        const width = Math.min(template?.w || Math.max(2, Math.floor(header.w / (header.w >= 9 ? 3 : header.w >= 6 ? 2 : 1))), header.w)
-        const height = template?.h || 2
-        const maxCandidateY = nextLayout.reduce((maximum, item) => Math.max(maximum, item.y + item.h), header.y + 1) + height + 2
-        let placement = null
-
-        for (let y = header.y + 1; y <= maxCandidateY && !placement; y += height) {
-            for (let x = header.x; x + width <= header.x + header.w; x += width) {
-                const candidate = { i: widget.id, x, y, w: width, h: height, minW: 2, minH: 2, maxW: 8, maxH: 5 }
-                if (!nextLayout.some((item) => layoutItemsCollide(candidate, item))) {
-                    placement = candidate
-                    break
-                }
-            }
-        }
-
-        if (!placement) {
-            const bottom = nextLayout.reduce((maximum, item) => Math.max(maximum, item.y + item.h), 0)
-            placement = { i: widget.id, x: header.x, y: bottom + 1, w: width, h: height, minW: 2, minH: 2, maxW: 8, maxH: 5 }
-        }
-        nextLayout.push(placement)
-        return [breakpoint, nextLayout]
+        return [breakpoint, appendWidgetToLayout(layout, columns, existingWidgets, widget)]
     })
 )
+
+// Earlier builds dropped a new tile into the first free slot below a full section,
+// which could be inside the next group (an Energy ticker among Health Care). Move any
+// tile whose nearest group header above it is another group's back into its own.
+const repairStrandedWidgets = ({ widgets, layouts }) => {
+    const widgetById = new Map(widgets.map((widget) => [widget.id, widget]))
+    const nextLayouts = Object.fromEntries(Object.entries(layouts).map(([breakpoint, layout]) => {
+        if (!Array.isArray(layout)) return [breakpoint, layout]
+        const headers = layout.filter(isThemeHeaderItem)
+        const stranded = layout.filter((item) => {
+            const widget = widgetById.get(item.i)
+            if (!widget) return false
+            const owner = headers
+                .filter((header) => header.y < item.y && overlapsColumns(item, header.x, header.w))
+                .sort((a, b) => b.y - a.y)[0]
+            return owner && owner.i !== themeHeaderId(widget.themeId)
+                && headers.some((header) => header.i === themeHeaderId(widget.themeId))
+        })
+        if (stranded.length === 0) return [breakpoint, layout]
+        const strandedIds = new Set(stranded.map((item) => item.i))
+        let nextLayout = layout.filter((item) => !strandedIds.has(item.i))
+        stranded.forEach((item) => {
+            const placedWidgets = widgets.filter((widget) => nextLayout.some((placed) => placed.i === widget.id))
+            nextLayout = appendWidgetToLayout(nextLayout, GRID_COLUMNS[breakpoint] || 30, placedWidgets, widgetById.get(item.i))
+        })
+        return [breakpoint, nextLayout]
+    }))
+    return { widgets, layouts: nextLayouts }
+}
 
 // Older dashboard versions appended newly-created sections to column zero.
 // Reflow each complete section into a round-robin column assignment so the
@@ -360,7 +403,7 @@ const loadSavedDashboard = (persistedDashboard) => {
         }
         // Persisting the version lets users remove or customize these tiles later
         // without the next reload adding them back.
-        return migrateDashboardThemes({ widgets, layouts }, Number(saved.version) || 0)
+        return repairStrandedWidgets(migrateDashboardThemes({ widgets, layouts }, Number(saved.version) || 0))
     } catch {
         const starter = createStarterWidgets()
         return { widgets: starter, layouts: createDashboardLayouts(starter) }

@@ -582,6 +582,13 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
   `/api/quotes` fails. It paces under 50 calls per rolling minute (the key's 60/min limit
   is shared with the rest of the app), starts with a 25-call burst after waiting ≤3s for
   the first batch, and goes in on-screen order. Crypto (BTC) and DGS30 are not batched.
+- Adding a ticker (`appendWidgetToLayout`) fills a free slot inside its group, otherwise
+  grows the group by a row and shifts the groups below it (same columns) down. It must
+  never take the first free slot further down: groups are stacked with a one-row gap
+  and tiles are two rows tall, so that slot belongs to the next group (an Energy ticker
+  once landed in Health Care, and `preventCollision` left no way to drag it back).
+  `repairStrandedWidgets` runs on load and moves any tile whose nearest header above it
+  belongs to another group back into its own.
 - Feed labels: **SAVED · AWAITING TRADE** (saved price, streamed symbol), **SAVED · IN
   QUEUE** (saved price, beyond the stream cap), **SNAPSHOT ONLY** (refreshed by batch or
   REST, beyond the cap), **SNAPSHOT** (streamed but quiet). Each has a hover tooltip.
