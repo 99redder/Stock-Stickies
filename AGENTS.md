@@ -49,7 +49,8 @@ Sticky-Notes/
 ├── .github/workflows/deploy.yml       # Manual-only fallback GitHub Pages workflow
 ├── functions/api/                     # Cloudflare Pages Functions (public, no auth):
 │   ├── news/breaking.js               #   breaking-news feed for the Live Dashboard
-│   └── treasury/dgs30.js              #   30-year Treasury yield (DGS30 widget)
+│   ├── treasury/dgs30.js              #   30-year Treasury yield (DGS30 widget)
+│   └── quotes.js                      #   batch quotes for non-streaming dashboard widgets
 ├── worker/                            # Ask K Worker (stock-stickies-askk) — deploy with
 │   ├── wrangler.toml                  #   `npx wrangler deploy --config wrangler.toml` from worker/
 │   └── src/index.js                   #   (plain `wrangler` there picks up the Pages config)
@@ -555,7 +556,8 @@ the long-form reference and includes a Backups & restore section.
 
 `FinnhubDiagnosticDashboard.jsx` — available to **every** signed-in user on desktop; the tab
 is hidden below the `md` breakpoint and mobile has no dashboard. It needs only the user's
-Finnhub key plus the public Pages Functions (`/api/news/breaking`, `/api/treasury/dgs30`).
+Finnhub key plus the public Pages Functions (`/api/news/breaking`, `/api/treasury/dgs30`,
+`/api/quotes`).
 Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fallback).
 
 - Onboarding can install a starter pack instead (see Onboarding Walkthrough).
@@ -570,6 +572,19 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
   versions stacked in column zero (v13). The starter/reset paths bypass migration.
 - With no key, the amber notice "Add your free Finnhub API key…" carries a **Set up API
   keys →** action (`onSetupApiKeys`) that opens the walkthrough at the Finnhub step.
+- **How quotes refresh.** Finnhub's free WebSocket streams at most 50 symbols (the cap is
+  detected once and remembered 7 days); the full theme set is 88. Everything not actively
+  streaming — beyond the cap, or subscribed but without a trade for 15s — refreshes every
+  15s from `/api/quotes` (`functions/api/quotes.js`): one request, Yahoo's spark endpoint
+  in chunks of 20 (its limit), 10s edge cache, `VIX` → `^VIX` and `BRK.B` → `BRK-B`
+  mapping. It spends no Finnhub calls. The per-symbol Finnhub REST queue is the fallback:
+  it skips any symbol the batch priced in the last 60s, so it takes over by itself if
+  `/api/quotes` fails. It paces under 50 calls per rolling minute (the key's 60/min limit
+  is shared with the rest of the app), starts with a 25-call burst after waiting ≤3s for
+  the first batch, and goes in on-screen order. Crypto (BTC) and DGS30 are not batched.
+- Feed labels: **SAVED · AWAITING TRADE** (saved price, streamed symbol), **SAVED · IN
+  QUEUE** (saved price, beyond the stream cap), **SNAPSHOT ONLY** (refreshed by batch or
+  REST, beyond the cap), **SNAPSHOT** (streamed but quiet). Each has a hover tooltip.
 
 ---
 

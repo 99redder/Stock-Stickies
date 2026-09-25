@@ -34,6 +34,12 @@ const SNAPSHOT_REQUESTS_PER_MINUTE = 50
 // was subscribed) gets a REST snapshot, then another every interval while quiet.
 const STALE_STREAM_AFTER_MS = 15000
 const STALE_STREAM_SNAPSHOT_INTERVAL_MS = 30000
+// Non-streaming widgets refresh together from /api/quotes (one request, no Finnhub
+// calls). A symbol the batch priced recently is skipped by the per-symbol Finnhub
+// queue, which takes over on its own if the batch endpoint stops answering.
+const QUOTES_BATCH_ENDPOINT = '/api/quotes'
+const BATCH_POLL_INTERVAL_MS = 15000
+const BATCH_COVERAGE_MS = 60000
 const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 const DASHBOARD_THEMES = [
@@ -593,9 +599,9 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
     const feedTitle = feedLabel.startsWith('SAVED')
         ? streamEnabled
             ? `Price saved at ${formatQuoteTime(quote.cachedAt)}. Streaming live, but no trade has arrived yet; a snapshot will refresh it shortly.`
-            : `Price saved at ${formatQuoteTime(quote.cachedAt)}. Beyond Finnhub's live-stream limit, so it refreshes with paced snapshots and is waiting its turn.`
+            : `Price saved at ${formatQuoteTime(quote.cachedAt)}. Beyond Finnhub's live-stream limit, so it refreshes with snapshots about every 15 seconds and is waiting for the next one.`
         : feedLabel.startsWith('SNAPSHOT ONLY')
-            ? "Beyond Finnhub's live-stream limit; refreshed with paced snapshots."
+            ? "Beyond Finnhub's live-stream limit; refreshed with a snapshot about every 15 seconds."
             : feedLabel.startsWith('SNAPSHOT')
                 ? 'Streaming live, but no recent trade; showing the latest snapshot.'
                 : undefined
@@ -895,6 +901,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const lastSnapshotRequestAtRef = useRef(0)
     const snapshotRequestLogRef = useRef([])
     const subscribedAtRef = useRef({})
+    const batchCoveredAtRef = useRef({})
+    const batchSettledAtRef = useRef(0)
     const layoutsRef = useRef(initial.layouts)
     layoutsRef.current = layouts
     const subscriptionTimerRef = useRef(null)
@@ -1068,7 +1076,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                             subscriptionCapRef.current = accepted.length
                             localStorage.setItem(SUBSCRIPTION_CAP_KEY, JSON.stringify({ cap: accepted.length, detectedAt: Date.now() }))
                             setStreamedSymbols(accepted)
-                            setSubscriptionNotice(`Finnhub accepted ${accepted.length} simultaneous symbols on this API key. The remaining widgets will continue with paced snapshots.`)
+                            setSubscriptionNotice(`Finnhub accepted ${accepted.length} simultaneous symbols on this API key. The remaining widgets refresh with snapshots about every 15 seconds.`)
                             setConnectionError('')
                         } else {
                             setConnectionError(providerMessage)
@@ -1166,7 +1174,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         if (knownCap !== null) {
             const snapshotOnlyCount = Math.max(0, wanted.size - desired.size)
             setSubscriptionNotice(snapshotOnlyCount
-                ? `Finnhub accepted ${knownCap} simultaneous symbols on this API key. ${snapshotOnlyCount} widget${snapshotOnlyCount === 1 ? '' : 's'} will use paced snapshots.`
+                ? `Finnhub accepted ${knownCap} simultaneous symbols on this API key. ${snapshotOnlyCount} widget${snapshotOnlyCount === 1 ? ' refreshes' : 's refresh'} with snapshots about every 15 seconds.`
                 : '')
 
             queue.forEach((symbol) => {
@@ -1241,6 +1249,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             const checkedDate = getEasternMarketDate(now)
             return targets.filter((symbol) => {
                 if (now < (retryAfterBySymbol[symbol] || 0)) return false
+                if (now - (batchCoveredAtRef.current[symbol] || 0) < BATCH_COVERAGE_MS) return false
                 const quote = quotesRef.current[symbol] || {}
                 const hasPrice = Number.isFinite(quote.price) && quote.price > 0
                 const hasBaseline = Number.isFinite(quote.previousClose) && quote.previousClose > 0
@@ -1330,6 +1339,11 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         }
 
         const loadSnapshots = async () => {
+            // Give the first batch request a moment to land so the Finnhub burst only
+            // spends calls on what it could not price.
+            const waitStartedAt = Date.now()
+            while (!batchSettledAtRef.current && Date.now() - waitStartedAt < 3000 && !controller.signal.aborted) await wait(100)
+            if (controller.signal.aborted) return
             // Startup burst: symbols that won't stream first (they have no other way
             // to refresh), then the rest, each group in screen order.
             const eligibleAtStart = getEligibleTargets()
@@ -1377,6 +1391,79 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         loadSnapshots()
         return () => controller.abort()
     }, [apiKey, quoteStore, symbolKey, widgets])
+
+    useEffect(() => {
+        const controller = new AbortController()
+        const targets = [...new Set(widgets
+            .filter((widget) => !isDailyMacroSymbol(widget.symbol))
+            .map((widget) => providerSymbol(widget.symbol))
+            .filter((symbol) => symbol && !symbol.includes(':')))]
+        if (targets.length === 0) return undefined
+        let timer = null
+
+        const poll = async () => {
+            if (controller.signal.aborted) return
+            if (documentVisibleRef.current) {
+                const now = Date.now()
+                // Everything not actively streaming: beyond the stream cap, or
+                // subscribed but without a trade for STALE_STREAM_AFTER_MS.
+                const symbols = targets.filter((symbol) => {
+                    if (!subscribedSymbolsRef.current.has(symbol)) return true
+                    const quote = quotesRef.current[symbol] || {}
+                    const quietSince = Math.max(Number(quote.lastEventAt) || 0, subscribedAtRef.current[symbol] || 0)
+                    return now - quietSince >= STALE_STREAM_AFTER_MS
+                }).sort()
+                if (symbols.length > 0) {
+                    try {
+                        const response = await fetch(`${QUOTES_BATCH_ENDPOINT}?symbols=${encodeURIComponent(symbols.join(','))}`, { signal: controller.signal })
+                        if (!response.ok) throw new Error(`Quote batch returned ${response.status}`)
+                        const data = await response.json()
+                        const receivedAt = Date.now()
+                        Object.entries(data?.quotes || {}).forEach(([symbol, batchQuote]) => {
+                            const price = Number(batchQuote?.price)
+                            if (!Number.isFinite(price) || price <= 0) return
+                            const previous = quotesRef.current[symbol] || {}
+                            // A trade that arrived while the request was in flight is newer.
+                            if (previous.lastEventAt && previous.lastEventAt > now) return
+                            const previousClose = Number(batchQuote.previousClose)
+                            const validPreviousClose = Number.isFinite(previousClose) && previousClose > 0
+                            const providerTimestamp = Number(batchQuote.timestamp) || receivedAt
+                            const nextQuote = {
+                                ...previous,
+                                price,
+                                previousClose: validPreviousClose ? previousClose : previous.previousClose,
+                                change: Number.isFinite(Number(batchQuote.change)) ? Number(batchQuote.change) : previous.change,
+                                changePercent: Number.isFinite(Number(batchQuote.changePercent)) ? Number(batchQuote.changePercent) : previous.changePercent,
+                                high: Number(batchQuote.high) || previous.high || null,
+                                low: Number(batchQuote.low) || previous.low || null,
+                                cachedAt: null,
+                                snapshotAt: receivedAt,
+                                ...(validPreviousClose ? {
+                                    baselineMarketDate: getEasternMarketDate(providerTimestamp),
+                                    baselineCheckedDate: getEasternMarketDate(receivedAt)
+                                } : {}),
+                                error: null
+                            }
+                            batchCoveredAtRef.current[symbol] = receivedAt
+                            quotesRef.current[symbol] = nextQuote
+                            quoteStore.publish(symbol, nextQuote)
+                        })
+                    } catch (error) {
+                        if (error?.name === 'AbortError') return
+                        // The Finnhub queue picks these symbols up once coverage lapses.
+                    }
+                    batchSettledAtRef.current = Date.now()
+                }
+            }
+            if (!controller.signal.aborted) timer = setTimeout(poll, BATCH_POLL_INTERVAL_MS)
+        }
+
+        poll()
+        return () => {
+            controller.abort()
+            if (timer) clearTimeout(timer)
+        }
+    }, [quoteStore, symbolKey, widgets])
 
     const addWidget = () => {
         const symbol = cleanSymbol(newSymbol)
