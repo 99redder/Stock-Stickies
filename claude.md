@@ -837,8 +837,14 @@ total, accounts, spy }] }`, percent, first point = Dec 31 at 0). The chart alway
 All Accounts, whatever the account filter, and blurs with `hidePortfolioValues`.
 Its figure can differ from the headline Modified Dietz / Robinhood-anchored YTD, and the card
 says so. Account-days with an unexplained move beyond ±25% (`RISK_MAX_DAILY_RETURN`, an
-unreported deposit/withdrawal — e.g. Individual on Sep 24, 2026) are skipped in both the
-chart and the Sharpe/drawdown/beta stats.
+unreported move — e.g. Individual on Sep 24, 2026, when its crypto account first appeared in
+Plaid) are skipped in both the chart and the Sharpe/drawdown/beta stats.
+
+The IRAs' 2026 flows are manual (`cashFlowCoverageThrough` Jul 8): a $7,725 Roth contribution
+on Feb 26 ($7,500 + $225 Robinhood match) was recharacterized to Traditional on Jul 8 as
+$9,044.72 with earnings (Roth −, Traditional +). Open issue: Individual's Jul 26 Robinhood
+anchor value ($13,174) excludes the crypto account (~$12.5k), whose later withdrawals are
+counted as flows, inflating Individual's headline YTD.
 
 ### Reconciled 2026 YTD Performance
 
