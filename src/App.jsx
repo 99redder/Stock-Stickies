@@ -7476,7 +7476,36 @@ const firebaseConfig = {
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-4">
-                                    {/* Pie Chart - Large */}
+                                    {/* Panel selector — sits above the portfolio card */}
+                                    <div className={`self-start inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
+                                        <button
+                                            onClick={() => setPortfolioPanel('allocation')}
+                                            aria-pressed={shownPortfolioPanel === 'allocation'}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'allocation' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                            title="Donut, sector, or map view of your holdings"
+                                        >
+                                            Allocation
+                                        </button>
+                                        {ytdChartSeries && (
+                                            <button
+                                                onClick={() => setPortfolioPanel('ytd')}
+                                                aria-pressed={shownPortfolioPanel === 'ytd'}
+                                                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'ytd' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                title="All accounts YTD return compared with SPY"
+                                            >
+                                                YTD vs SPY
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setPortfolioPanel('positions')}
+                                            aria-pressed={shownPortfolioPanel === 'positions'}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'positions' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                            title="Market value, cost basis, and unrealized P&L for each holding"
+                                        >
+                                            Positions
+                                        </button>
+                                    </div>
+                                    {/* Portfolio card: allocation / YTD vs SPY / positions */}
                                     <div ref={portfolioCardRef} className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`} style={shownPortfolioPanel === 'positions' ? {minHeight: '650px'} : {height: '650px'}}>
                                         <div className="flex items-center justify-between mb-4">
                                             <div className="flex items-center gap-3">
@@ -7506,34 +7535,6 @@ const firebaseConfig = {
                                                 </div>
                                             </div>
                                             <div className="flex flex-wrap items-center justify-end gap-3">
-                                                <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
-                                                    <button
-                                                        onClick={() => setPortfolioPanel('allocation')}
-                                                        aria-pressed={shownPortfolioPanel === 'allocation'}
-                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'allocation' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
-                                                        title="Donut, sector, or map view of your holdings"
-                                                    >
-                                                        Allocation
-                                                    </button>
-                                                    {ytdChartSeries && (
-                                                        <button
-                                                            onClick={() => setPortfolioPanel('ytd')}
-                                                            aria-pressed={shownPortfolioPanel === 'ytd'}
-                                                            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'ytd' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
-                                                            title="All accounts YTD return compared with SPY"
-                                                        >
-                                                            YTD vs SPY
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => setPortfolioPanel('positions')}
-                                                        aria-pressed={shownPortfolioPanel === 'positions'}
-                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'positions' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
-                                                        title="Market value, cost basis, and unrealized P&L for each holding"
-                                                    >
-                                                        Positions
-                                                    </button>
-                                                </div>
                                                 {shownPortfolioPanel === 'allocation' && (<>
                                                 <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
                                                     <button

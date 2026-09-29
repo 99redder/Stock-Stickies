@@ -827,7 +827,7 @@ totals where the returned data supports it.
 
 ### YTD Return vs SPY Chart (owner only, desktop)
 
-The portfolio card has a panel selector (`portfolioPanel`: **Allocation** — the
+The portfolio card has a panel selector just above it (`portfolioPanel`: **Allocation** — the
 donut/sector/map views and their Display controls — **YTD vs SPY**, and **Positions**, the
 positions table). **YTD vs SPY** is a line chart shown only for the owner and only when the
 performance data includes `ytdSeries` (`shownPortfolioPanel` falls back to Allocation). `rentals-api` `stockStickiesYtdSeries` builds it from the same daily-values
