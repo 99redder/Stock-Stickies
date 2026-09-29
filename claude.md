@@ -860,6 +860,43 @@ Plaid) are skipped in both the chart and the Sharpe/drawdown/beta stats.
   most ~$500 came from brokerage cash (all $12k would make it $13,019). Recording all $12k
   would put the total at 18.72%.
 
+**Source documents reviewed (Sep 29, 2026) — key facts, so they needn't be provided again.**
+Account numbers, tax-ID digits, and the address are deliberately omitted.
+
+- *Robinhood consolidated IRA statement, December 2025* (Desktop PDF, 111 pages):
+  | Dec 31, 2025 | Traditional IRA | Roth IRA |
+  |---|---|---|
+  | Portfolio value (= `openingValues` 2026) | $231,389.38 | $127,246.27 |
+  | Total securities | $230,799.52 | $127,245.97 |
+  | Brokerage cash | $589.86 | $0.30 |
+  | 2025 contributions | $180,929.06 ($4,500 current-year + $176,429.06 rollover) | $36,124.22 ($2,500 + $33,624.22 rollover) |
+  | 2025 dividends | $3,056.40 | $1,803.42 |
+  | 2025 IRA match ("Interest on Contributions") | $3,663.58 | $747.48 |
+
+  Robinhood reports the IRA match as **interest income**, which is why it counts as return.
+- *Recharacterization of Contribution form* (`Taxes/2026 Tax Data/IRAs/Recharacterization.pdf`,
+  signed Jul 6, 2026): from **Roth IRA** to **Traditional IRA**, tax year 2026, date of
+  contribution **03/04/2026**. The breakdown is $7,500.00 contribution + $1,544.72 net income
+  attributable = **$9,044.72**. Per the form, the match may be part of the NIA. It processed
+  Jul 8 (daily store / manual flows). The CSV-derived contribution date is Feb 26, and the gap
+  is unresolved but has no effect.
+- *Robinhood Crypto monthly statements, Jan–Jun 2026* (six Desktop PDFs):
+  - Every month-end shows "no coin holding", and there were no coin deposits. So the Individual
+    Jan 1 value ($26,930.93) contains no crypto, and no crypto was held on Jun 30. The crypto held
+    on Jul 26 (~$10.9k) was bought in July with brokerage funds (an internal move, not a flow).
+  - Crypto cash balance was $9.10 on Jan 1 and $0 after that. There was a Jan 1 BTC reward of $3.46
+    (return).
+  - Robinhood Connect buy-and-send-to-outside-wallet pairs, $12,000 total: Jan 12 2,000 USDC;
+    Jan 25 4.08458 SOL ($499.99) and 4.04624 SOL ($499.99); Jan 30 3,000 USDC; Jan 31
+    2,000 USDC; May 10 3,000 USDC; May 16 1,000 USDC. The owner paid them from brokerage funds
+    or Robinhood Checking. The Jan 1 – Jul 26 flow reconciliation shows at most ~$500 came from
+    Individual, so none are recorded as flows.
+  - Everything else is ordinary purchases and sales (HYPE, BTC, SOL, ETH, DOGE). No statement
+    for July onward was reviewed; from Jun 12 Plaid supplies crypto activity.
+- *CoinLedger backup* (`Taxes/2026 Tax Data/Crypto/CoinLedger Backups/…`) does **not** include the
+  Robinhood Crypto account. Its "Robinhood Chain" entries are a separate on-chain wallet, so it
+  can't be used to trace Robinhood Crypto transfers.
+
 ### Reconciled 2026 YTD Performance
 
 YTD performance is not ending balance minus opening balance. Withdrawals, deposits,
