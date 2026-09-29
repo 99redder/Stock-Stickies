@@ -957,6 +957,9 @@ const firebaseConfig = {
             // fights the primary per-ticker chart for the same node.
             const sectorChartRef = useRef(null);
             const sectorChartInstance = useRef(null);
+            // Owner-only YTD line chart (portfolio vs SPY) — its own Chart.js instance.
+            const ytdChartRef = useRef(null);
+            const ytdChartInstance = useRef(null);
 
             // Compute the active ticker for data fetching (from expanded note or watch list modal)
             const activeTicker = expandedNote?.title || watchListModalTicker;
@@ -4833,6 +4836,135 @@ const firebaseConfig = {
                 }
             }, []);
 
+            // Cumulative time-weighted YTD return from the Worker's daily closes, for the
+            // account being shown, alongside SPY over the same dates.
+            const ytdChartSeries = useMemo(() => {
+                const points = robinhoodPerformance?.ytdSeries?.points;
+                if (!isOwnerPortfolioUser || !Array.isArray(points) || points.length < 2) return null;
+                const portfolio = points.map(point => (portfolioAccountFilter === 'all'
+                    ? point.total
+                    : point.accounts?.[portfolioAccountFilter]) ?? null);
+                if (!portfolio.some(value => Number.isFinite(value) && value !== 0)) return null;
+                const lastIndex = portfolio.findLastIndex(value => Number.isFinite(value));
+                const spyLastIndex = points.findLastIndex(point => Number.isFinite(point.spy));
+                return {
+                    labels: points.map(point => point.date),
+                    portfolio,
+                    spy: points.map(point => point.spy ?? null),
+                    lastPortfolio: portfolio[lastIndex],
+                    lastPortfolioDate: points[lastIndex].date,
+                    lastSpy: spyLastIndex >= 0 ? points[spyLastIndex].spy : null,
+                    firstDate: points[0].date,
+                };
+            }, [robinhoodPerformance, isOwnerPortfolioUser, portfolioAccountFilter]);
+
+            useEffect(() => {
+                if (mainTab !== 'portfolio' || !ytdChartSeries) {
+                    if (ytdChartInstance.current) {
+                        ytdChartInstance.current.destroy();
+                        ytdChartInstance.current = null;
+                    }
+                    return;
+                }
+                let cancelled = false;
+                const timeoutId = setTimeout(async () => {
+                    const { Chart } = await loadChartRuntime();
+                    if (cancelled || !ytdChartRef.current) return;
+                    if (ytdChartInstance.current && ytdChartInstance.current.canvas !== ytdChartRef.current) {
+                        ytdChartInstance.current.destroy();
+                        ytdChartInstance.current = null;
+                    }
+                    const formatDay = (isoDate) => new Date(`${isoDate}T12:00:00Z`)
+                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+                    const formatPct = (value) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+                    const gridColor = darkMode ? 'rgba(75, 85, 99, 0.35)' : 'rgba(229, 231, 235, 0.9)';
+                    const tickColor = darkMode ? '#9CA3AF' : '#6B7280';
+                    const portfolioColor = darkMode ? '#22D3EE' : '#2563EB';
+                    const spyColor = darkMode ? '#9CA3AF' : '#6B7280';
+                    const label = portfolioAccountFilter === 'all' ? 'All Accounts' : getAccountLabel(portfolioAccountFilter);
+                    const chartConfig = {
+                        type: 'line',
+                        data: {
+                            labels: ytdChartSeries.labels,
+                            datasets: [
+                                {
+                                    label,
+                                    data: ytdChartSeries.portfolio,
+                                    borderColor: portfolioColor,
+                                    backgroundColor: portfolioColor,
+                                    borderWidth: 2.5,
+                                    pointRadius: 0,
+                                    pointHoverRadius: 4,
+                                    tension: 0.2,
+                                },
+                                {
+                                    label: 'SPY',
+                                    data: ytdChartSeries.spy,
+                                    borderColor: spyColor,
+                                    backgroundColor: spyColor,
+                                    borderWidth: 2,
+                                    borderDash: [6, 4],
+                                    pointRadius: 0,
+                                    pointHoverRadius: 4,
+                                    tension: 0.2,
+                                },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    align: 'end',
+                                    labels: { color: darkMode ? '#E5E7EB' : '#374151', font: { size: 12, weight: '600' }, boxWidth: 14, boxHeight: 2 },
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        title: (items) => formatDay(items[0].label),
+                                        label: (ctx) => Number.isFinite(ctx.parsed.y) ? `${ctx.dataset.label}: ${formatPct(ctx.parsed.y)}` : null,
+                                    },
+                                },
+                                datalabels: { display: false },
+                            },
+                            scales: {
+                                x: {
+                                    grid: { display: false },
+                                    ticks: { color: tickColor, maxTicksLimit: 10, maxRotation: 0, callback: (value, index) => formatDay(ytdChartSeries.labels[index]) },
+                                },
+                                y: {
+                                    grid: {
+                                        color: (ctx) => ctx.tick?.value === 0 ? (darkMode ? '#6B7280' : '#9CA3AF') : gridColor,
+                                    },
+                                    ticks: { color: tickColor, callback: (value) => `${value}%` },
+                                },
+                            },
+                        },
+                    };
+                    if (ytdChartInstance.current) {
+                        ytdChartInstance.current.data = chartConfig.data;
+                        ytdChartInstance.current.options = chartConfig.options;
+                        ytdChartInstance.current.update('none');
+                    } else {
+                        ytdChartInstance.current = new Chart(ytdChartRef.current, chartConfig);
+                    }
+                }, 50);
+                return () => {
+                    cancelled = true;
+                    clearTimeout(timeoutId);
+                };
+                // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [mainTab, ytdChartSeries, darkMode]);
+
+            useEffect(() => () => {
+                if (ytdChartInstance.current) {
+                    ytdChartInstance.current.destroy();
+                    ytdChartInstance.current = null;
+                }
+            }, []);
+
             if (!currentUser) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-4">
@@ -7661,6 +7793,44 @@ const firebaseConfig = {
                                             </div>
                                         )}
                                     </div>
+
+                                    {ytdChartSeries && (
+                                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                                <div>
+                                                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {robinhoodPerformance.ytdSeries.year} YTD return vs SPY
+                                                    </h3>
+                                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                        {portfolioAccountFilter === 'all' ? 'All accounts' : getAccountLabel(portfolioAccountFilter)} · time-weighted from daily closes, deposits and withdrawals excluded
+                                                    </p>
+                                                </div>
+                                                <div className={`flex gap-4 text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                    <div>
+                                                        <div className={`text-[10px] font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Portfolio</div>
+                                                        <div className={`text-lg font-bold tabular-nums ${ytdChartSeries.lastPortfolio >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
+                                                            {formatSignedPercent(ytdChartSeries.lastPortfolio)}
+                                                        </div>
+                                                    </div>
+                                                    {Number.isFinite(ytdChartSeries.lastSpy) && (
+                                                        <div>
+                                                            <div className={`text-[10px] font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>SPY</div>
+                                                            <div className={`text-lg font-bold tabular-nums ${ytdChartSeries.lastSpy >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
+                                                                {formatSignedPercent(ytdChartSeries.lastSpy)}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className={hidePortfolioValues ? 'blur-sm select-none' : ''} style={{ height: '320px' }}>
+                                                <canvas ref={ytdChartRef}></canvas>
+                                            </div>
+                                            <p className={`mt-2 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                Through {new Date(`${ytdChartSeries.lastPortfolioDate}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}.
+                                                {' '}May differ from the headline YTD figure, which is Modified Dietz / Robinhood-reconciled.
+                                            </p>
+                                        </div>
+                                    )}
 
                                     <div className={`overflow-hidden rounded-lg shadow-lg ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                                         <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

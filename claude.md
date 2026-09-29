@@ -825,6 +825,20 @@ Desktop shows Unrealized P&L on each note, per account where appropriate, and in
 totals/line items. Mobile shows it on position cards, account summaries, and portfolio
 totals where the returned data supports it.
 
+### YTD Return vs SPY Chart (owner only, desktop)
+
+The Portfolio tab shows a **YTD return vs SPY** line chart between the allocation card and
+the positions table, only for the owner and only when the performance data includes
+`ytdSeries`. `rentals-api` `stockStickiesYtdSeries` builds it from the same daily-values
+store as the risk stats: cumulative time-weighted return per account and value-weighted in
+total, plus SPY's price return from the prior year-end close (`{ year, points: [{ date,
+total, accounts, spy }] }`, percent, first point = Dec 31 at 0). The chart follows the
+account filter (Unassigned has no line and hides it) and blurs with `hidePortfolioValues`.
+Its figure can differ from the headline Modified Dietz / Robinhood-anchored YTD, and the card
+says so. Account-days with an unexplained move beyond ±25% (`RISK_MAX_DAILY_RETURN`, an
+unreported deposit/withdrawal — e.g. Individual on Sep 24, 2026) are skipped in both the
+chart and the Sharpe/drawdown/beta stats.
+
 ### Reconciled 2026 YTD Performance
 
 YTD performance is not ending balance minus opening balance. Withdrawals, deposits,
@@ -1215,3 +1229,4 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
   batch (halving on that error), plus a **Clean up old backups** button. First run removed
   838 of the owner's 1,029 backups (194 remain).
 - **User Guide button:** plain gradient, no outline ring; focus ring only for keyboard focus.
+- **YTD return vs SPY chart** (owner only) on the Portfolio tab, from the daily-closes store.
