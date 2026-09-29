@@ -926,6 +926,7 @@ const firebaseConfig = {
             const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== 'hidden');
             const [askKOpen, setAskKOpen] = useState(false);
             const [portfolioViewMode, setPortfolioViewMode] = useState('donut'); // 'donut' | 'sector' | 'map'
+            const [portfolioPanel, setPortfolioPanel] = useState('allocation'); // 'allocation' | 'ytd' (owner) | 'positions'
             const [portfolioAccountFilter, setPortfolioAccountFilter] = useState('all'); // 'all' | account id | 'unassigned'
             const [portfolioLegendVisible, setPortfolioLegendVisible] = useState(true);
             const [portfolioLegendDollarAmounts, setPortfolioLegendDollarAmounts] = useState(false);
@@ -3661,6 +3662,27 @@ const firebaseConfig = {
                 : robinhoodPerformance?.accounts?.[portfolioAccountFilter];
             portfolioDataRef.current = portfolioData;
 
+            // Owner-only: cumulative time-weighted YTD return for all accounts combined, from
+            // the Worker's daily closes, alongside SPY over the same dates.
+            const ytdChartSeries = useMemo(() => {
+                const points = robinhoodPerformance?.ytdSeries?.points;
+                if (!isOwnerPortfolioUser || !Array.isArray(points) || points.length < 2) return null;
+                const portfolio = points.map(point => point.total ?? null);
+                const lastIndex = portfolio.findLastIndex(value => Number.isFinite(value));
+                const spyLastIndex = points.findLastIndex(point => Number.isFinite(point.spy));
+                if (lastIndex < 1) return null;
+                return {
+                    labels: points.map(point => point.date),
+                    portfolio,
+                    spy: points.map(point => point.spy ?? null),
+                    lastPortfolio: portfolio[lastIndex],
+                    lastPortfolioDate: points[lastIndex].date,
+                    lastSpy: spyLastIndex >= 0 ? points[spyLastIndex].spy : null,
+                };
+            }, [robinhoodPerformance, isOwnerPortfolioUser]);
+            // Falls back to the allocation view if the YTD chart isn't available.
+            const shownPortfolioPanel = portfolioPanel === 'ytd' && !ytdChartSeries ? 'allocation' : portfolioPanel;
+
             // Don't strand the user on an account tab whose last position was just removed.
             useEffect(() => {
                 if (portfolioAccountFilter === 'all') return;
@@ -4328,7 +4350,7 @@ const firebaseConfig = {
 
             // Chart rendering effect - runs when tab changes, data changes, or after a short delay to ensure canvas is mounted
             useEffect(() => {
-                if (mainTab !== 'portfolio' || portfolioViewMode !== 'donut' || portfolioChartDataKey.length === 0) {
+                if (mainTab !== 'portfolio' || shownPortfolioPanel !== 'allocation' || portfolioViewMode !== 'donut' || portfolioChartDataKey.length === 0) {
                     if (chartInstance.current) {
                         chartInstance.current.destroy();
                         chartInstance.current = null;
@@ -4656,7 +4678,7 @@ const firebaseConfig = {
                 };
                 // colorLabelsKey (not colorLabels) — depend on content, not object identity.
                 // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [mainTab, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, colorLabelsKey, shownPutObligation, totalPortfolioValue, nickname, currentUser]);
+            }, [mainTab, shownPortfolioPanel, portfolioViewMode, portfolioChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible, portfolioLegendDollarAmounts, portfolioDonutIncludesCash, colorLabelsKey, shownPutObligation, totalPortfolioValue, nickname, currentUser]);
 
             // Dependency changes update the existing chart above. Destroy it only when the
             // application component itself unmounts; tab/view changes are handled explicitly.
@@ -4698,7 +4720,7 @@ const firebaseConfig = {
                 ),
             [portfolioBySector, sectorWeightSort]);
             useEffect(() => {
-                if (mainTab !== 'portfolio' || portfolioViewMode !== 'sector' || portfolioBySector.length === 0) {
+                if (mainTab !== 'portfolio' || shownPortfolioPanel !== 'allocation' || portfolioViewMode !== 'sector' || portfolioBySector.length === 0) {
                     if (sectorChartInstance.current) {
                         sectorChartInstance.current.destroy();
                         sectorChartInstance.current = null;
@@ -4827,7 +4849,7 @@ const firebaseConfig = {
                     clearTimeout(timeoutId);
                 };
                 // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [mainTab, portfolioViewMode, sectorChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible]);
+            }, [mainTab, shownPortfolioPanel, portfolioViewMode, sectorChartDataKey, darkMode, hidePortfolioValues, portfolioLegendVisible]);
 
             useEffect(() => () => {
                 if (sectorChartInstance.current) {
@@ -4836,30 +4858,8 @@ const firebaseConfig = {
                 }
             }, []);
 
-            // Cumulative time-weighted YTD return from the Worker's daily closes, for the
-            // account being shown, alongside SPY over the same dates.
-            const ytdChartSeries = useMemo(() => {
-                const points = robinhoodPerformance?.ytdSeries?.points;
-                if (!isOwnerPortfolioUser || !Array.isArray(points) || points.length < 2) return null;
-                const portfolio = points.map(point => (portfolioAccountFilter === 'all'
-                    ? point.total
-                    : point.accounts?.[portfolioAccountFilter]) ?? null);
-                if (!portfolio.some(value => Number.isFinite(value) && value !== 0)) return null;
-                const lastIndex = portfolio.findLastIndex(value => Number.isFinite(value));
-                const spyLastIndex = points.findLastIndex(point => Number.isFinite(point.spy));
-                return {
-                    labels: points.map(point => point.date),
-                    portfolio,
-                    spy: points.map(point => point.spy ?? null),
-                    lastPortfolio: portfolio[lastIndex],
-                    lastPortfolioDate: points[lastIndex].date,
-                    lastSpy: spyLastIndex >= 0 ? points[spyLastIndex].spy : null,
-                    firstDate: points[0].date,
-                };
-            }, [robinhoodPerformance, isOwnerPortfolioUser, portfolioAccountFilter]);
-
             useEffect(() => {
-                if (mainTab !== 'portfolio' || !ytdChartSeries) {
+                if (mainTab !== 'portfolio' || shownPortfolioPanel !== 'ytd' || !ytdChartSeries) {
                     if (ytdChartInstance.current) {
                         ytdChartInstance.current.destroy();
                         ytdChartInstance.current = null;
@@ -4881,7 +4881,7 @@ const firebaseConfig = {
                     const tickColor = darkMode ? '#9CA3AF' : '#6B7280';
                     const portfolioColor = darkMode ? '#22D3EE' : '#2563EB';
                     const spyColor = darkMode ? '#9CA3AF' : '#6B7280';
-                    const label = portfolioAccountFilter === 'all' ? 'All Accounts' : getAccountLabel(portfolioAccountFilter);
+                    const label = 'All Accounts';
                     const chartConfig = {
                         type: 'line',
                         data: {
@@ -4955,8 +4955,7 @@ const firebaseConfig = {
                     cancelled = true;
                     clearTimeout(timeoutId);
                 };
-                // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, [mainTab, ytdChartSeries, darkMode]);
+            }, [mainTab, shownPortfolioPanel, ytdChartSeries, darkMode]);
 
             useEffect(() => () => {
                 if (ytdChartInstance.current) {
@@ -7478,7 +7477,7 @@ const firebaseConfig = {
                             ) : (
                                 <div className="flex flex-col gap-4">
                                     {/* Pie Chart - Large */}
-                                    <div ref={portfolioCardRef} className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`} style={{height: '650px'}}>
+                                    <div ref={portfolioCardRef} className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`} style={shownPortfolioPanel === 'positions' ? {minHeight: '650px'} : {height: '650px'}}>
                                         <div className="flex items-center justify-between mb-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="relative">
@@ -7507,6 +7506,35 @@ const firebaseConfig = {
                                                 </div>
                                             </div>
                                             <div className="flex flex-wrap items-center justify-end gap-3">
+                                                <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
+                                                    <button
+                                                        onClick={() => setPortfolioPanel('allocation')}
+                                                        aria-pressed={shownPortfolioPanel === 'allocation'}
+                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'allocation' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                        title="Donut, sector, or map view of your holdings"
+                                                    >
+                                                        Allocation
+                                                    </button>
+                                                    {ytdChartSeries && (
+                                                        <button
+                                                            onClick={() => setPortfolioPanel('ytd')}
+                                                            aria-pressed={shownPortfolioPanel === 'ytd'}
+                                                            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'ytd' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                            title="All accounts YTD return compared with SPY"
+                                                        >
+                                                            YTD vs SPY
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => setPortfolioPanel('positions')}
+                                                        aria-pressed={shownPortfolioPanel === 'positions'}
+                                                        className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${shownPortfolioPanel === 'positions' ? (darkMode ? 'bg-cyan-500 text-gray-950' : 'bg-blue-500 text-white') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}`}
+                                                        title="Market value, cost basis, and unrealized P&L for each holding"
+                                                    >
+                                                        Positions
+                                                    </button>
+                                                </div>
+                                                {shownPortfolioPanel === 'allocation' && (<>
                                                 <div className={`inline-flex rounded-lg p-1 snapshot-hide ${darkMode ? 'bg-gray-900/70 border border-gray-700' : 'bg-gray-100 border border-gray-200'}`}>
                                                     <button
                                                         onClick={() => setPortfolioViewMode('donut')}
@@ -7568,6 +7596,7 @@ const firebaseConfig = {
                                                         </button>
                                                     )}
                                                 </div>
+                                                </>)}
                                                 <button
                                                     onClick={handleCopyPortfolio}
                                                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border snapshot-hide ${darkMode ? 'border-cyan-400/60 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300 hover:bg-cyan-500/10' : 'border-blue-400 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50'}`}
@@ -7586,6 +7615,115 @@ const firebaseConfig = {
                                                 </button>
                                             </div>
                                         </div>
+                                        {shownPortfolioPanel === 'ytd' ? (
+                                            <div>
+                                                <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                                    <div>
+                                                        <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {robinhoodPerformance.ytdSeries.year} YTD return vs SPY
+                                                        </h3>
+                                                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                            All accounts · time-weighted from daily closes, deposits and withdrawals excluded
+                                                        </p>
+                                                    </div>
+                                                    <div className={`flex gap-4 text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                        <div>
+                                                            <div className={`text-[10px] font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Portfolio</div>
+                                                            <div className={`text-lg font-bold tabular-nums ${ytdChartSeries.lastPortfolio >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
+                                                                {formatSignedPercent(ytdChartSeries.lastPortfolio)}
+                                                            </div>
+                                                        </div>
+                                                        {Number.isFinite(ytdChartSeries.lastSpy) && (
+                                                            <div>
+                                                                <div className={`text-[10px] font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>SPY</div>
+                                                                <div className={`text-lg font-bold tabular-nums ${ytdChartSeries.lastSpy >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
+                                                                    {formatSignedPercent(ytdChartSeries.lastSpy)}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className={hidePortfolioValues ? 'blur-sm select-none' : ''} style={{ height: '400px' }}>
+                                                    <canvas ref={ytdChartRef}></canvas>
+                                                </div>
+                                                <p className={`mt-2 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    Through {new Date(`${ytdChartSeries.lastPortfolioDate}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}.
+                                                    {' '}May differ from the headline YTD figure, which is Modified Dietz / Robinhood-reconciled.
+                                                </p>
+                                            </div>
+                                        ) : shownPortfolioPanel === 'positions' ? (
+                                        <div className={`overflow-hidden rounded-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                            <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                <div>
+                                                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Portfolio positions</h3>
+                                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Market value, cost basis, and unrealized P&amp;L for each holding</p>
+                                                </div>
+                                                <div className={`text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                        {portfolioPnlTotals.missingCount > 0 ? 'Known total unrealized P&L' : 'Total unrealized P&L'}
+                                                    </div>
+                                                    <div className={`font-bold tabular-nums ${portfolioPnlTotals.coveredCount > 0
+                                                        ? (portfolioPnlTotals.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600')
+                                                        : (darkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+                                                        {portfolioPnlTotals.coveredCount > 0
+                                                            ? `${formatSignedUsd(portfolioPnlTotals.unrealizedPnL)}${portfolioPnlTotals.unrealizedPnLPercent == null ? '' : ` · ${formatSignedPercent(portfolioPnlTotals.unrealizedPnLPercent)}`}`
+                                                            : 'Unavailable'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full min-w-[760px] border-collapse text-sm">
+                                                    <thead className={darkMode ? 'bg-gray-900/60 text-gray-400' : 'bg-gray-50 text-gray-500'}>
+                                                        <tr className="text-left text-[10px] font-bold uppercase tracking-wider">
+                                                            <th className="px-5 py-3">Position</th>
+                                                            <th className="px-4 py-3">Account</th>
+                                                            <th className="px-4 py-3 text-right">Market value</th>
+                                                            <th className="px-4 py-3 text-right">Cost basis</th>
+                                                            <th className="px-4 py-3 text-right">Unrealized P&amp;L</th>
+                                                            <th className="px-5 py-3 text-right">% of shown</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className={darkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-100'}>
+                                                        {portfolioPositionsTableData.map(h => (
+                                                            <tr key={`${h.account}-${h.noteId}`} className={darkMode ? 'hover:bg-gray-700/40' : 'hover:bg-gray-50'}>
+                                                                <td className="px-5 py-3">
+                                                                    <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{h.ticker}</div>
+                                                                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                        {h.isCombinedCash
+                                                                            ? h.cashSummary
+                                                                            : <>{Number(h.shares).toLocaleString()} shares · {h.price > 0 ? formatUsd(h.price) : 'Price unavailable'}</>}
+                                                                    </div>
+                                                                </td>
+                                                                <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.accountLabel || getAccountLabel(h.account)}</td>
+                                                                <td
+                                                                    className={`px-4 py-3 text-right font-semibold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}
+                                                                    style={{ color: darkMode ? '#f3f4f6' : '#111827' }}
+                                                                >
+                                                                    {h.price > 0 ? formatUsd(h.value) : '—'}
+                                                                </td>
+                                                                <td className={`px-4 py-3 text-right tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.costBasis == null ? 'Unavailable' : formatUsd(h.costBasis)}</td>
+                                                                <td className={`px-4 py-3 text-right font-bold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${h.unrealizedPnL == null
+                                                                    ? (darkMode ? 'text-gray-500' : 'text-gray-400')
+                                                                    : (h.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600')}`}>
+                                                                    {h.unrealizedPnL == null
+                                                                        ? 'Unavailable'
+                                                                        : `${formatSignedUsd(h.unrealizedPnL)}${h.unrealizedPnLPercent == null ? '' : ` · ${formatSignedPercent(h.unrealizedPnLPercent)}`}`}
+                                                                </td>
+                                                                <td className={`px-5 py-3 text-right tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.percentage.toFixed(2)}%</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {portfolioPnlTotals.missingCount > 0 && (
+                                                <div className={`border-t px-5 py-3 text-xs ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+                                                    {portfolioPnlTotals.coveredCount > 0
+                                                        ? <>Total unrealized P&amp;L includes only the {portfolioPnlTotals.coveredCount} position{portfolioPnlTotals.coveredCount !== 1 ? 's' : ''} with brokerage-provided cost basis; {portfolioPnlTotals.missingCount} position{portfolioPnlTotals.missingCount !== 1 ? 's are' : ' is'} unavailable.</>
+                                                        : <>Brokerage-provided cost basis is unavailable for these positions, so unrealized P&amp;L cannot be calculated yet.</>}
+                                                </div>
+                                            )}
+                                        </div>
+                                        ) : (<>
                                         <div className="h-[520px]">
                                             {portfolioViewMode === 'donut' ? (
                                                 <div className="flex min-h-0 h-full flex-col">
@@ -7792,117 +7930,9 @@ const firebaseConfig = {
                                                 ) : ''}.
                                             </div>
                                         )}
+                                        </>)}
                                     </div>
 
-                                    {ytdChartSeries && (
-                                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                                                <div>
-                                                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {robinhoodPerformance.ytdSeries.year} YTD return vs SPY
-                                                    </h3>
-                                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        {portfolioAccountFilter === 'all' ? 'All accounts' : getAccountLabel(portfolioAccountFilter)} · time-weighted from daily closes, deposits and withdrawals excluded
-                                                    </p>
-                                                </div>
-                                                <div className={`flex gap-4 text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
-                                                    <div>
-                                                        <div className={`text-[10px] font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Portfolio</div>
-                                                        <div className={`text-lg font-bold tabular-nums ${ytdChartSeries.lastPortfolio >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
-                                                            {formatSignedPercent(ytdChartSeries.lastPortfolio)}
-                                                        </div>
-                                                    </div>
-                                                    {Number.isFinite(ytdChartSeries.lastSpy) && (
-                                                        <div>
-                                                            <div className={`text-[10px] font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>SPY</div>
-                                                            <div className={`text-lg font-bold tabular-nums ${ytdChartSeries.lastSpy >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
-                                                                {formatSignedPercent(ytdChartSeries.lastSpy)}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className={hidePortfolioValues ? 'blur-sm select-none' : ''} style={{ height: '320px' }}>
-                                                <canvas ref={ytdChartRef}></canvas>
-                                            </div>
-                                            <p className={`mt-2 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                Through {new Date(`${ytdChartSeries.lastPortfolioDate}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}.
-                                                {' '}May differ from the headline YTD figure, which is Modified Dietz / Robinhood-reconciled.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    <div className={`overflow-hidden rounded-lg shadow-lg ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                        <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                            <div>
-                                                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Portfolio positions</h3>
-                                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Market value, cost basis, and unrealized P&amp;L for each holding</p>
-                                            </div>
-                                            <div className={`text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {portfolioPnlTotals.missingCount > 0 ? 'Known total unrealized P&L' : 'Total unrealized P&L'}
-                                                </div>
-                                                <div className={`font-bold tabular-nums ${portfolioPnlTotals.coveredCount > 0
-                                                    ? (portfolioPnlTotals.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600')
-                                                    : (darkMode ? 'text-gray-500' : 'text-gray-400')}`}>
-                                                    {portfolioPnlTotals.coveredCount > 0
-                                                        ? `${formatSignedUsd(portfolioPnlTotals.unrealizedPnL)}${portfolioPnlTotals.unrealizedPnLPercent == null ? '' : ` · ${formatSignedPercent(portfolioPnlTotals.unrealizedPnLPercent)}`}`
-                                                        : 'Unavailable'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full min-w-[760px] border-collapse text-sm">
-                                                <thead className={darkMode ? 'bg-gray-900/60 text-gray-400' : 'bg-gray-50 text-gray-500'}>
-                                                    <tr className="text-left text-[10px] font-bold uppercase tracking-wider">
-                                                        <th className="px-5 py-3">Position</th>
-                                                        <th className="px-4 py-3">Account</th>
-                                                        <th className="px-4 py-3 text-right">Market value</th>
-                                                        <th className="px-4 py-3 text-right">Cost basis</th>
-                                                        <th className="px-4 py-3 text-right">Unrealized P&amp;L</th>
-                                                        <th className="px-5 py-3 text-right">% of shown</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className={darkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-100'}>
-                                                    {portfolioPositionsTableData.map(h => (
-                                                        <tr key={`${h.account}-${h.noteId}`} className={darkMode ? 'hover:bg-gray-700/40' : 'hover:bg-gray-50'}>
-                                                            <td className="px-5 py-3">
-                                                                <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{h.ticker}</div>
-                                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                                    {h.isCombinedCash
-                                                                        ? h.cashSummary
-                                                                        : <>{Number(h.shares).toLocaleString()} shares · {h.price > 0 ? formatUsd(h.price) : 'Price unavailable'}</>}
-                                                                </div>
-                                                            </td>
-                                                            <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.accountLabel || getAccountLabel(h.account)}</td>
-                                                            <td
-                                                                className={`px-4 py-3 text-right font-semibold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}
-                                                                style={{ color: darkMode ? '#f3f4f6' : '#111827' }}
-                                                            >
-                                                                {h.price > 0 ? formatUsd(h.value) : '—'}
-                                                            </td>
-                                                            <td className={`px-4 py-3 text-right tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.costBasis == null ? 'Unavailable' : formatUsd(h.costBasis)}</td>
-                                                            <td className={`px-4 py-3 text-right font-bold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''} ${h.unrealizedPnL == null
-                                                                ? (darkMode ? 'text-gray-500' : 'text-gray-400')
-                                                                : (h.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600')}`}>
-                                                                {h.unrealizedPnL == null
-                                                                    ? 'Unavailable'
-                                                                    : `${formatSignedUsd(h.unrealizedPnL)}${h.unrealizedPnLPercent == null ? '' : ` · ${formatSignedPercent(h.unrealizedPnLPercent)}`}`}
-                                                            </td>
-                                                            <td className={`px-5 py-3 text-right tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{h.percentage.toFixed(2)}%</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                        {portfolioPnlTotals.missingCount > 0 && (
-                                            <div className={`border-t px-5 py-3 text-xs ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
-                                                {portfolioPnlTotals.coveredCount > 0
-                                                    ? <>Total unrealized P&amp;L includes only the {portfolioPnlTotals.coveredCount} position{portfolioPnlTotals.coveredCount !== 1 ? 's' : ''} with brokerage-provided cost basis; {portfolioPnlTotals.missingCount} position{portfolioPnlTotals.missingCount !== 1 ? 's are' : ' is'} unavailable.</>
-                                                    : <>Brokerage-provided cost basis is unavailable for these positions, so unrealized P&amp;L cannot be calculated yet.</>}
-                                            </div>
-                                        )}
-                                    </div>
 
                                 </div>
                             )}

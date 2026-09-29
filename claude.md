@@ -827,13 +827,14 @@ totals where the returned data supports it.
 
 ### YTD Return vs SPY Chart (owner only, desktop)
 
-The Portfolio tab shows a **YTD return vs SPY** line chart between the allocation card and
-the positions table, only for the owner and only when the performance data includes
-`ytdSeries`. `rentals-api` `stockStickiesYtdSeries` builds it from the same daily-values
+The portfolio card has a panel selector (`portfolioPanel`: **Allocation** — the
+donut/sector/map views and their Display controls — **YTD vs SPY**, and **Positions**, the
+positions table). **YTD vs SPY** is a line chart shown only for the owner and only when the
+performance data includes `ytdSeries` (`shownPortfolioPanel` falls back to Allocation). `rentals-api` `stockStickiesYtdSeries` builds it from the same daily-values
 store as the risk stats: cumulative time-weighted return per account and value-weighted in
 total, plus SPY's price return from the prior year-end close (`{ year, points: [{ date,
-total, accounts, spy }] }`, percent, first point = Dec 31 at 0). The chart follows the
-account filter (Unassigned has no line and hides it) and blurs with `hidePortfolioValues`.
+total, accounts, spy }] }`, percent, first point = Dec 31 at 0). The chart always shows
+All Accounts, whatever the account filter, and blurs with `hidePortfolioValues`.
 Its figure can differ from the headline Modified Dietz / Robinhood-anchored YTD, and the card
 says so. Account-days with an unexplained move beyond ±25% (`RISK_MAX_DAILY_RETURN`, an
 unreported deposit/withdrawal — e.g. Individual on Sep 24, 2026) are skipped in both the
