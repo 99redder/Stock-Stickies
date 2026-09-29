@@ -851,9 +851,13 @@ Plaid) are skipped in both the chart and the Sharpe/drawdown/beta stats.
   (holdings rolled back from Plaid trades/withdrawals, priced at Yahoo Jul 26 closes). Plaid
   reported no crypto account balance Jul 26 – Sep 23.
 - The custodial (UTMA) account and prediction markets are excluded; moves to them are withdrawals.
-- Unverified (owner unsure; each ≤0.1 pt except the last): Dec 31 IRA values ($231,389.38 /
-  $127,246.27 vs rebuilt $231,199.44 / $127,237.28); crypto moved in/out of Robinhood
-  Jan 1 – Jun 12 (Plaid history starts Jun 12; affects only Individual's denominator).
+- Verified from statements: Dec 31, 2025 IRA portfolio values $231,389.38 / $127,246.27 (the
+  rebuilt daily store's $231,199.44 / $127,237.28 is the one that's off); Robinhood Crypto held
+  no coins at any month-end Jan–Jun 2026 and had no coin deposits. Its only transfers were
+  $12,000 of Robinhood Connect buy-and-send pairs (Jan 12/25/30/31, May 10/16). They are not
+  recorded as Individual flows, on the evidence that they were paid externally (recording them
+  would imply ~$15.4k of pure-flow gain vs Robinhood's ~$3.9k). If they were paid from buying
+  power, the total would be 18.72%.
 
 ### Reconciled 2026 YTD Performance
 
