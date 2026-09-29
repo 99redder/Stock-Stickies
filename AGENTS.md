@@ -840,7 +840,7 @@ says so. Account-days with an unexplained move beyond ±25% (`RISK_MAX_DAILY_RET
 unreported move — e.g. Individual on Sep 24, 2026, when its crypto account first appeared in
 Plaid) are skipped in both the chart and the Sharpe/drawdown/beta stats.
 
-**2026 YTD audit (Sep 29, 2026)** — all-accounts YTD 18.26% (chart TWR 18.44%):
+**2026 YTD audit (Sep 29, 2026)** — all-accounts YTD 18.26% (chart TWR 18.38%):
 - IRA flows are manual (`cashFlowCoverageThrough` Jul 8; Plaid never recorded them): a $7,500
   Roth contribution (Feb 26 per the CSV; the recharacterization form says Mar 4 — no effect)
   was recharacterized to Traditional on Jul 8 as $9,044.72 (Roth −, Traditional +). The
@@ -851,8 +851,8 @@ Plaid) are skipped in both the chart and the Sharpe/drawdown/beta stats.
   (holdings rolled back from Plaid trades/withdrawals, priced at Yahoo Jul 26 closes). Plaid
   reported no crypto account balance Jul 26 – Sep 23.
 - The custodial (UTMA) account and prediction markets are excluded; moves to them are withdrawals.
-- Verified from statements: Dec 31, 2025 IRA portfolio values $231,389.38 / $127,246.27 (the
-  rebuilt daily store's $231,199.44 / $127,237.28 is the one that's off); Robinhood Crypto held
+- Verified from statements: Dec 31, 2025 IRA portfolio values $231,389.38 / $127,246.27 (the daily
+  store's Dec 31 IRA values were corrected to these from the rebuilt $231,199.44 / $127,237.28); Robinhood Crypto held
   no coins at any month-end Jan–Jun 2026 and had no coin deposits. Its only transfers were
   $12,000 of Robinhood Connect buy-and-send pairs (Jan 12/25/30/31, May 10/16). The owner paid
   them from brokerage funds or Robinhood Checking. They are not recorded as Individual flows:
