@@ -854,10 +854,11 @@ Plaid) are skipped in both the chart and the Sharpe/drawdown/beta stats.
 - Verified from statements: Dec 31, 2025 IRA portfolio values $231,389.38 / $127,246.27 (the
   rebuilt daily store's $231,199.44 / $127,237.28 is the one that's off); Robinhood Crypto held
   no coins at any month-end Jan–Jun 2026 and had no coin deposits. Its only transfers were
-  $12,000 of Robinhood Connect buy-and-send pairs (Jan 12/25/30/31, May 10/16). They are not
-  recorded as Individual flows, on the evidence that they were paid externally (recording them
-  would imply ~$15.4k of pure-flow gain vs Robinhood's ~$3.9k). If they were paid from buying
-  power, the total would be 18.72%.
+  $12,000 of Robinhood Connect buy-and-send pairs (Jan 12/25/30/31, May 10/16). The owner paid
+  them from brokerage funds or Robinhood Checking. They are not recorded as Individual flows:
+  flows alone give $1,019 of Individual gain from Jan 1 to Jul 26 vs Robinhood's own $1,561, so at
+  most ~$500 came from brokerage cash (all $12k would make it $13,019). Recording all $12k
+  would put the total at 18.72%.
 
 ### Reconciled 2026 YTD Performance
 
