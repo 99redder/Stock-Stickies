@@ -538,3 +538,192 @@ a.dashboard-news-headline:hover {
 @media (max-width: 700px) {
     .dashboard-news-ticker { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
 }
+
+/* ---- Paged board (iPad): fixed large tiles in swipeable pages ---- */
+.finnhub-diagnostic-shell.is-paged {
+    /* Eight tile rows share the height left after the fixed chrome: one pinned row
+       plus seven per column. */
+    --paged-tile-height: clamp(58px, calc((100dvh - 196px) / 8), 128px);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+.finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 242px) / 8), 128px); }
+
+.paged-toolbar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 14px;
+    height: 40px;
+    padding: 0 12px;
+    border-bottom: 1px solid #444;
+    background: #111;
+}
+.paged-brand { color: #dedede; font-size: 13px; font-weight: 800; letter-spacing: .12em; white-space: nowrap; }
+.paged-connection { margin-left: 0; font-size: 10px; }
+.paged-stream-count { color: #7d7d7d; }
+
+.paged-pager { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.paged-pager button {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: #b9b9b9;
+    padding: 0;
+    font: 700 22px/1 Arial, sans-serif;
+    cursor: pointer;
+}
+.paged-pager button:disabled { color: #4a4a4a; cursor: default; }
+.paged-pager .paged-dot { width: 22px; }
+.paged-pager .paged-dot::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: #505050;
+}
+.paged-pager .paged-dot.is-active::before { background: #d5a85f; }
+
+.paged-edit-toggle {
+    height: 28px;
+    border: 1px solid #4a4a4a;
+    border-radius: 2px;
+    background: #171717;
+    color: #bababa;
+    padding: 0 12px;
+    font: 800 10px/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .08em;
+    cursor: pointer;
+}
+.paged-edit-toggle.is-active { border-color: #a46f20; background: #211b12; color: #d5a85f; }
+
+.paged-controls { flex: 0 0 auto; flex-wrap: wrap; }
+/* 16px keeps iPadOS from zooming the page when the field is focused. */
+.paged-controls .diagnostic-add-control input,
+.paged-controls .diagnostic-add-control select { font-size: 16px; }
+
+.paged-pinned { flex: 0 0 auto; padding: 6px 12px 0; }
+.paged-group-heading { height: 18px; margin-bottom: 4px; font-size: 11px; }
+.paged-group-heading span:last-child { font-size: 9px; }
+
+.paged-track {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+.paged-track::-webkit-scrollbar { display: none; }
+
+.paged-page {
+    display: grid;
+    flex: 0 0 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 12px;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 6px 12px 10px;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+}
+.paged-column { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+
+.paged-tiles {
+    display: grid;
+    grid-template-columns: repeat(var(--paged-tiles-per-row, 3), minmax(0, 1fr));
+    grid-auto-rows: var(--paged-tile-height);
+    gap: 6px;
+}
+
+.paged-tile {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--terminal-border);
+    background: var(--terminal-black);
+    user-select: none;
+}
+.paged-tile.is-highlighted { border-color: #d8a23f; animation: quote-existing-widget 600ms ease-out 3; }
+.paged-tile-body {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 5px 8px 4px;
+}
+.paged-tile.quote-up .paged-tile-body.quote-tick-blink { animation: quote-tick-up 420ms ease-out; }
+.paged-tile.quote-down .paged-tile-body.quote-tick-blink { animation: quote-tick-down 420ms ease-out; }
+.paged-tile.quote-flat .paged-tile-body.quote-tick-blink { animation: quote-tick-flat 420ms ease-out; }
+
+.paged-tile-row { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 6px; white-space: nowrap; }
+.paged-tile-symbol { overflow: hidden; color: #d6d6d6; font-size: 15px; font-weight: 800; letter-spacing: -.02em; text-overflow: ellipsis; }
+.paged-tile-percent { color: #8a8a8a; font-size: 14px; font-weight: 700; }
+.paged-tile-price {
+    overflow: hidden;
+    color: #a8a8a8;
+    font-size: clamp(20px, calc(var(--paged-tile-height) * .36), 34px);
+    font-weight: 700;
+    letter-spacing: -.05em;
+    line-height: 1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.paged-tile-foot { color: #8a8a8a; font-size: 9px; font-weight: 800; letter-spacing: .06em; }
+.paged-tile-status { overflow: hidden; text-overflow: ellipsis; }
+.paged-tile-status.is-live { color: #55b98a; }
+.paged-tile-change { font-size: 11px; letter-spacing: 0; }
+.paged-tile.quote-up .paged-tile-price,
+.paged-tile.quote-up .paged-tile-percent,
+.paged-tile.quote-up .paged-tile-change { color: var(--terminal-green); }
+.paged-tile.quote-down .paged-tile-price,
+.paged-tile.quote-down .paged-tile-percent,
+.paged-tile.quote-down .paged-tile-change { color: var(--terminal-red); }
+
+.paged-tile-edit {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+    background: rgb(12 12 12 / 62%);
+}
+.paged-tile-edit button,
+.paged-group-moves button {
+    display: grid;
+    place-items: center;
+    border: 1px solid #5a5a5a;
+    border-radius: 3px;
+    background: #1c1c1c;
+    color: #d0d0d0;
+    padding: 0;
+    cursor: pointer;
+}
+.paged-tile-edit button { width: 36px; height: 36px; font: 700 22px/1 Arial, sans-serif; }
+.paged-tile-edit button.is-remove { border-color: #7a3038; color: #ff8792; }
+.paged-group-moves { display: flex; gap: 4px; }
+.paged-group-moves button { width: 26px; height: 18px; font-size: 9px; }
+.paged-group-moves button:disabled { opacity: .3; cursor: default; }
+.is-paged.is-editing .paged-group-heading { height: 22px; }
+
+/* Portrait or Split View: one column per page, and the page scrolls. */
+@media (max-width: 900px) {
+    .paged-page { grid-template-columns: minmax(0, 1fr); }
+    .paged-pinned .paged-tiles { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+    .paged-stream-count { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .paged-tile-body.quote-tick-blink { animation: none !important; }
+}

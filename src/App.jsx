@@ -648,6 +648,9 @@ const firebaseConfig = {
             // Serialized copy of the last snapshot payload applied to state. Guards the
             // save→snapshot→save feedback loop described at applySnapshotData.
             const lastAppliedSnapshotRef = useRef(null);
+            // The iPad board (/ipad) saves its own `ipadDashboard` field. This app never edits it,
+            // but its saves replace the whole document, so they carry the latest copy along.
+            const ipadDashboardRef = useRef(null);
             const lastBackupSignatureRef = useRef('');
             const lastBackupAtRef = useRef(0);
             const importedPositionBadgeBackfillRef = useRef(false);
@@ -1095,6 +1098,8 @@ const firebaseConfig = {
                             setApiKeysChecked(true); // no saved keys to decrypt
                             return;
                         }
+                        // Read on every snapshot, including ones skipped during a save.
+                        ipadDashboardRef.current = doc.data()?.ipadDashboard || null;
                         if (!isSavingRef.current) {
                             const data = doc.data();
 
@@ -1357,6 +1362,7 @@ const firebaseConfig = {
                             marketauxApiKey: marketauxApiKey || null,
                             updatedAt: serverTimestamp()
                         });
+                        if (ipadDashboardRef.current) updateData.ipadDashboard = ipadDashboardRef.current;
                         // Fire-and-forget — Firestore persistence queues this to IndexedDB synchronously
                         void setDoc(doc(db, 'users', userId), updateData, { merge: false });
                     }
@@ -1518,6 +1524,7 @@ const firebaseConfig = {
             const saveUserDoc = async (userId, email, data, options = {}) => {
                 const { reason = 'save', forceBackup = false, minIntervalMs = 10 * 60 * 1000 } = options;
                 const cleanData = sanitizeUserDocForSave(data);
+                if (ipadDashboardRef.current) cleanData.ipadDashboard = ipadDashboardRef.current;
                 await setDoc(doc(db, 'users', userId), cleanData, { merge: false });
 
                 const now = Date.now();
@@ -2262,6 +2269,7 @@ const firebaseConfig = {
                 // first snapshot even if the payload is byte-identical to this one.
                 lastAppliedSnapshotRef.current = null;
                 if (auth) await signOut(auth);
+                ipadDashboardRef.current = null;
                 setUserDataReady(false);
                 setApiKeysChecked(false);
                 setOnboardingOpen(false);

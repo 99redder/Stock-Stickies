@@ -9,5 +9,9 @@ export default defineConfig({
     assetsDir: 'static',
     manifest: true,
     chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      // Two pages: the app, and the iPad board served at /ipad.
+      input: { index: 'index.html', ipad: 'ipad.html' },
+    },
   },
 })

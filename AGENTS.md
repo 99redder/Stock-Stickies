@@ -38,6 +38,7 @@ Shared services include Firebase v12, Firebase App Check/reCAPTCHA v3, Finnhub, 
 ```
 Sticky-Notes/
 ├── index.html                         # Vite entry point — SEO meta tags, JSON-LD schema live here
+├── ipad.html                          # Second Vite entry — the iPad board at /ipad
 ├── vite.config.js                     # Vite config (react + tailwindcss plugins)
 ├── package.json                       # npm scripts: dev, build, lint, preview
 ├── eslint.config.js
@@ -66,6 +67,7 @@ Sticky-Notes/
 │   ├── App.jsx                        # Main application (~7,900 lines) — see map below
 │   ├── App.css
 │   ├── index.css
+│   ├── ipad/                          # iPad board entry (main.jsx, IpadBoardApp.jsx, ipad.css)
 │   ├── utils/
 │   │   ├── ytdShareCard.js            # Re-exports mobile/src/ytdShareCard.js
 │   │   └── finnhubQuoteCache.js       # In-memory quote cache / request de-dup
@@ -592,6 +594,48 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
 - Feed labels: **SAVED · AWAITING TRADE** (saved price, streamed symbol), **SAVED · IN
   QUEUE** (saved price, beyond the stream cap), **SNAPSHOT ONLY** (refreshed by batch or
   REST, beyond the cap), **SNAPSHOT** (streamed but quiet). Each has a hover tooltip.
+
+---
+
+## iPad Board (`/ipad`)
+
+`https://stockstickies.com/ipad` is the Live Dashboard as a full-screen board for an iPad
+that sits beside the Mac (driven with Universal Control), so the streaming dashboard runs on
+the tablet. It is a **second page of the desktop build** — `ipad.html` →
+`src/ipad/main.jsx` → `src/ipad/IpadBoardApp.jsx` — and ships with every desktop deploy. It is
+not part of `mobile/` and has no link in the app; add it to the Home Screen from Safari.
+
+- **No whole-document saves.** `IpadBoardApp.jsx` signs in (email/password or Google), reads
+  `users/{uid}` for the Finnhub key and the desktop dashboard, and renders
+  `FinnhubDiagnosticDashboard` with `paged`. Its only write is
+  `updateDoc(..., { ipadDashboard })`. It imports nothing from `App.jsx`, so it can stay open
+  all day while Notes/Portfolio are edited on the Mac. Do not add `setDoc` to it.
+- **Desktop carries the field.** `App.jsx` never edits `ipadDashboard`, but its saves use
+  `merge: false`, so `ipadDashboardRef` (set on every snapshot, before the `isSavingRef`
+  check) is added in `saveUserDoc` and the `beforeunload` save. It is a ref, not state, so it
+  is not an autosave dependency and cannot trigger a save.
+- **Newest copy wins.** The board is `{ version, widgets, columns: [{ themes }], savedAt }`
+  (columns are objects because Firestore rejects nested arrays), kept in localStorage
+  `stock-stickies-ipad-board-v1` and in the account. `savedAt` changes only on an edit. On
+  load the newer of the two is used; with neither, the board starts as a copy of the desktop
+  dashboard (`pagedSeedWidgets`). After each edit and each snapshot the iPad re-sends its
+  copy if the account's is older, which repairs a desktop save that carried a stale one.
+- **Pages.** `arrangePagedColumns` packs groups into columns (≤ 7 tile rows and ≤ 3 groups
+  each); a page is two columns; the `market` group is pinned above every page. Swipe, the
+  pager dots, or ←/→ change page. Tiles are three per row, sized so one pinned row plus seven
+  rows fit an 11" iPad in landscape (`--paged-tile-height`).
+- **The stream follows the page.** `streamOrderedWidgets` puts the visible page (plus the
+  pinned row) first, so everything on screen streams and the rest fills up to Finnhub's
+  50-symbol cap; other pages keep refreshing from `/api/quotes` every 15s.
+- **Edit mode** (EDIT/DONE): add a ticker to a group, remove or reorder tiles, move a group
+  between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
+  editing never conflicts with swiping. The desktop dashboard and the board do not follow
+  each other after the first copy.
+- A screen wake lock keeps the tablet awake, and a watchdog replaces a socket that reads OPEN
+  but has been silent for 90s during the regular session (a suspend can leave one behind).
+  Run the dashboard on one device at a time: both would share the key's stream.
+- `scripts/check-bundle-budget.mjs` counts an entry together with the shared chunks it
+  statically imports, because two pages make Rollup split React/Firebase into one.
 
 ---
 
@@ -1288,3 +1332,5 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
   838 of the owner's 1,029 backups (194 remain).
 - **User Guide button:** plain gradient, no outline ring; focus ring only for keyboard focus.
 - **YTD return vs SPY chart** (owner only) on the Portfolio tab, from the daily-closes store.
+- **iPad board** at `/ipad`: the Live Dashboard as swipeable pages of large tiles, on its own
+  entry page with no whole-document saves (see iPad Board).

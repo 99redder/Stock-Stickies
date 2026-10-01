@@ -158,6 +158,104 @@ export const buildStarterDashboard = (pack) => {
     return { version: DASHBOARD_VERSION, widgets, layouts: createDashboardLayouts(widgets), savedAt: Date.now() }
 }
 
+// ---- Paged board (iPad) ----------------------------------------------------------
+// A second presentation of the same widgets: large fixed tiles in swipeable pages
+// instead of the draggable grid. A page is PAGED_COLUMNS_PER_PAGE columns of groups;
+// the market group stays pinned above every page. It is saved separately from the
+// desktop dashboard (own localStorage key, own account field).
+const PAGED_STORAGE_KEY = 'stock-stickies-ipad-board-v1'
+const PAGED_BOARD_VERSION = 1
+const PAGED_PINNED_THEME_ID = 'market'
+const PAGED_COLUMNS_PER_PAGE = 2
+const PAGED_TILES_PER_ROW = 3
+// What fits in one column without scrolling on an 11" iPad in landscape.
+const PAGED_COLUMN_ROWS = 7
+const PAGED_COLUMN_GROUPS = 3
+// A streamed page with no socket message for this long during the regular session
+// has a dead connection (iPadOS can leave one open-looking after a suspend).
+const STREAM_WATCHDOG_SILENCE_MS = 90000
+
+const sanitizeBoardWidgets = (list) => (Array.isArray(list) ? list : [])
+    .filter((widget) => widget && typeof widget.id === 'string' && cleanSymbol(widget.symbol))
+    .map((widget) => ({
+        id: widget.id,
+        symbol: cleanSymbol(widget.symbol),
+        themeId: THEME_BY_ID[widget.themeId] ? widget.themeId : 'other',
+        priority: Boolean(widget.priority)
+    }))
+
+const pagedThemeRows = (widgets, themeId) => Math.max(1, Math.ceil(
+    widgets.filter((widget) => widget.themeId === themeId).length / PAGED_TILES_PER_ROW
+))
+
+// Keeps the saved column of every group that still has widgets, and packs groups
+// that have no column yet into the last one while it has room.
+const arrangePagedColumns = (savedColumns, widgets) => {
+    const activeThemeIds = CLUSTER_THEME_ORDER.filter((themeId) => (
+        themeId !== PAGED_PINNED_THEME_ID && widgets.some((widget) => widget.themeId === themeId)
+    ))
+    const active = new Set(activeThemeIds)
+    const placed = new Set()
+    const columns = (Array.isArray(savedColumns) ? savedColumns : []).map((column) => (
+        (Array.isArray(column) ? column : []).filter((themeId) => {
+            if (!active.has(themeId) || placed.has(themeId)) return false
+            placed.add(themeId)
+            return true
+        })
+    ))
+    const hasRoom = (column, themeId) => column.length < PAGED_COLUMN_GROUPS
+        && column.reduce((rows, id) => rows + pagedThemeRows(widgets, id), 0) + pagedThemeRows(widgets, themeId) <= PAGED_COLUMN_ROWS
+    activeThemeIds.filter((themeId) => !placed.has(themeId)).forEach((themeId) => {
+        const lastColumn = columns[columns.length - 1]
+        if (lastColumn && lastColumn.length > 0 && hasRoom(lastColumn, themeId)) lastColumn.push(themeId)
+        else columns.push([themeId])
+    })
+    return columns.filter((column) => column.length > 0)
+}
+
+// The desktop dashboard's widgets in on-screen order, as the starting point for the board.
+const pagedSeedWidgets = (desktopDashboard) => {
+    const widgets = sanitizeBoardWidgets(desktopDashboard?.widgets)
+    if (widgets.length === 0) return createDefaultWidgets()
+    const positions = new Map((Array.isArray(desktopDashboard?.layouts?.lg) ? desktopDashboard.layouts.lg : []).map((item) => [item?.i, item]))
+    const seen = new Set()
+    return widgets
+        .map((widget, index) => ({ widget, index, item: positions.get(widget.id) }))
+        .sort((a, b) => ((a.item?.y ?? Infinity) - (b.item?.y ?? Infinity)) || ((a.item?.x ?? 0) - (b.item?.x ?? 0)) || (a.index - b.index))
+        .map(({ widget }) => widget)
+        .filter((widget) => {
+            const symbol = providerSymbol(widget.symbol)
+            if (seen.has(symbol)) return false
+            seen.add(symbol)
+            return true
+        })
+}
+
+const readPagedBoard = (value) => {
+    if (!value || typeof value !== 'object') return null
+    const widgets = sanitizeBoardWidgets(value.widgets)
+    if (widgets.length === 0) return null
+    // Columns are stored as objects because Firestore rejects nested arrays.
+    const columns = Array.isArray(value.columns) ? value.columns.map((column) => column?.themes) : null
+    return { widgets, columns, savedAt: Number(value.savedAt) || 0 }
+}
+
+// The newer of this device's copy and the account's copy wins; with neither, the
+// board starts as a copy of the desktop dashboard.
+const loadPagedBoard = (accountBoard, desktopDashboard) => {
+    let local = null
+    try {
+        local = readPagedBoard(JSON.parse(localStorage.getItem(PAGED_STORAGE_KEY) || 'null'))
+    } catch {
+        // An unreadable local copy falls back to the account's.
+    }
+    const account = readPagedBoard(accountBoard)
+    const saved = local && account ? (account.savedAt > local.savedAt ? account : local) : (local || account)
+    if (saved) return { widgets: saved.widgets, columns: arrangePagedColumns(saved.columns, saved.widgets), savedAt: saved.savedAt }
+    const widgets = pagedSeedWidgets(desktopDashboard)
+    return { widgets, columns: arrangePagedColumns(null, widgets), savedAt: 0 }
+}
+
 const layoutItemsCollide = (item, other) => (
     item.i !== other.i
     && item.x < other.x + other.w
@@ -739,6 +837,75 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
     && previous.highlighted === next.highlighted
 ))
 
+// Read-only tile for the paged board: bigger type, no drag. Edit mode adds reorder
+// and remove buttons.
+const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, streamEnabled, connectionState, highlighted, editing, onMove, onRemove }) {
+    const symbol = providerSymbol(widget.symbol)
+    const subscribe = useCallback((listener) => quoteStore.subscribe(symbol, listener), [quoteStore, symbol])
+    const getSnapshot = useCallback(() => quoteStore.getSnapshot(symbol), [quoteStore, symbol])
+    const quote = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+    const price = quote?.price
+    const change = quote?.change
+    const changePercent = quote?.changePercent
+    const direction = Number.isFinite(change) ? (change >= 0 ? 'up' : 'down') : 'flat'
+    const isFresh = Boolean(quote?.isFresh)
+    const isDaily = Boolean(quote?.daily || isDailyMacroSymbol(widget.symbol))
+    const isCrypto = symbol.includes(':')
+    const percentLabel = isDaily
+        ? (Number.isFinite(change) ? `${formatSigned(change * 100, 0)} BP` : '')
+        : (Number.isFinite(changePercent) ? `${formatSigned(changePercent)}%` : '')
+    const changeLabel = !isDaily && Number.isFinite(change) ? formatSigned(change) : ''
+    const status = isDaily
+        ? `DAILY${quote?.sourceDate ? ` · ${quote.sourceDate}` : ''}`
+        : quote?.error === 'RATE LIMITED'
+            ? 'RATE LIMITED'
+            : connectionState === 'missing-key'
+                ? 'API KEY NEEDED'
+                : streamEnabled && connectionState !== 'connected'
+                    ? 'RECONNECTING'
+                    : isFresh
+                        ? 'LIVE'
+                        : quote?.cachedAt
+                            ? 'SAVED'
+                            : !isCrypto && !isRegularUsMarketSession()
+                                ? 'CLOSED'
+                                : quote?.lastEventAt || quote?.snapshotAt
+                                    ? `${streamEnabled ? 'QUIET' : 'SNAPSHOT'} · ${formatQuoteTime(Math.max(Number(quote.lastEventAt) || 0, Number(quote.snapshotAt) || 0))}`
+                                    : 'WAITING'
+
+    return (
+        <div className={`paged-tile quote-${direction} ${highlighted ? 'is-highlighted' : ''}`}>
+            <div key={quote?.events || 'no-live-ticks'} className={`paged-tile-body ${quote?.events ? 'quote-tick-blink' : ''}`}>
+                <div className="paged-tile-row">
+                    <span className="paged-tile-symbol">{displaySymbol(widget.symbol)}</span>
+                    <span className="paged-tile-percent">{percentLabel}</span>
+                </div>
+                <div className="paged-tile-price">
+                    {Number.isFinite(price) ? (isDaily ? `${formatPrice(price)}%` : `$${formatPrice(price)}`) : '—'}
+                </div>
+                <div className="paged-tile-row paged-tile-foot">
+                    <span className={`paged-tile-status ${isFresh ? 'is-live' : ''}`}>{status}</span>
+                    <span className="paged-tile-change">{changeLabel}</span>
+                </div>
+            </div>
+            {editing && (
+                <div className="paged-tile-edit">
+                    <button type="button" onClick={() => onMove(widget.id, -1)} aria-label={`Move ${displaySymbol(widget.symbol)} earlier`}>‹</button>
+                    <button type="button" className="is-remove" onClick={() => onRemove(widget.id)} aria-label={`Remove ${displaySymbol(widget.symbol)}`}>×</button>
+                    <button type="button" onClick={() => onMove(widget.id, 1)} aria-label={`Move ${displaySymbol(widget.symbol)} later`}>›</button>
+                </div>
+            )}
+        </div>
+    )
+}, (previous, next) => (
+    previous.widget === next.widget
+    && previous.quoteStore === next.quoteStore
+    && previous.streamEnabled === next.streamEnabled
+    && previous.connectionState === next.connectionState
+    && previous.highlighted === next.highlighted
+    && previous.editing === next.editing
+))
+
 const loadDismissedNewsIds = () => {
     try {
         const saved = JSON.parse(localStorage.getItem(DISMISSED_NEWS_STORAGE_KEY) || 'null')
@@ -773,7 +940,7 @@ const formatHeadlineAge = (publishedAt) => {
 // text, each headline individually dismissible. Dismissed headlines are remembered
 // in localStorage so an X'd-out story never comes back. Only polls while the
 // dashboard is mounted (owner-only), every NEWS_POLL_INTERVAL_MS.
-function BreakingNewsTicker({ systemAlerts = [] }) {
+function BreakingNewsTicker({ systemAlerts = [], maxHeadlines = MAX_VISIBLE_HEADLINES }) {
     const [headlines, setHeadlines] = useState([])
     const [dismissedIds, setDismissedIds] = useState(() => new Set(loadDismissedNewsIds()))
     const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set(loadDismissedAlertKeys()))
@@ -846,7 +1013,7 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
     const visible = headlines
         .filter((item) => !dismissedIds.has(item.id))
         .filter((item) => Number.isFinite(item.publishedAt) && now - item.publishedAt <= NEWS_MAX_DISPLAY_AGE_MS)
-        .slice(0, MAX_VISIBLE_HEADLINES)
+        .slice(0, maxHeadlines)
 
     if (visible.length === 0 && visibleAlerts.length === 0) return null
 
@@ -903,8 +1070,8 @@ function BreakingNewsTicker({ systemAlerts = [] }) {
     )
 }
 
-export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit, onSetupApiKeys }) {
-    const [initial] = useState(() => loadSavedDashboard(persistedDashboard))
+export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit, onSetupApiKeys, paged = false, seedDashboard = null, onSignOut }) {
+    const [initial] = useState(() => paged ? loadPagedBoard(persistedDashboard, seedDashboard) : loadSavedDashboard(persistedDashboard))
     const [initialQuotes] = useState(() => loadCachedQuotes())
     const [initialSubscriptionCap] = useState(() => loadRememberedSubscriptionCap())
     const [widgets, setWidgets] = useState(initial.widgets)
@@ -921,6 +1088,11 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const [streamPaused, setStreamPaused] = useState(false)
     const [streamedSymbols, setStreamedSymbols] = useState([])
     const [subscriptionNotice, setSubscriptionNotice] = useState('')
+    const [boardColumns, setBoardColumns] = useState(initial.columns)
+    // Changes only on an edit, so the newest copy (this device or the account) can win.
+    const [boardSavedAt, setBoardSavedAt] = useState(initial.savedAt || 0)
+    const [boardEditing, setBoardEditing] = useState(false)
+    const [activePage, setActivePage] = useState(0)
     const [chromeCollapsed, setChromeCollapsed] = useState(() => {
         try { return localStorage.getItem(CHROME_COLLAPSED_STORAGE_KEY) === '1' } catch { return false }
     })
@@ -952,10 +1124,44 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const lastSubscriptionAttemptRef = useRef('')
     const subscriptionCapRef = useRef(initialSubscriptionCap)
     const highlightTimerRef = useRef(null)
+    const lastSocketMessageAtRef = useRef(0)
+    const pageTrackRef = useRef(null)
+    const pageSettleTimerRef = useRef(null)
+    const seedDashboardRef = useRef(seedDashboard)
+    seedDashboardRef.current = seedDashboard
+
+    const columns = useMemo(() => paged ? arrangePagedColumns(boardColumns, widgets) : [], [paged, boardColumns, widgets])
+    const pages = useMemo(() => {
+        const next = []
+        for (let index = 0; index < columns.length; index += PAGED_COLUMNS_PER_PAGE) next.push(columns.slice(index, index + PAGED_COLUMNS_PER_PAGE))
+        return next.length > 0 ? next : [[]]
+    }, [columns])
+    const shownPage = Math.min(activePage, pages.length - 1)
+    const visibleThemeKey = paged ? [PAGED_PINNED_THEME_ID, ...pages[shownPage].flat()].join('|') : ''
+    // Stream order: what is on screen first on the paged board, starred tiles first
+    // on the desktop grid. Whatever falls beyond Finnhub's cap refreshes by snapshot.
+    const streamOrderedWidgets = useMemo(() => {
+        const streamable = widgets.filter((widget) => !isDailyMacroSymbol(widget.symbol))
+        const visibleThemeIds = visibleThemeKey ? new Set(visibleThemeKey.split('|')) : null
+        const goesFirst = (widget) => visibleThemeIds ? visibleThemeIds.has(widget.themeId) : widget.priority
+        return [...streamable.filter(goesFirst), ...streamable.filter((widget) => !goesFirst(widget))]
+    }, [widgets, visibleThemeKey])
 
     const symbolKey = useMemo(() => widgets.map((widget) => providerSymbol(widget.symbol)).sort().join('|'), [widgets])
 
     useEffect(() => {
+        if (!paged) return
+        const board = { version: PAGED_BOARD_VERSION, widgets, columns: columns.map((themes) => ({ themes })), savedAt: boardSavedAt }
+        try {
+            localStorage.setItem(PAGED_STORAGE_KEY, JSON.stringify(board))
+        } catch {
+            // The account copy still holds the board when browser storage is blocked/full.
+        }
+        onDashboardChange?.(board)
+    }, [paged, widgets, columns, boardSavedAt, onDashboardChange])
+
+    useEffect(() => {
+        if (paged) return
         // JSON round-tripping strips any undefined layout metadata before this
         // object reaches Firestore, which rejects undefined nested values.
         const dashboard = JSON.parse(JSON.stringify({ version: DASHBOARD_VERSION, widgets, layouts, savedAt: Date.now() }))
@@ -965,7 +1171,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             // Account sync remains available when browser storage is blocked/full.
         }
         onDashboardChange?.(dashboard)
-    }, [widgets, layouts, onDashboardChange])
+    }, [paged, widgets, layouts, onDashboardChange])
 
     useEffect(() => {
         pausedRef.current = streamPaused
@@ -1101,12 +1307,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
             socket.onopen = () => {
                 if (!active) return
+                lastSocketMessageAtRef.current = Date.now()
                 setConnectionState('connected')
                 setSocketEpoch((current) => current + 1)
             }
 
             socket.onmessage = (event) => {
                 if (!active) return
+                lastSocketMessageAtRef.current = Date.now()
                 try {
                     const message = JSON.parse(event.data)
                     if (message.type === 'error') {
@@ -1170,8 +1378,24 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         }
 
         connect()
+        // A socket that still reads OPEN but has gone silent while the market is
+        // trading is dead (a tablet suspend can leave one behind): replace it.
+        const watchdog = window.setInterval(() => {
+            const socket = socketRef.current
+            if (!socket || socket.readyState !== WebSocket.OPEN) return
+            if (!documentVisibleRef.current || subscribedSymbolsRef.current.size === 0 || !isRegularUsMarketSession()) return
+            if (Date.now() - lastSocketMessageAtRef.current < STREAM_WATCHDOG_SILENCE_MS) return
+            socket.onopen = null
+            socket.onmessage = null
+            socket.onerror = null
+            socket.onclose = null
+            try { socket.close() } catch { /* already gone */ }
+            socketRef.current = null
+            connect()
+        }, 15000)
         return () => {
             active = false
+            window.clearInterval(watchdog)
             if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
             if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
             const socket = socketRef.current
@@ -1187,9 +1411,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         if (!socket || socket.readyState !== WebSocket.OPEN) return
         const orderedSymbols = []
         const seenSymbols = new Set()
-        const streamableWidgets = widgets.filter((widget) => !isDailyMacroSymbol(widget.symbol))
-        const orderedWidgets = [...streamableWidgets.filter((widget) => widget.priority), ...streamableWidgets.filter((widget) => !widget.priority)]
-        orderedWidgets.forEach((widget) => {
+        streamOrderedWidgets.forEach((widget) => {
             const symbol = providerSymbol(widget.symbol)
             if (symbol && !seenSymbols.has(symbol)) {
                 seenSymbols.add(symbol)
@@ -1245,7 +1467,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         return () => {
             if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
         }
-    }, [symbolKey, socketEpoch, widgets])
+    }, [symbolKey, socketEpoch, streamOrderedWidgets])
 
     useEffect(() => {
         if (!apiKey) return undefined
@@ -1526,7 +1748,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         const themeId = THEME_BY_ID[newThemeId] ? newThemeId : 'other'
         const widget = { id: makeId(), symbol, themeId, priority: false }
         setWidgets((current) => [...current, widget])
-        setLayouts((current) => appendWidgetToLayouts(current, widgets, widget))
+        if (paged) setBoardSavedAt(Date.now())
+        else setLayouts((current) => appendWidgetToLayouts(current, widgets, widget))
         setNewSymbol('')
         setAddWidgetError('')
     }
@@ -1557,6 +1780,120 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         setAddWidgetError('')
         setEditingWidgetId(null)
     }
+
+    // ---- Paged board actions (all functional updates: tiles are memoized) ----
+    const removeBoardWidget = useCallback((widgetId) => {
+        setWidgets((current) => current.filter((widget) => widget.id !== widgetId))
+        setBoardSavedAt(Date.now())
+    }, [])
+
+    const moveBoardWidget = useCallback((widgetId, delta) => {
+        setWidgets((current) => {
+            const index = current.findIndex((widget) => widget.id === widgetId)
+            if (index < 0) return current
+            const themeIndexes = current.map((widget, position) => widget.themeId === current[index].themeId ? position : -1).filter((position) => position >= 0)
+            const target = themeIndexes[themeIndexes.indexOf(index) + delta]
+            if (target === undefined) return current
+            const next = [...current]
+            next[index] = current[target]
+            next[target] = current[index]
+            return next
+        })
+        setBoardSavedAt(Date.now())
+    }, [])
+
+    const moveBoardGroup = (themeId, direction) => {
+        const next = columns.map((column) => [...column])
+        const columnIndex = next.findIndex((column) => column.includes(themeId))
+        if (columnIndex < 0) return
+        const position = next[columnIndex].indexOf(themeId)
+        if (direction === 'up' || direction === 'down') {
+            const target = position + (direction === 'up' ? -1 : 1)
+            if (target < 0 || target >= next[columnIndex].length) return
+            next[columnIndex][position] = next[columnIndex][target]
+            next[columnIndex][target] = themeId
+        } else {
+            const targetColumn = columnIndex + (direction === 'left' ? -1 : 1)
+            if (targetColumn < 0) return
+            if (targetColumn >= next.length && next[columnIndex].length === 1) return
+            next[columnIndex].splice(position, 1)
+            if (!next[targetColumn]) next[targetColumn] = []
+            next[targetColumn].push(themeId)
+        }
+        setBoardColumns(next)
+        setBoardSavedAt(Date.now())
+    }
+
+    const recopyFromDesktop = () => {
+        if (!window.confirm('Replace this board\'s tickers with the ones on your desktop Live Dashboard? Your page arrangement is kept where the groups still exist.')) return
+        setWidgets(pagedSeedWidgets(seedDashboardRef.current))
+        setBoardColumns(columns)
+        setBoardSavedAt(Date.now())
+    }
+
+    const goToPage = useCallback((index) => {
+        const track = pageTrackRef.current
+        if (!track) return
+        const pageCount = track.children.length
+        const target = Math.max(0, Math.min(pageCount - 1, index))
+        track.scrollTo({ left: target * track.clientWidth, behavior: 'smooth' })
+    }, [])
+
+    // The stream follows the page, so wait for a swipe to settle before switching.
+    const handleTrackScroll = () => {
+        if (pageSettleTimerRef.current) window.clearTimeout(pageSettleTimerRef.current)
+        pageSettleTimerRef.current = window.setTimeout(() => {
+            const track = pageTrackRef.current
+            if (track && track.clientWidth > 0) setActivePage(Math.round(track.scrollLeft / track.clientWidth))
+        }, 140)
+    }
+
+    useEffect(() => {
+        if (!paged) return undefined
+        const handleKeyDown = (event) => {
+            if (event.target instanceof HTMLElement && /^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return
+            if (event.key === 'ArrowRight') goToPage(shownPage + 1)
+            if (event.key === 'ArrowLeft') goToPage(shownPage - 1)
+        }
+        // A rotation or Split View resize changes the page width; stay on the page.
+        const handleResize = () => {
+            const track = pageTrackRef.current
+            if (track) track.scrollLeft = shownPage * track.clientWidth
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        window.addEventListener('resize', handleResize)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+            window.removeEventListener('resize', handleResize)
+        }
+    }, [paged, shownPage, goToPage])
+
+    useEffect(() => () => {
+        if (pageSettleTimerRef.current) window.clearTimeout(pageSettleTimerRef.current)
+    }, [])
+
+    // Keep the tablet's screen on while the board is showing.
+    useEffect(() => {
+        if (!paged || typeof navigator === 'undefined' || !navigator.wakeLock) return undefined
+        let lock = null
+        let released = false
+        const acquire = async () => {
+            if (released || document.visibilityState !== 'visible') return
+            try {
+                lock = await navigator.wakeLock.request('screen')
+                if (released) lock.release().catch(() => {})
+            } catch {
+                // Low Power Mode or an old browser: the screen follows Auto-Lock.
+            }
+        }
+        acquire()
+        document.addEventListener('visibilitychange', acquire)
+        return () => {
+            released = true
+            document.removeEventListener('visibilitychange', acquire)
+            if (lock) lock.release().catch(() => {})
+        }
+    }, [paged])
 
     const toggleWidgetPriority = (widgetId) => {
         setWidgets((current) => current.map((widget) => (
@@ -1596,6 +1933,146 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         if (subscriptionNotice) alerts.push({ id: 'subscription', text: subscriptionNotice })
         return alerts
     }, [apiKey, connectionError, subscriptionNotice, onSetupApiKeys])
+
+    if (paged) {
+        const renderTile = (widget) => (
+            <PagedQuoteTile
+                key={widget.id}
+                widget={widget}
+                quoteStore={quoteStore}
+                streamEnabled={streamedSymbolSet.has(providerSymbol(widget.symbol))}
+                connectionState={displayedConnectionState}
+                highlighted={highlightedWidgetId === widget.id}
+                editing={boardEditing}
+                onMove={moveBoardWidget}
+                onRemove={removeBoardWidget}
+            />
+        )
+        const pinnedWidgets = widgets.filter((widget) => widget.themeId === PAGED_PINNED_THEME_ID)
+        const lastColumnIndex = columns.length - 1
+
+        return (
+            <section className={`finnhub-diagnostic-shell is-fullscreen is-paged ${boardEditing ? 'is-editing' : ''}`}>
+                <header className="paged-toolbar">
+                    <div className="paged-brand">STOCK STICKIES</div>
+                    <DashboardStats
+                        hidden
+                        widgetCount={widgets.length}
+                        streamedCount={streamedSymbols.length}
+                        uniqueSymbolCount={uniqueSymbolCount}
+                        quotesRef={quotesRef}
+                        quoteStore={quoteStore}
+                        totalEventsRef={totalEventsRef}
+                        eventsThisSecondRef={eventsThisSecondRef}
+                        documentVisibleRef={documentVisibleRef}
+                    />
+                    <div className="diagnostic-connection paged-connection">
+                        <span className={`connection-light ${connectedClass}`} />
+                        <span>{displayedConnectionState.replace('-', ' ').toUpperCase()}</span>
+                        <span className="paged-stream-count">{streamedSymbols.length}/{uniqueSymbolCount} STREAMING</span>
+                    </div>
+                    <nav className="paged-pager" aria-label="Board pages">
+                        <button type="button" onClick={() => goToPage(shownPage - 1)} disabled={shownPage === 0} aria-label="Previous page">‹</button>
+                        {pages.map((_, index) => (
+                            <button
+                                key={index}
+                                type="button"
+                                className={`paged-dot ${index === shownPage ? 'is-active' : ''}`}
+                                onClick={() => goToPage(index)}
+                                aria-label={`Page ${index + 1} of ${pages.length}`}
+                                aria-current={index === shownPage ? 'page' : undefined}
+                            />
+                        ))}
+                        <button type="button" onClick={() => goToPage(shownPage + 1)} disabled={shownPage >= pages.length - 1} aria-label="Next page">›</button>
+                    </nav>
+                    <button type="button" className={`paged-edit-toggle ${boardEditing ? 'is-active' : ''}`} onClick={() => setBoardEditing((current) => !current)}>
+                        {boardEditing ? 'DONE' : 'EDIT'}
+                    </button>
+                </header>
+
+                {boardEditing && (
+                    <div className="finnhub-diagnostic-controls paged-controls">
+                        <div className="diagnostic-add-control">
+                            <input
+                                value={newSymbol}
+                                maxLength={MAX_SYMBOL_LENGTH}
+                                onChange={(event) => {
+                                    setNewSymbol(cleanSymbol(event.target.value))
+                                    if (addWidgetError) setAddWidgetError('')
+                                }}
+                                onKeyDown={(event) => event.key === 'Enter' && addWidget()}
+                                placeholder="SYMBOL"
+                                aria-label="Symbol for new tile"
+                                aria-invalid={Boolean(addWidgetError)}
+                                autoCapitalize="characters"
+                                autoCorrect="off"
+                                spellCheck={false}
+                                className={addWidgetError ? 'has-error' : ''}
+                            />
+                            <select value={newThemeId} onChange={(event) => setNewThemeId(event.target.value)} aria-label="Group for new tile">
+                                {DASHBOARD_THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+                            </select>
+                            <button type="button" onClick={addWidget}>+ ADD</button>
+                            {addWidgetError && <span className="diagnostic-add-error" role="alert">{addWidgetError}</span>}
+                        </div>
+                        <div className="diagnostic-control-buttons">
+                            <button type="button" onClick={recopyFromDesktop}>RE-COPY FROM DESKTOP</button>
+                            {onSignOut && <button type="button" onClick={onSignOut}>SIGN OUT</button>}
+                        </div>
+                    </div>
+                )}
+
+                {pinnedWidgets.length > 0 && (
+                    <div className="paged-pinned">
+                        <div className="diagnostic-theme-heading paged-group-heading">
+                            <span>{THEME_BY_ID[PAGED_PINNED_THEME_ID].label}</span>
+                            <span>ON EVERY PAGE</span>
+                        </div>
+                        <div className="paged-tiles" style={{ '--paged-tiles-per-row': Math.min(pinnedWidgets.length, 8) }}>
+                            {pinnedWidgets.map(renderTile)}
+                        </div>
+                    </div>
+                )}
+
+                <div className="paged-track" ref={pageTrackRef} onScroll={handleTrackScroll}>
+                    {pages.map((pageColumns, pageIndex) => (
+                        <div key={pageIndex} className="paged-page" aria-label={`Page ${pageIndex + 1}`}>
+                            {pageColumns.map((themeIds, columnOffset) => {
+                                const columnIndex = pageIndex * PAGED_COLUMNS_PER_PAGE + columnOffset
+                                return (
+                                    <div key={columnIndex} className="paged-column">
+                                        {themeIds.map((themeId, position) => (
+                                            <div key={themeId} className="paged-group">
+                                                <div className="diagnostic-theme-heading paged-group-heading">
+                                                    <span>{THEME_BY_ID[themeId].label}</span>
+                                                    {boardEditing ? (
+                                                        <span className="paged-group-moves">
+                                                            <button type="button" onClick={() => moveBoardGroup(themeId, 'left')} disabled={columnIndex === 0} aria-label={`Move ${THEME_BY_ID[themeId].label} to the previous column`}>◀</button>
+                                                            <button type="button" onClick={() => moveBoardGroup(themeId, 'up')} disabled={position === 0} aria-label={`Move ${THEME_BY_ID[themeId].label} up`}>▲</button>
+                                                            <button type="button" onClick={() => moveBoardGroup(themeId, 'down')} disabled={position === themeIds.length - 1} aria-label={`Move ${THEME_BY_ID[themeId].label} down`}>▼</button>
+                                                            <button type="button" onClick={() => moveBoardGroup(themeId, 'right')} disabled={columnIndex === lastColumnIndex && themeIds.length === 1} aria-label={`Move ${THEME_BY_ID[themeId].label} to the next column`}>▶</button>
+                                                        </span>
+                                                    ) : (
+                                                        <span>{widgets.filter((widget) => widget.themeId === themeId).length}</span>
+                                                    )}
+                                                </div>
+                                                <div className="paged-tiles">
+                                                    {widgets.filter((widget) => widget.themeId === themeId).map(renderTile)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Tiles are large here, so keep the headline stack short. */}
+                <BreakingNewsTicker systemAlerts={systemAlerts} maxHeadlines={2} />
+            </section>
+        )
+    }
 
     return (
         <section className={`finnhub-diagnostic-shell ${fullScreen ? 'is-fullscreen' : ''} ${chromeCollapsed ? 'chrome-collapsed' : ''}`}>
