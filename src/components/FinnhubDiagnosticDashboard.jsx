@@ -174,6 +174,13 @@ const PAGED_COLUMN_GROUPS = 3
 // A streamed page with no socket message for this long during the regular session
 // has a dead connection (iPadOS can leave one open-looking after a suspend).
 const STREAM_WATCHDOG_SILENCE_MS = 90000
+// Starting arrangement, two columns per page: Mag 7 with AI; drones and space with
+// defense; healthcare with defensive. Groups not listed are packed after these.
+const PAGED_DEFAULT_COLUMNS = [
+    ['mag7', 'financials'], ['ai', 'robotics'],
+    ['drones', 'space'], ['defense', 'nuclear', 'energy'],
+    ['healthcare', 'defensive'], ['china', 'other']
+]
 
 const sanitizeBoardWidgets = (list) => (Array.isArray(list) ? list : [])
     .filter((widget) => widget && typeof widget.id === 'string' && cleanSymbol(widget.symbol))
@@ -251,9 +258,10 @@ const loadPagedBoard = (accountBoard, desktopDashboard) => {
     }
     const account = readPagedBoard(accountBoard)
     const saved = local && account ? (account.savedAt > local.savedAt ? account : local) : (local || account)
-    if (saved) return { widgets: saved.widgets, columns: arrangePagedColumns(saved.columns, saved.widgets), savedAt: saved.savedAt }
+    // A board that has never been edited (savedAt 0) follows the current default pages.
+    if (saved) return { widgets: saved.widgets, columns: arrangePagedColumns(saved.savedAt ? saved.columns : PAGED_DEFAULT_COLUMNS, saved.widgets), savedAt: saved.savedAt }
     const widgets = pagedSeedWidgets(desktopDashboard)
-    return { widgets, columns: arrangePagedColumns(null, widgets), savedAt: 0 }
+    return { widgets, columns: arrangePagedColumns(PAGED_DEFAULT_COLUMNS, widgets), savedAt: 0 }
 }
 
 const layoutItemsCollide = (item, other) => (
@@ -1831,6 +1839,12 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         setBoardSavedAt(Date.now())
     }
 
+    const resetBoardPages = () => {
+        if (!window.confirm('Put the groups back on their default pages? Your tickers are kept.')) return
+        setBoardColumns(PAGED_DEFAULT_COLUMNS)
+        setBoardSavedAt(Date.now())
+    }
+
     const goToPage = useCallback((index) => {
         const track = pageTrackRef.current
         if (!track) return
@@ -2016,6 +2030,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                             {addWidgetError && <span className="diagnostic-add-error" role="alert">{addWidgetError}</span>}
                         </div>
                         <div className="diagnostic-control-buttons">
+                            <button type="button" onClick={resetBoardPages}>DEFAULT PAGES</button>
                             <button type="button" onClick={recopyFromDesktop}>RE-COPY FROM DESKTOP</button>
                             {onSignOut && <button type="button" onClick={onSignOut}>SIGN OUT</button>}
                         </div>
