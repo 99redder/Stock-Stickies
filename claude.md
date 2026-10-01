@@ -638,6 +638,10 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
   editing never conflicts with swiping. The desktop dashboard and the board do not follow
   each other after the first copy.
+- As a Home Screen app, iPadOS draws its status strip (clock, Wi-Fi, battery) over the top
+  of the page and it cannot be hidden. `ipad.html` uses `viewport-fit=cover`, and the toolbar
+  is padded by `--paged-safe-top` (the safe-area inset, at least 24px when standalone) so the
+  strip never covers EDIT or the pager; tile height subtracts the top and bottom insets.
 - A screen wake lock keeps the tablet awake, and a watchdog replaces a socket that reads OPEN
   but has been silent for 90s during the regular session (a suspend can leave one behind).
   Run the dashboard on one device at a time: both would share the key's stream.

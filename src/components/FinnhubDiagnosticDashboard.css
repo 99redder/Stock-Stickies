@@ -543,22 +543,31 @@ a.dashboard-news-headline:hover {
 .finnhub-diagnostic-shell.is-paged {
     /* Eight tile rows share the height left after the fixed chrome: one pinned row
        plus seven per column. */
-    --paged-tile-height: clamp(58px, calc((100dvh - 196px) / 8), 128px);
+    /* As a Home Screen app the iPad draws its clock/battery strip and home indicator
+       over the page; keep the toolbar and the last row clear of them. */
+    --paged-safe-top: env(safe-area-inset-top, 0px);
+    --paged-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --paged-tile-height: clamp(58px, calc((100dvh - 196px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px);
     display: flex;
     flex-direction: column;
     height: 100dvh;
     min-height: 0;
     -webkit-tap-highlight-color: transparent;
 }
-.finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 242px) / 8), 128px); }
+.finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 242px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px); }
+@media (display-mode: standalone) {
+    /* The strip is about 24pt tall even if the browser reports no inset. */
+    .finnhub-diagnostic-shell.is-paged { --paged-safe-top: max(env(safe-area-inset-top, 0px), 24px); }
+}
 
 .paged-toolbar {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
     gap: 14px;
+    box-sizing: content-box;
     height: 40px;
-    padding: 0 12px;
+    padding: var(--paged-safe-top) max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
     border-bottom: 1px solid #444;
     background: #111;
 }
@@ -633,7 +642,7 @@ a.dashboard-news-headline:hover {
     gap: 12px;
     min-width: 0;
     overflow-y: auto;
-    padding: 6px 12px 10px;
+    padding: 6px 12px calc(10px + var(--paged-safe-bottom));
     scroll-snap-align: start;
     scroll-snap-stop: always;
 }
