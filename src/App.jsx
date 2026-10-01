@@ -1092,7 +1092,12 @@ const firebaseConfig = {
                 const unsubscribe = onSnapshot(doc(db, 'users', userId), (doc) => {
                         // New user — no Firestore doc yet. Seed Google avatar if available so
                         // they see their photo immediately; the auto-save will persist it shortly.
-                        if (!doc.exists) {
+                        if (!doc.exists()) {
+                            // Only the server can say an account has no document. A cache
+                            // miss (new browser, cleared data, offline) looks the same, and
+                            // treating it as a new user would let the autosave write the
+                            // empty defaults over a real account.
+                            if (doc.metadata.fromCache) return;
                             if (auth.currentUser?.photoURL) setProfilePhoto(auth.currentUser.photoURL);
                             setUserDataReady(true);
                             setApiKeysChecked(true); // no saved keys to decrypt
@@ -1549,12 +1554,13 @@ const firebaseConfig = {
                 if (!db || !user?.uid) return false;
                 try {
                     const uidDoc = await getDoc(doc(db, 'users', user.uid));
-                    if (uidDoc.exists) return false;
+                    // A cached "missing" is not proof the account has no document.
+                    if (uidDoc.exists() || uidDoc.metadata.fromCache) return false;
                     if (!user.email) return false;
                     // Legacy docs were keyed by sanitized email (dots replaced with underscores)
                     const emailKey = normalizeEmail(user.email).replace(/\./g, '_');
                     const emailDoc = await getDoc(doc(db, 'users', emailKey));
-                    if (!emailDoc.exists) return false;
+                    if (!emailDoc.exists()) return false;
                     await setDoc(doc(db, 'users', user.uid), emailDoc.data(), { merge: false });
                     return true;
                 } catch (err) {
@@ -2320,7 +2326,7 @@ const firebaseConfig = {
 
                 const userRef = doc(db, 'users', auth.currentUser.uid);
                 const current = await getDoc(userRef);
-                if (!current.exists) throw new Error('Your Stock Stickies account data was not found.');
+                if (!current.exists()) throw new Error('Your Stock Stickies account data was not found.');
                 const currentData = current.data() || {};
                 const snapshot = await addDoc(collection(userRef, 'snapshots'), {
                     ...currentData,
@@ -2342,7 +2348,7 @@ const firebaseConfig = {
                 }
                 const userRef = doc(db, 'users', auth.currentUser.uid);
                 const current = await getDoc(userRef);
-                if (!current.exists) throw new Error('Your Stock Stickies account data was not found.');
+                if (!current.exists()) throw new Error('Your Stock Stickies account data was not found.');
 
                 const currentData = current.data() || {};
                 const currentNotes = Array.isArray(currentData.notes) ? currentData.notes : notes;
@@ -2662,7 +2668,7 @@ const firebaseConfig = {
                 try {
                     const ref = doc(db, 'users', auth.currentUser.uid, 'snapshots', snapshotId);
                     const snap = await getDoc(ref);
-                    if (!snap.exists) throw new Error('Backup snapshot not found');
+                    if (!snap.exists()) throw new Error('Backup snapshot not found');
                     const data = snap.data() || {};
                     // Restore the whole backup (CSPs, dashboard layout, etc.), not a fixed field
                     // list; the fields below are re-sanitized on top.
@@ -2706,7 +2712,7 @@ const firebaseConfig = {
                     // Back up what's there now, so a restore can itself be undone.
                     const userRef = doc(db, 'users', auth.currentUser.uid);
                     const current = await getDoc(userRef);
-                    if (current.exists) {
+                    if (current.exists()) {
                         await addDoc(collection(userRef, 'snapshots'), {
                             ...current.data(),
                             backupCreatedAt: serverTimestamp(),

@@ -605,6 +605,9 @@ the tablet. It is a **second page of the desktop build** — `ipad.html` →
 `src/ipad/main.jsx` → `src/ipad/IpadBoardApp.jsx` — and ships with every desktop deploy. It is
 not part of `mobile/` and has no link in the app; add it to the Home Screen from Safari.
 
+- **Owner only.** Any account other than `OWNER_FIREBASE_UID` is signed straight back out
+  with "This board is private", and the document listener and board save never run for it.
+  This is a client-side gate on the page; other users' data was never reachable from it.
 - **No whole-document saves.** `IpadBoardApp.jsx` signs in (email/password or Google), reads
   `users/{uid}` for the Finnhub key and the desktop dashboard, and renders
   `FinnhubDiagnosticDashboard` with `paged`. Its only write is
@@ -1157,6 +1160,16 @@ applied, and treat any new autosave dependency as something that can fire before
 Restore now restores every field in a backup and cancels a pending autosave first;
 **Backups** now has its own header button next to User Guide (it used to live only in the
 profile-photo menu).
+
+### Problem: `doc.exists` read as a property (Oct 1, 2026)
+The modular Firestore SDK's `exists()` is a method, but seven checks in `App.jsx` read
+`.exists` as a property (always truthy) after the Aug 28 move off the compat SDK. A brand-new
+account never reached the new-user branch — the handler threw on `doc.data()` being
+undefined, so `userDataReady` stayed false and nothing saved. The restore and **Update
+positions** guards for a missing document or backup never fired either.
+**Fix**: all call `exists()`. The new-user branch also requires `!doc.metadata.fromCache`.
+**Rule**: only a server snapshot may say an account has no document. A cache miss looks
+identical, and treating it as a new user would let autosave write defaults over a real account.
 
 ### Problem: Notes moving to wrong category on color change
 `setCategories()` triggering orphan repair before `setNotes()` completes caused notes to appear orphaned.

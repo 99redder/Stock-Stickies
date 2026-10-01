@@ -79,6 +79,12 @@ const decryptApiKey = async (stored, userId) => {
 
 const SAVE_DELAY_MS = 1500
 
+// The board is the owner's only. This check is what keeps other accounts out of the
+// page; their data was never reachable from here (Firestore rules limit every account
+// to its own document).
+const OWNER_FIREBASE_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
+const NOT_OWNER_MESSAGE = 'This board is private. That account does not have access.'
+
 const signInErrorMessage = (error) => {
   const code = error?.code || ''
   if (/invalid-credential|wrong-password|user-not-found|invalid-email/.test(code)) return 'That email and password did not match.'
@@ -124,7 +130,15 @@ export default function IpadBoardApp() {
       setUser(null)
       return undefined
     }
-    return onAuthStateChanged(auth, (nextUser) => setUser(nextUser || null))
+    return onAuthStateChanged(auth, (nextUser) => {
+      if (nextUser && nextUser.uid !== OWNER_FIREBASE_UID) {
+        setSignInError(NOT_OWNER_MESSAGE)
+        setUser(null)
+        signOut(auth).catch(() => {})
+        return
+      }
+      setUser(nextUser || null)
+    })
   }, [])
 
   // Sends the board to the account when this device's copy is the newer one. Run
@@ -135,7 +149,7 @@ export default function IpadBoardApp() {
     saveTimerRef.current = setTimeout(async () => {
       const board = latestBoardRef.current
       const userId = auth?.currentUser?.uid
-      if (!board || !userId || !db || !documentExistsRef.current) return
+      if (!board || userId !== OWNER_FIREBASE_UID || !db || !documentExistsRef.current) return
       if (!(board.savedAt > (Number(accountBoardRef.current?.savedAt) || 0))) return
       try {
         await updateDoc(doc(db, 'users', userId), { ipadDashboard: board })
@@ -145,7 +159,7 @@ export default function IpadBoardApp() {
     }, SAVE_DELAY_MS)
   }, [])
 
-  const userId = user?.uid || null
+  const userId = user?.uid === OWNER_FIREBASE_UID ? user.uid : null
   useEffect(() => {
     if (!userId || !db) return undefined
     let active = true
@@ -232,7 +246,7 @@ export default function IpadBoardApp() {
     return <Screen><div className="ipad-board-status">LOADING…</div></Screen>
   }
 
-  if (!user) {
+  if (!user || !userId) {
     return (
       <Screen>
         <form className="ipad-board-form" onSubmit={signInWithEmail}>
