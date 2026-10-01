@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Stock Stickies">
+  <defs>
+    <linearGradient id="background" x1="48" y1="24" x2="464" y2="488" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1A1A2E"/>
+      <stop offset="1" stop-color="#080B10"/>
+    </linearGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="url(#background)"/>
+  <rect x="45" y="45" width="422" height="422" rx="58" fill="#10121D" stroke="#00FF9F" stroke-width="18"/>
+  <g filter="url(#glow)">
+    <path d="M92 314L169 204L229 263L326 132L420 190" fill="none" stroke="#39FF14" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="169" cy="204" r="24" fill="#39FF14"/>
+    <circle cx="326" cy="132" r="24" fill="#39FF14"/>
+  </g>
+  <g fill="#39FF14">
+    <rect x="77" y="359" width="72" height="62" rx="8" opacity=".7"/>
+    <rect x="167" y="333" width="72" height="88" rx="8" opacity=".8"/>
+    <rect x="257" y="302" width="72" height="119" rx="8" opacity=".9"/>
+    <rect x="347" y="344" width="72" height="77" rx="8" opacity=".65"/>
+  </g>
+</svg>
