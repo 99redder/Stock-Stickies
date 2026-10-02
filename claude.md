@@ -643,6 +643,12 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   is padded by `--paged-safe-top` (the safe-area inset, at least 32px when `navigator.standalone`; the edit bar shows
   `PAGED_BUILD`, app/browser mode, the reported insets and the viewport size for diagnosis) so the
   strip never covers EDIT or the pager; tile height subtracts the top and bottom insets.
+- **No Finnhub REST from the board.** The key's 60 calls/minute are shared by REST and the
+  stream; when the desktop app's price lookups (Chrome reopening its tabs) used them up,
+  Finnhub closed the iPad's stream and answered reconnects with 429 "API limit reached".
+  In `paged` mode the per-symbol Finnhub snapshot queue is off and snapshots come only from
+  `/api/quotes`. Reconnects back off 3s → 60s. The edit bar lists the last stream drops
+  (close code, uptime, messages).
 - A screen wake lock keeps the tablet awake, and a watchdog replaces a socket that reads OPEN
   but has been silent for 90s during the regular session (a suspend can leave one behind).
   Run the dashboard on one device at a time: both would share the key's stream.

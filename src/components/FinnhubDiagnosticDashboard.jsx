@@ -920,7 +920,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 7
+const PAGED_BUILD = 8
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1526,7 +1526,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     }, [symbolKey, socketEpoch, streamOrderedWidgets])
 
     useEffect(() => {
-        if (!apiKey) return undefined
+        // The paged board makes no Finnhub REST calls: the key's 60-a-minute allowance is
+        // shared with the desktop app's price lookups, and Finnhub drops and refuses the
+        // live stream once it is used up. Its snapshots come from /api/quotes alone.
+        if (!apiKey || paged) return undefined
         const controller = new AbortController()
         const targetMetadata = new Map()
         // Rank widgets by where they sit on screen (top-to-bottom, left-to-right in
@@ -1711,7 +1714,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
         loadSnapshots()
         return () => controller.abort()
-    }, [apiKey, quoteStore, symbolKey, widgets])
+    }, [apiKey, paged, quoteStore, symbolKey, widgets])
 
     useEffect(() => {
         const controller = new AbortController()
