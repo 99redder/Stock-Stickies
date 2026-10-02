@@ -199,9 +199,9 @@ const PAGED_STREAM_CAP = 45
 // defense; healthcare with defensive. Groups not listed are packed after these.
 const PAGED_DEFAULT_COLUMNS = [
     ['mag7', 'financials'], ['ai', 'robotics'],
-    // Space sits beside Defense (three rows each) so the aligned rows total seven.
-    ['space', 'drones'], ['defense', 'nuclear', 'energy'],
-    ['healthcare', 'defensive'], ['china', 'other']
+    // Four groups a page; groups of equal height sit side by side so aligned rows stay short.
+    ['space', 'drones'], ['defense', 'nuclear'],
+    ['healthcare', 'energy'], ['defensive', 'china', 'other']
 ]
 
 const sanitizeBoardWidgets = (list) => (Array.isArray(list) ? list : [])
@@ -938,7 +938,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 14
+const PAGED_BUILD = 15
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )

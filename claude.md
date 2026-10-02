@@ -627,8 +627,8 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   dashboard (`pagedSeedWidgets`). After each edit and each snapshot the iPad re-sends its
   copy if the account's is older, which repairs a desktop save that carried a stale one.
 - **Pages.** A page is two columns. `PAGED_DEFAULT_COLUMNS` is the owner's starting
-  arrangement (Mag 7 + Financials | AI + Robotics; Space + Drones | Defense + Nuclear +
-  Energy; Healthcare + Defensive | China + Other); a never-edited board (`savedAt` 0)
+  arrangement (Mag 7 + Financials | AI + Robotics; Space + Drones | Defense + Nuclear;
+  Healthcare + Energy | Defensive + China + Other — four groups a page); a never-edited board (`savedAt` 0)
   follows it, and **Default pages** in edit mode reapplies it. `arrangePagedColumns` keeps
   saved columns and packs any unplaced group into the last column (≤ 7 tile rows and ≤ 3
   groups); the `market` group is pinned above every page. Swipe, the
