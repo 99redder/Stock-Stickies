@@ -583,7 +583,10 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
   it skips any symbol the batch priced in the last 60s, so it takes over by itself if
   `/api/quotes` fails. It paces under 50 calls per rolling minute (the key's 60/min limit
   is shared with the rest of the app), starts with a 25-call burst after waiting ≤3s for
-  the first batch, and goes in on-screen order. Crypto (BTC) and DGS30 are not batched.
+  the first batch, and goes in on-screen order. DGS30 is not batched. Crypto (BTC) streams
+  its price, and every 5 minutes the batch supplies its previous close (`batchSymbolFor`:
+  `BINANCE:BTCUSDT` → Yahoo `BTC-USD`, the prior UTC day's close) so the tile has a change
+  and a red/green colour; without it the tile stayed grey.
 - Adding a ticker (`appendWidgetToLayout`) fills a free slot inside its group, otherwise
   grows the group by a row and shifts the groups below it (same columns) down. It must
   never take the first free slot further down: groups are stacked with a one-row gap

@@ -41,6 +41,16 @@ const QUOTES_BATCH_ENDPOINT = '/api/quotes'
 const BATCH_POLL_INTERVAL_MS = 15000
 const BATCH_COVERAGE_MS = 60000
 const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+// Crypto trades arrive on the stream with no previous close, so the tile had nothing to
+// compute a change from. The batch endpoint supplies one (Yahoo's BTC-USD: the prior UTC
+// day's close), re-read this often because that day rolls over at 8 PM Eastern.
+const CRYPTO_BASELINE_INTERVAL_MS = 5 * 60 * 1000
+// Stream symbol → symbol for /api/quotes; null when the batch cannot price it.
+const batchSymbolFor = (symbol) => {
+    if (!symbol.includes(':')) return symbol
+    const pair = /^BINANCE:([A-Z0-9]{2,8})USDT$/.exec(symbol)
+    return pair ? `${pair[1]}-USD` : null
+}
 
 const DASHBOARD_THEMES = [
     { id: 'mag7', label: 'MAG 7 STOCKS', symbols: ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOG', 'META', 'TSLA'], priority: true },
@@ -927,7 +937,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 9
+const PAGED_BUILD = 10
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1727,8 +1737,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         const targets = [...new Set(widgets
             .filter((widget) => !isDailyMacroSymbol(widget.symbol))
             .map((widget) => providerSymbol(widget.symbol))
-            .filter((symbol) => symbol && !symbol.includes(':')))]
+            .filter((symbol) => symbol && batchSymbolFor(symbol)))]
         if (targets.length === 0) return undefined
+        const streamSymbolByBatchSymbol = new Map(targets.map((symbol) => [batchSymbolFor(symbol), symbol]))
         let timer = null
 
         const poll = async () => {
@@ -1738,36 +1749,41 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 // Everything not actively streaming: beyond the stream cap, or
                 // subscribed but without a trade for STALE_STREAM_AFTER_MS.
                 const symbols = targets.filter((symbol) => {
+                    if (symbol.includes(':')) return now - (batchCoveredAtRef.current[symbol] || 0) >= CRYPTO_BASELINE_INTERVAL_MS
                     if (!subscribedSymbolsRef.current.has(symbol)) return true
                     const quote = quotesRef.current[symbol] || {}
                     const quietSince = Math.max(Number(quote.lastEventAt) || 0, subscribedAtRef.current[symbol] || 0)
                     return now - quietSince >= STALE_STREAM_AFTER_MS
-                }).sort()
+                }).map(batchSymbolFor).sort()
                 if (symbols.length > 0) {
                     try {
                         const response = await fetch(`${QUOTES_BATCH_ENDPOINT}?symbols=${encodeURIComponent(symbols.join(','))}`, { signal: controller.signal })
                         if (!response.ok) throw new Error(`Quote batch returned ${response.status}`)
                         const data = await response.json()
                         const receivedAt = Date.now()
-                        Object.entries(data?.quotes || {}).forEach(([symbol, batchQuote]) => {
-                            const price = Number(batchQuote?.price)
-                            if (!Number.isFinite(price) || price <= 0) return
+                        Object.entries(data?.quotes || {}).forEach(([batchSymbol, batchQuote]) => {
+                            const symbol = streamSymbolByBatchSymbol.get(batchSymbol)
+                            const batchPrice = Number(batchQuote?.price)
+                            if (!symbol || !Number.isFinite(batchPrice) || batchPrice <= 0) return
                             const previous = quotesRef.current[symbol] || {}
-                            // A trade that arrived while the request was in flight is newer.
-                            if (previous.lastEventAt && previous.lastEventAt > now) return
                             const previousClose = Number(batchQuote.previousClose)
                             const validPreviousClose = Number.isFinite(previousClose) && previousClose > 0
+                            // A trade that arrived while the request was in flight is newer:
+                            // keep its price, and take only the previous close from the batch.
+                            const tradeIsNewer = Boolean(previous.lastEventAt && previous.lastEventAt > now && Number.isFinite(previous.price))
+                            if (tradeIsNewer && !validPreviousClose) return
+                            const price = tradeIsNewer ? previous.price : batchPrice
                             const providerTimestamp = Number(batchQuote.timestamp) || receivedAt
                             const nextQuote = {
                                 ...previous,
                                 price,
                                 previousClose: validPreviousClose ? previousClose : previous.previousClose,
-                                change: Number.isFinite(Number(batchQuote.change)) ? Number(batchQuote.change) : previous.change,
-                                changePercent: Number.isFinite(Number(batchQuote.changePercent)) ? Number(batchQuote.changePercent) : previous.changePercent,
+                                change: validPreviousClose ? price - previousClose : Number.isFinite(Number(batchQuote.change)) ? Number(batchQuote.change) : previous.change,
+                                changePercent: validPreviousClose ? ((price - previousClose) / previousClose) * 100 : Number.isFinite(Number(batchQuote.changePercent)) ? Number(batchQuote.changePercent) : previous.changePercent,
                                 high: Number(batchQuote.high) || previous.high || null,
                                 low: Number(batchQuote.low) || previous.low || null,
                                 cachedAt: null,
-                                snapshotAt: receivedAt,
+                                snapshotAt: tradeIsNewer ? previous.snapshotAt : receivedAt,
                                 ...(validPreviousClose ? {
                                     baselineMarketDate: getEasternMarketDate(providerTimestamp),
                                     baselineCheckedDate: getEasternMarketDate(receivedAt)
