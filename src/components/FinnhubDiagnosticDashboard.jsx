@@ -199,7 +199,8 @@ const PAGED_STREAM_CAP = 45
 // defense; healthcare with defensive. Groups not listed are packed after these.
 const PAGED_DEFAULT_COLUMNS = [
     ['mag7', 'financials'], ['ai', 'robotics'],
-    ['drones', 'space'], ['defense', 'nuclear', 'energy'],
+    // Space sits beside Defense (three rows each) so the aligned rows total seven.
+    ['space', 'drones'], ['defense', 'nuclear', 'energy'],
     ['healthcare', 'defensive'], ['china', 'other']
 ]
 
@@ -937,7 +938,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 13
+const PAGED_BUILD = 14
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -2135,10 +2136,12 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                         <div key={pageIndex} className="paged-page" aria-label={`Page ${pageIndex + 1}`}>
                             {pageColumns.map((themeIds, columnOffset) => {
                                 const columnIndex = pageIndex * PAGED_COLUMNS_PER_PAGE + columnOffset
+                                // Groups are placed on a shared grid, so the Nth group of each
+                                // column starts at the same height.
                                 return (
-                                    <div key={columnIndex} className="paged-column">
+                                    <React.Fragment key={columnIndex}>
                                         {themeIds.map((themeId, position) => (
-                                            <div key={themeId} className="paged-group">
+                                            <div key={themeId} className="paged-group" style={{ gridColumn: columnOffset + 1, gridRow: position + 1 }}>
                                                 <div className="diagnostic-theme-heading paged-group-heading">
                                                     <span>{THEME_BY_ID[themeId].label}</span>
                                                     {boardEditing ? (
@@ -2157,7 +2160,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                                 </div>
                                             </div>
                                         ))}
-                                    </div>
+                                    </React.Fragment>
                                 )
                             })}
                         </div>

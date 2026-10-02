@@ -640,14 +640,15 @@ a.dashboard-news-headline:hover {
     flex: 0 0 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-content: start;
-    gap: 12px 24px;
+    align-items: start;
+    gap: 26px 24px;
     min-width: 0;
     overflow-y: auto;
     padding: 6px 12px calc(10px + var(--paged-safe-bottom));
     scroll-snap-align: start;
     scroll-snap-stop: always;
 }
-.paged-column { display: flex; min-width: 0; flex-direction: column; gap: 26px; }
+.paged-group { min-width: 0; }
 
 .paged-tiles {
     display: grid;
@@ -730,6 +731,7 @@ a.dashboard-news-headline:hover {
 /* Portrait or Split View: one column per page, and the page scrolls. */
 @media (max-width: 900px) {
     .paged-page { grid-template-columns: minmax(0, 1fr); }
+    .paged-page .paged-group { grid-column: 1 !important; grid-row: auto !important; }
     .paged-pinned .paged-tiles { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
     .paged-stream-count { display: none; }
 }

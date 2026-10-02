@@ -627,12 +627,13 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   dashboard (`pagedSeedWidgets`). After each edit and each snapshot the iPad re-sends its
   copy if the account's is older, which repairs a desktop save that carried a stale one.
 - **Pages.** A page is two columns. `PAGED_DEFAULT_COLUMNS` is the owner's starting
-  arrangement (Mag 7 + Financials | AI + Robotics; Drones + Space | Defense + Nuclear +
+  arrangement (Mag 7 + Financials | AI + Robotics; Space + Drones | Defense + Nuclear +
   Energy; Healthcare + Defensive | China + Other); a never-edited board (`savedAt` 0)
   follows it, and **Default pages** in edit mode reapplies it. `arrangePagedColumns` keeps
   saved columns and packs any unplaced group into the last column (≤ 7 tile rows and ≤ 3
   groups); the `market` group is pinned above every page. Swipe, the
-  pager dots, or ←/→ change page. Tiles are three per row, sized so one pinned row plus seven
+  pager dots, or ←/→ change page. Groups sit on a shared grid (`gridRow` = position in the column), so the Nth group of
+  both columns starts at the same height. Tiles are three per row, sized so one pinned row plus seven
   rows fit an 11" iPad in landscape (`--paged-tile-height`).
 - **The stream follows the page.** `streamOrderedWidgets` puts the visible page (plus the
   pinned row) first, so everything on screen streams and the rest fills up to Finnhub's
