@@ -920,7 +920,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 6
+const PAGED_BUILD = 7
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1159,6 +1159,11 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const highlightTimerRef = useRef(null)
     const lastSocketMessageAtRef = useRef(0)
     const reconnectAttemptsRef = useRef(0)
+    // Last few stream drops (close code, how long it was up, messages received), shown
+    // in the paged board's edit bar to diagnose reconnect loops on the tablet.
+    const streamDropLogRef = useRef([])
+    const socketOpenedAtRef = useRef(0)
+    const socketMessageCountRef = useRef(0)
     const pageTrackRef = useRef(null)
     const pageSettleTimerRef = useRef(null)
     const seedDashboardRef = useRef(seedDashboard)
@@ -1342,6 +1347,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             socket.onopen = () => {
                 if (!active) return
                 lastSocketMessageAtRef.current = Date.now()
+                socketOpenedAtRef.current = Date.now()
+                socketMessageCountRef.current = 0
                 setConnectionState('connected')
                 setSocketEpoch((current) => current + 1)
             }
@@ -1351,6 +1358,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 lastSocketMessageAtRef.current = Date.now()
                 // A message proves the connection is really accepted.
                 reconnectAttemptsRef.current = 0
+                socketMessageCountRef.current += 1
                 try {
                     const message = JSON.parse(event.data)
                     if (message.type === 'error') {
@@ -1403,8 +1411,18 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             socket.onerror = () => {
                 if (active) setConnectionError('Finnhub live stream could not connect. Prices still refresh every 15 seconds. Check that the Live Dashboard is not open on another device or tab.')
             }
-            socket.onclose = () => {
+            socket.onclose = (event) => {
                 if (!active) return
+                const openedAt = socketOpenedAtRef.current
+                socketOpenedAtRef.current = 0
+                streamDropLogRef.current = [...streamDropLogRef.current.slice(-3), [
+                    new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }),
+                    `code ${event?.code ?? '?'}${event?.reason ? ` ${String(event.reason).slice(0, 40)}` : ''}`,
+                    openedAt ? `up ${Math.round((Date.now() - openedAt) / 1000)}s` : 'never opened',
+                    `${socketMessageCountRef.current} msgs`,
+                    `${subscribedSymbolsRef.current.size} subs`,
+                    document.visibilityState === 'visible' ? '' : 'hidden'
+                ].filter(Boolean).join(' · ')]
                 socketRef.current = null
                 subscribedSymbolsRef.current = new Set()
                 setStreamedSymbols([])
@@ -2067,6 +2085,11 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 B{PAGED_BUILD} · {homeScreenApp ? 'APP' : 'BROWSER'} · {readSafeAreaInsets()} · {window.innerWidth}×{window.innerHeight}
                             </span>
                         </div>
+                        {streamDropLogRef.current.length > 0 && (
+                            <div className="paged-drop-log">
+                                {streamDropLogRef.current.map((entry, index) => <div key={index}>STREAM DROP · {entry}</div>)}
+                            </div>
+                        )}
                     </div>
                 )}
 
