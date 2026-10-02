@@ -555,10 +555,10 @@ a.dashboard-news-headline:hover {
     -webkit-tap-highlight-color: transparent;
 }
 .finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 242px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px); }
-@media (display-mode: standalone) {
-    /* The strip is about 24pt tall even if the browser reports no inset. */
-    .finnhub-diagnostic-shell.is-paged { --paged-safe-top: max(env(safe-area-inset-top, 0px), 24px); }
-}
+/* Opened from the Home Screen (class set from navigator.standalone, which iPadOS always
+   reports): leave room for the strip even if the browser reports no inset. */
+.finnhub-diagnostic-shell.is-paged.is-home-screen-app { --paged-safe-top: max(env(safe-area-inset-top, 0px), 32px); }
+.paged-build { color: #777; font-size: 9px; font-weight: 700; letter-spacing: .06em; white-space: nowrap; }
 
 .paged-toolbar {
     display: flex;

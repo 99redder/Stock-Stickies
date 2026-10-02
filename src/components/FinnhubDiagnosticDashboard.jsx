@@ -914,6 +914,26 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
     && previous.editing === next.editing
 ))
 
+// Shown in the board's edit bar so a layout problem on the tablet can be reported
+// exactly: build, Home Screen mode, and the insets the browser reports.
+const PAGED_BUILD = 5
+const isHomeScreenApp = () => typeof window !== 'undefined' && (
+    window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
+)
+const readSafeAreaInsets = () => {
+    try {
+        const probe = document.createElement('div')
+        probe.style.cssText = 'position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)'
+        document.body.appendChild(probe)
+        const style = window.getComputedStyle(probe)
+        const insets = `${parseFloat(style.paddingTop) || 0}/${parseFloat(style.paddingBottom) || 0}`
+        probe.remove()
+        return insets
+    } catch {
+        return '?'
+    }
+}
+
 const loadDismissedNewsIds = () => {
     try {
         const saved = JSON.parse(localStorage.getItem(DISMISSED_NEWS_STORAGE_KEY) || 'null')
@@ -1101,6 +1121,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const [boardSavedAt, setBoardSavedAt] = useState(initial.savedAt || 0)
     const [boardEditing, setBoardEditing] = useState(false)
     const [activePage, setActivePage] = useState(0)
+    const [homeScreenApp] = useState(isHomeScreenApp)
     const [chromeCollapsed, setChromeCollapsed] = useState(() => {
         try { return localStorage.getItem(CHROME_COLLAPSED_STORAGE_KEY) === '1' } catch { return false }
     })
@@ -1966,7 +1987,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         const lastColumnIndex = columns.length - 1
 
         return (
-            <section className={`finnhub-diagnostic-shell is-fullscreen is-paged ${boardEditing ? 'is-editing' : ''}`}>
+            <section className={`finnhub-diagnostic-shell is-fullscreen is-paged ${boardEditing ? 'is-editing' : ''} ${homeScreenApp ? 'is-home-screen-app' : ''}`}>
                 <header className="paged-toolbar">
                     <div className="paged-brand">STOCK STICKIES</div>
                     <DashboardStats
@@ -2033,6 +2054,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                             <button type="button" onClick={resetBoardPages}>DEFAULT PAGES</button>
                             <button type="button" onClick={recopyFromDesktop}>RE-COPY FROM DESKTOP</button>
                             {onSignOut && <button type="button" onClick={onSignOut}>SIGN OUT</button>}
+                            <span className="paged-build">
+                                B{PAGED_BUILD} · {homeScreenApp ? 'APP' : 'BROWSER'} · {readSafeAreaInsets()} · {window.innerWidth}×{window.innerHeight}
+                            </span>
                         </div>
                     </div>
                 )}

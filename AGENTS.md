@@ -640,7 +640,8 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   each other after the first copy.
 - As a Home Screen app, iPadOS draws its status strip (clock, Wi-Fi, battery) over the top
   of the page and it cannot be hidden. `ipad.html` uses `viewport-fit=cover`, and the toolbar
-  is padded by `--paged-safe-top` (the safe-area inset, at least 24px when standalone) so the
+  is padded by `--paged-safe-top` (the safe-area inset, at least 32px when `navigator.standalone`; the edit bar shows
+  `PAGED_BUILD`, app/browser mode, the reported insets and the viewport size for diagnosis) so the
   strip never covers EDIT or the pager; tile height subtracts the top and bottom insets.
 - A screen wake lock keeps the tablet awake, and a watchdog replaces a socket that reads OPEN
   but has been silent for 90s during the regular session (a suspend can leave one behind).
