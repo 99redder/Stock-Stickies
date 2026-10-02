@@ -178,6 +178,13 @@ const STREAM_WATCHDOG_SILENCE_MS = 90000
 // is already streaming on another device, or Finnhub is rate-limiting — is not hammered.
 const RECONNECT_BASE_DELAY_MS = 3000
 const RECONNECT_MAX_DELAY_MS = 60000
+// Finnhub allows only 5 stream connections per window (its 429 carries
+// x-ratelimit-limit: 5), so only a connection that lasted this long resets the backoff;
+// one that opens and drops again must not retry at the base delay.
+const RECONNECT_STABLE_AFTER_MS = 60000
+// The paged board never probes for the stream cap (subscribing past it is the riskiest
+// thing a connection does); it stays under Finnhub's free limit of 50 symbols.
+const PAGED_STREAM_CAP = 45
 // Starting arrangement, two columns per page: Mag 7 with AI; drones and space with
 // defense; healthcare with defensive. Groups not listed are packed after these.
 const PAGED_DEFAULT_COLUMNS = [
@@ -920,7 +927,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 8
+const PAGED_BUILD = 9
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1356,8 +1363,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             socket.onmessage = (event) => {
                 if (!active) return
                 lastSocketMessageAtRef.current = Date.now()
-                // A message proves the connection is really accepted.
-                reconnectAttemptsRef.current = 0
                 socketMessageCountRef.current += 1
                 try {
                     const message = JSON.parse(event.data)
@@ -1415,6 +1420,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 if (!active) return
                 const openedAt = socketOpenedAtRef.current
                 socketOpenedAtRef.current = 0
+                if (openedAt && Date.now() - openedAt >= RECONNECT_STABLE_AFTER_MS) reconnectAttemptsRef.current = 0
                 streamDropLogRef.current = [...streamDropLogRef.current.slice(-3), [
                     new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }),
                     `code ${event?.code ?? '?'}${event?.reason ? ` ${String(event.reason).slice(0, 40)}` : ''}`,
@@ -1476,7 +1482,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         })
         const wanted = new Set(orderedSymbols)
         const subscribed = subscribedSymbolsRef.current
-        const knownCap = subscriptionCapRef.current
+        const knownCap = paged ? Math.min(subscriptionCapRef.current ?? PAGED_STREAM_CAP, PAGED_STREAM_CAP) : subscriptionCapRef.current
         const desiredSymbols = knownCap === null ? orderedSymbols : orderedSymbols.slice(0, knownCap)
         const desired = new Set(desiredSymbols)
 
@@ -1523,7 +1529,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         return () => {
             if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
         }
-    }, [symbolKey, socketEpoch, streamOrderedWidgets])
+    }, [paged, symbolKey, socketEpoch, streamOrderedWidgets])
 
     useEffect(() => {
         // The paged board makes no Finnhub REST calls: the key's 60-a-minute allowance is

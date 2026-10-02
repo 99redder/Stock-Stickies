@@ -647,7 +647,10 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   stream; when the desktop app's price lookups (Chrome reopening its tabs) used them up,
   Finnhub closed the iPad's stream and answered reconnects with 429 "API limit reached".
   In `paged` mode the per-symbol Finnhub snapshot queue is off and snapshots come only from
-  `/api/quotes`. Reconnects back off 3s → 60s. The edit bar lists the last stream drops
+  `/api/quotes`. Finnhub also limits stream *connections* to 5 per window (the 429 carries
+  `x-ratelimit-limit: 5`), so reconnects back off 3s → 60s and only a connection that lasted
+  60s resets the backoff. The board never probes for the symbol cap; it streams at most
+  `PAGED_STREAM_CAP` (45) symbols. The edit bar lists the last stream drops
   (close code, uptime, messages).
 - A screen wake lock keeps the tablet awake, and a watchdog replaces a socket that reads OPEN
   but has been silent for 90s during the regular session (a suspend can leave one behind).
