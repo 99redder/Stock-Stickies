@@ -174,6 +174,10 @@ const PAGED_COLUMN_GROUPS = 3
 // A streamed page with no socket message for this long during the regular session
 // has a dead connection (iPadOS can leave one open-looking after a suspend).
 const STREAM_WATCHDOG_SILENCE_MS = 90000
+// Reconnects back off (3s, 6s, 12s … up to a minute) so a refused connection — the key
+// is already streaming on another device, or Finnhub is rate-limiting — is not hammered.
+const RECONNECT_BASE_DELAY_MS = 3000
+const RECONNECT_MAX_DELAY_MS = 60000
 // Starting arrangement, two columns per page: Mag 7 with AI; drones and space with
 // defense; healthcare with defensive. Groups not listed are packed after these.
 const PAGED_DEFAULT_COLUMNS = [
@@ -916,7 +920,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 5
+const PAGED_BUILD = 6
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1154,6 +1158,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const subscriptionCapRef = useRef(initialSubscriptionCap)
     const highlightTimerRef = useRef(null)
     const lastSocketMessageAtRef = useRef(0)
+    const reconnectAttemptsRef = useRef(0)
     const pageTrackRef = useRef(null)
     const pageSettleTimerRef = useRef(null)
     const seedDashboardRef = useRef(seedDashboard)
@@ -1344,6 +1349,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             socket.onmessage = (event) => {
                 if (!active) return
                 lastSocketMessageAtRef.current = Date.now()
+                // A message proves the connection is really accepted.
+                reconnectAttemptsRef.current = 0
                 try {
                     const message = JSON.parse(event.data)
                     if (message.type === 'error') {
@@ -1394,7 +1401,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             }
 
             socket.onerror = () => {
-                if (active) setConnectionError('Finnhub WebSocket connection error')
+                if (active) setConnectionError('Finnhub live stream could not connect. Prices still refresh every 15 seconds. Check that the Live Dashboard is not open on another device or tab.')
             }
             socket.onclose = () => {
                 if (!active) return
@@ -1402,7 +1409,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 subscribedSymbolsRef.current = new Set()
                 setStreamedSymbols([])
                 setConnectionState('reconnecting')
-                reconnectTimerRef.current = setTimeout(connect, 3000)
+                const delay = Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttemptsRef.current)
+                reconnectAttemptsRef.current += 1
+                reconnectTimerRef.current = setTimeout(connect, delay)
             }
         }
 
