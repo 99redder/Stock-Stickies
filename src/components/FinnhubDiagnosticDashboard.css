@@ -547,14 +547,14 @@ a.dashboard-news-headline:hover {
        over the page; keep the toolbar and the last row clear of them. */
     --paged-safe-top: env(safe-area-inset-top, 0px);
     --paged-safe-bottom: env(safe-area-inset-bottom, 0px);
-    --paged-tile-height: clamp(58px, calc((100dvh - 232px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px);
+    --paged-tile-height: clamp(58px, calc((100dvh - 252px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px);
     display: flex;
     flex-direction: column;
     height: 100dvh;
     min-height: 0;
     -webkit-tap-highlight-color: transparent;
 }
-.finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 278px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px); }
+.finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 298px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px); }
 /* Opened from the Home Screen (class set from navigator.standalone, which iPadOS always
    reports): leave room for the strip even if the browser reports no inset. */
 .finnhub-diagnostic-shell.is-paged.is-home-screen-app { --paged-safe-top: max(env(safe-area-inset-top, 0px), 32px); }
@@ -617,7 +617,8 @@ a.dashboard-news-headline:hover {
 .paged-controls .diagnostic-add-control input,
 .paged-controls .diagnostic-add-control select { font-size: 16px; }
 
-.paged-pinned { flex: 0 0 auto; padding: 6px 12px 0; }
+/* The bottom padding matches the gap between stacked groups. */
+.paged-pinned { flex: 0 0 auto; padding: 6px 12px 20px; }
 .paged-group-heading { height: 18px; margin-bottom: 4px; font-size: 11px; }
 .paged-group-heading span:last-child { font-size: 9px; }
 
