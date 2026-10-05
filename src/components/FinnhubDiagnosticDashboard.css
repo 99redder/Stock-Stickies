@@ -671,26 +671,30 @@ a.dashboard-news-headline:hover {
     height: 100%;
     flex-direction: column;
     justify-content: space-between;
-    padding: 5px 8px 4px;
+    padding: 4px 8px 3px;
 }
 .paged-tile.quote-up .paged-tile-body.quote-tick-blink { animation: quote-tick-up 420ms ease-out; }
 .paged-tile.quote-down .paged-tile-body.quote-tick-blink { animation: quote-tick-down 420ms ease-out; }
 .paged-tile.quote-flat .paged-tile-body.quote-tick-blink { animation: quote-tick-flat 420ms ease-out; }
 
-.paged-tile-row { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 6px; white-space: nowrap; }
+.paged-tile-row { display: flex; flex: 0 0 auto; min-width: 0; align-items: baseline; justify-content: space-between; gap: 6px; line-height: 17px; white-space: nowrap; }
 .paged-tile-symbol { overflow: hidden; color: #d6d6d6; font-size: 15px; font-weight: 800; letter-spacing: -.02em; text-overflow: ellipsis; }
 .paged-tile-percent { color: #8a8a8a; font-size: 14px; font-weight: 700; }
 .paged-tile-price {
-    overflow: hidden;
+    /* The line box must be taller than the digits: at line-height 1 with overflow hidden
+       the bottom of every price was cut off. The size is what is left of the tile after
+       the two fixed rows (17px + 12px), padding (7px) and border (2px), so nothing in the
+       tile has to shrink; a price too wide for the tile is clipped by the tile itself. */
+    flex: 0 0 auto;
     color: #a8a8a8;
-    font-size: clamp(20px, calc(var(--paged-tile-height) * .36), 34px);
+    font-size: clamp(16px, calc((var(--paged-tile-height) - 39px) / 1.1), 34px);
     font-weight: 700;
     letter-spacing: -.05em;
-    line-height: 1;
+    line-height: 1.1;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
-.paged-tile-foot { color: #8a8a8a; font-size: 9px; font-weight: 800; letter-spacing: .06em; }
+.paged-tile-foot { color: #8a8a8a; font-size: 9px; font-weight: 800; letter-spacing: .06em; line-height: 12px; }
 .paged-tile-status { overflow: hidden; text-overflow: ellipsis; }
 .paged-tile-status.is-live { color: #55b98a; }
 .paged-tile-change { font-size: 11px; letter-spacing: 0; }
