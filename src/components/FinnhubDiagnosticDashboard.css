@@ -745,3 +745,21 @@ a.dashboard-news-headline:hover {
 }
 
 .paged-drop-log { flex: 1 0 100%; color: #b98a4a; font-size: 11px; font-weight: 700; letter-spacing: .03em; line-height: 1.5; }
+
+/* Paged board only: the dismiss control is a full-height strip down the right side of
+   each headline, big enough for a finger and clear of the headline link. */
+.is-paged .dashboard-news-item { position: relative; padding-right: 62px; }
+.is-paged .dashboard-news-dismiss {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 52px;
+    height: auto;
+    border-left: 1px solid rgb(0 0 0 / 28%);
+    border-radius: 0 2px 2px 0;
+    background: rgb(0 0 0 / 14%);
+    font-size: 30px;
+    font-weight: 700;
+}
+.is-paged .dashboard-news-dismiss:active { background: rgb(0 0 0 / 30%); }
