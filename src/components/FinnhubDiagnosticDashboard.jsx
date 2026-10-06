@@ -870,7 +870,7 @@ const QuoteWidget = React.memo(function QuoteWidget({ widget, quoteStore, stream
 
 // Read-only tile for the paged board: bigger type, no drag. Edit mode adds reorder
 // and remove buttons.
-const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, streamEnabled, connectionState, highlighted, editing, onMove, onRemove }) {
+const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, streamEnabled, connectionState, highlighted, selected, editing, onMove, onRemove, onSelect }) {
     const symbol = providerSymbol(widget.symbol)
     const subscribe = useCallback((listener) => quoteStore.subscribe(symbol, listener), [quoteStore, symbol])
     const getSnapshot = useCallback(() => quoteStore.getSnapshot(symbol), [quoteStore, symbol])
@@ -905,7 +905,17 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
                                     : 'WAITING'
 
     return (
-        <div className={`paged-tile quote-${direction} ${highlighted ? 'is-highlighted' : ''}`}>
+        <div
+            className={`paged-tile quote-${direction} ${highlighted ? 'is-highlighted' : ''} ${selected ? 'is-selected' : ''}`}
+            role="button"
+            tabIndex={0}
+            aria-pressed={selected}
+            aria-label={`${displaySymbol(widget.symbol)}: move or remove`}
+            onClick={editing ? undefined : () => onSelect(widget.id)}
+            onKeyDown={(event) => {
+                if (!editing && event.key === 'Enter') onSelect(widget.id)
+            }}
+        >
             <div key={quote?.events || 'no-live-ticks'} className={`paged-tile-body ${quote?.events ? 'quote-tick-blink' : ''}`}>
                 <div className="paged-tile-row">
                     <span className="paged-tile-symbol">{displaySymbol(widget.symbol)}</span>
@@ -934,12 +944,13 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
     && previous.streamEnabled === next.streamEnabled
     && previous.connectionState === next.connectionState
     && previous.highlighted === next.highlighted
+    && previous.selected === next.selected
     && previous.editing === next.editing
 ))
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 18
+const PAGED_BUILD = 19
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1149,6 +1160,12 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     // Height of the on-screen keyboard over the page, so the add bar can sit above it.
     const [keyboardInset, setKeyboardInset] = useState(0)
     const [revealRequest, setRevealRequest] = useState(null)
+    // Tapping a tile selects it: the bottom bar then offers Move and Remove for it.
+    const [selectedWidgetId, setSelectedWidgetId] = useState(null)
+    const [manageThemeId, setManageThemeId] = useState('other')
+    const [removedWidget, setRemovedWidget] = useState(null)
+    // The add form is hidden until asked for, so the board is all tiles by default.
+    const [addBarOpen, setAddBarOpen] = useState(false)
     const [chromeCollapsed, setChromeCollapsed] = useState(() => {
         try { return localStorage.getItem(CHROME_COLLAPSED_STORAGE_KEY) === '1' } catch { return false }
     })
@@ -1900,6 +1917,51 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         setBoardSavedAt(Date.now())
     }, [])
 
+    // Functional updates only: tiles are memoized and keep the first copy of this.
+    const selectBoardWidget = useCallback((widgetId) => {
+        setSelectedWidgetId((current) => current === widgetId ? null : widgetId)
+        setAddWidgetError('')
+        setAddNotice('')
+    }, [])
+
+    const moveSelectedWidget = () => {
+        const widget = widgets.find((item) => item.id === selectedWidgetId)
+        const themeId = THEME_BY_ID[manageThemeId] ? manageThemeId : 'other'
+        if (!widget || widget.themeId === themeId) return
+        setWidgets((current) => [...current.filter((item) => item.id !== widget.id), { ...widget, themeId }])
+        setBoardSavedAt(Date.now())
+        setSelectedWidgetId(null)
+        setRemovedWidget(null)
+        setAddNotice(`Moved ${displaySymbol(widget.symbol)} to ${THEME_BY_ID[themeId].label}`)
+        setRevealRequest({ widgetId: widget.id })
+    }
+
+    const removeSelectedWidget = () => {
+        const index = widgets.findIndex((item) => item.id === selectedWidgetId)
+        if (index < 0) return
+        const widget = widgets[index]
+        setWidgets((current) => current.filter((item) => item.id !== widget.id))
+        setBoardSavedAt(Date.now())
+        setSelectedWidgetId(null)
+        setRemovedWidget({ widget, index })
+        setAddNotice(`Removed ${displaySymbol(widget.symbol)}`)
+    }
+
+    const undoRemoveWidget = () => {
+        if (!removedWidget) return
+        const { widget, index } = removedWidget
+        setWidgets((current) => {
+            if (current.some((item) => providerSymbol(item.symbol) === providerSymbol(widget.symbol))) return current
+            const next = [...current]
+            next.splice(Math.min(index, next.length), 0, widget)
+            return next
+        })
+        setBoardSavedAt(Date.now())
+        setRemovedWidget(null)
+        setAddNotice(`Restored ${displaySymbol(widget.symbol)}`)
+        setRevealRequest({ widgetId: widget.id })
+    }
+
     const moveBoardWidget = useCallback((widgetId, delta) => {
         setWidgets((current) => {
             const index = current.findIndex((widget) => widget.id === widgetId)
@@ -2007,9 +2069,20 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
     useEffect(() => {
         if (!addNotice) return undefined
-        const timer = window.setTimeout(() => setAddNotice(''), 5000)
+        // A removal stays on screen longer, with its Undo.
+        const timer = window.setTimeout(() => {
+            setAddNotice('')
+            setRemovedWidget(null)
+        }, removedWidget ? 10000 : 5000)
         return () => window.clearTimeout(timer)
-    }, [addNotice])
+    }, [addNotice, removedWidget])
+
+    // The picker starts on the selected tile's own group.
+    useEffect(() => {
+        const widget = widgets.find((item) => item.id === selectedWidgetId)
+        if (widget) setManageThemeId(widget.themeId)
+        else if (selectedWidgetId) setSelectedWidgetId(null)
+    }, [selectedWidgetId, widgets])
 
     // The on-screen keyboard covers the bottom of the page without resizing it; the
     // visual viewport says by how much.
@@ -2099,11 +2172,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 streamEnabled={streamedSymbolSet.has(providerSymbol(widget.symbol))}
                 connectionState={displayedConnectionState}
                 highlighted={highlightedWidgetId === widget.id}
+                selected={selectedWidgetId === widget.id}
                 editing={boardEditing}
                 onMove={moveBoardWidget}
                 onRemove={removeBoardWidget}
+                onSelect={selectBoardWidget}
             />
         )
+        const selectedWidget = boardEditing ? null : widgets.find((widget) => widget.id === selectedWidgetId) || null
         const pinnedWidgets = widgets.filter((widget) => widget.themeId === PAGED_PINNED_THEME_ID)
         const lastColumnIndex = columns.length - 1
 
@@ -2141,6 +2217,17 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                         ))}
                         <button type="button" onClick={() => goToPage(shownPage + 1)} disabled={shownPage >= pages.length - 1} aria-label="Next page">›</button>
                     </nav>
+                    <button
+                        type="button"
+                        className={`paged-edit-toggle ${addBarOpen ? 'is-active' : ''}`}
+                        onClick={() => {
+                            setSelectedWidgetId(null)
+                            setAddBarOpen((current) => !current)
+                        }}
+                        aria-expanded={addBarOpen}
+                    >
+                        {addBarOpen ? 'CLOSE ADD' : '+ ADD'}
+                    </button>
                     <button type="button" className={`paged-edit-toggle ${boardEditing ? 'is-active' : ''}`} onClick={() => setBoardEditing((current) => !current)}>
                         {boardEditing ? 'DONE' : 'EDIT'}
                     </button>
@@ -2212,8 +2299,28 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                     ))}
                 </div>
 
-                {/* Always-visible add bar, sized for fingers. Adding a ticker that is already
-                    on the board under another group moves it to the chosen group. */}
+                {/* Bottom bar, sized for fingers. With a tile selected it manages that ticker
+                    (move to another group, or remove); otherwise it adds one. Adding a ticker
+                    that is already on the board under another group also moves it. */}
+                {selectedWidget ? (
+                    <div className="paged-add-bar is-managing">
+                        <span className="paged-manage-symbol">{displaySymbol(selectedWidget.symbol)}</span>
+                        <select value={manageThemeId} onChange={(event) => setManageThemeId(event.target.value)} aria-label={`Group for ${displaySymbol(selectedWidget.symbol)}`}>
+                            {DASHBOARD_THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+                        </select>
+                        <button type="button" onClick={moveSelectedWidget} disabled={manageThemeId === selectedWidget.themeId}>MOVE</button>
+                        <button type="button" className="is-remove" onClick={removeSelectedWidget}>REMOVE</button>
+                        <button type="button" className="is-cancel" onClick={() => setSelectedWidgetId(null)}>CANCEL</button>
+                    </div>
+                ) : !addBarOpen ? (
+                    // Closed: only a result (and its Undo) shows, then the bar goes away.
+                    addNotice ? (
+                        <div className="paged-add-bar">
+                            <span className="paged-add-message" role="status">{addNotice}</span>
+                            {removedWidget && <button type="button" className="is-undo" onClick={undoRemoveWidget}>UNDO</button>}
+                        </div>
+                    ) : null
+                ) : (
                 <form
                     className="paged-add-bar"
                     style={keyboardInset ? { transform: `translateY(-${keyboardInset}px)` } : undefined}
@@ -2244,10 +2351,15 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                         {DASHBOARD_THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
                     </select>
                     <button type="submit">+ ADD</button>
-                    <span className={`paged-add-message ${addWidgetError ? 'is-error' : ''}`} role="status">
-                        {addWidgetError || addNotice}
+                    <span className={`paged-add-message ${addWidgetError ? 'is-error' : ''} ${addWidgetError || addNotice ? '' : 'is-hint'}`} role="status">
+                        {addWidgetError || addNotice || 'Tap any tile to move or remove it'}
                     </span>
+                    {removedWidget && !addWidgetError && (
+                        <button type="button" className="is-undo" onClick={undoRemoveWidget}>UNDO</button>
+                    )}
+                    <button type="button" className="is-cancel" onClick={() => setAddBarOpen(false)}>CLOSE</button>
                 </form>
+                )}
 
                 {/* Tiles are large here, so keep the headline stack short. */}
                 <BreakingNewsTicker systemAlerts={systemAlerts} maxHeadlines={2} />

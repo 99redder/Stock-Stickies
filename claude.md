@@ -638,10 +638,12 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
 - **The stream follows the page.** `streamOrderedWidgets` puts the visible page (plus the
   pinned row) first, so everything on screen streams and the rest fills up to Finnhub's
   50-symbol cap; other pages keep refreshing from `/api/quotes` every 15s.
-- **Add bar** (always visible along the bottom, 48px finger-sized controls): ticker field,
-  group picker, **+ ADD**. Adding a ticker that is already on the board under another
-  group moves it there (that is how a ticker is re-categorized). The board then turns to
-  the tile's page and flashes it (`revealRequest`). The bar rides above the on-screen
+- **Bottom bar** (48px finger-sized controls; hidden until needed so the board is all
+  tiles). **+ ADD** in the toolbar opens the add form: ticker field, group picker, **+ ADD**,
+  CLOSE. Adding a ticker that is already on the board under another group moves it there.
+  **Tapping a tile** selects it (`selectedWidgetId`) and the bar becomes Move (group picker)
+  / **Remove** / Cancel for that ticker; a removal shows **Undo** for 10s. After an add or
+  move the board turns to the tile's page and flashes it (`revealRequest`). The bar rides above the on-screen
   keyboard (`keyboardInset` from `visualViewport`), and news ribbons sit above the bar.
 - **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so

@@ -600,14 +600,15 @@ a.dashboard-news-headline:hover {
 .paged-pager .paged-dot.is-active::before { background: #d5a85f; }
 
 .paged-edit-toggle {
-    height: 28px;
+    height: 34px;
     border: 1px solid #4a4a4a;
     border-radius: 2px;
     background: #171717;
     color: #bababa;
-    padding: 0 12px;
-    font: 800 10px/1 "SFMono-Regular", Consolas, monospace;
+    padding: 0 16px;
+    font: 800 12px/1 "SFMono-Regular", Consolas, monospace;
     letter-spacing: .08em;
+    white-space: nowrap;
     cursor: pointer;
 }
 .paged-edit-toggle.is-active { border-color: #a46f20; background: #211b12; color: #d5a85f; }
@@ -824,3 +825,22 @@ a.dashboard-news-headline:hover {
     .paged-add-bar input, .paged-add-bar select { flex: 1 1 140px; }
     .paged-add-message { flex-basis: 100%; }
 }
+
+/* A tapped tile is selected for the bottom bar's Move / Remove. */
+.paged-tile { cursor: pointer; }
+.paged-tile.is-selected { border-color: #e2b871; box-shadow: inset 0 0 0 2px #e2b871; }
+.paged-add-bar.is-managing { background: #1a150c; border-top-color: #a46f20; }
+.paged-manage-symbol {
+    flex: 0 0 auto;
+    min-width: 96px;
+    color: #f2d7a3;
+    font: 800 22px/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: -.02em;
+}
+.paged-add-bar button:disabled { opacity: .35; cursor: default; }
+.paged-add-bar button.is-remove { border-color: #9a3540; background: #2a1719; color: #ff8792; }
+.paged-add-bar button.is-remove:active { background: #4a1f25; }
+.paged-add-bar button.is-cancel { margin-left: auto; border-color: #555; background: #171717; color: #cfcfcf; }
+.paged-add-bar button.is-undo { min-width: 110px; }
+.paged-add-message.is-hint { color: #8a8a8a; }
+.paged-add-bar form button.is-cancel, .paged-add-bar button.is-cancel { min-width: 100px; }
