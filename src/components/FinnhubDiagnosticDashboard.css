@@ -644,7 +644,7 @@ a.dashboard-news-headline:hover {
     gap: 26px 24px;
     min-width: 0;
     overflow-y: auto;
-    padding: 6px 12px calc(10px + var(--paged-safe-bottom));
+    padding: 6px 12px 10px;
     scroll-snap-align: start;
     scroll-snap-stop: always;
 }
@@ -763,3 +763,64 @@ a.dashboard-news-headline:hover {
     font-weight: 700;
 }
 .is-paged .dashboard-news-dismiss:active { background: rgb(0 0 0 / 30%); }
+
+/* Add bar along the bottom of the paged board: 48px controls and 17px text, so it works
+   with a finger and iPadOS does not zoom the page on focus. */
+.paged-add-bar {
+    position: relative;
+    z-index: 5;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px max(12px, env(safe-area-inset-right, 0px)) calc(7px + var(--paged-safe-bottom)) max(12px, env(safe-area-inset-left, 0px));
+    border-top: 1px solid #444;
+    background: #111;
+}
+.paged-add-bar input,
+.paged-add-bar select,
+.paged-add-bar button {
+    height: 48px;
+    border: 1px solid #555;
+    border-radius: 6px;
+    outline: none;
+    background: #0f0f0f;
+    color: #eee;
+    font: 700 17px/1 "SFMono-Regular", Consolas, monospace;
+}
+.paged-add-bar input { flex: 0 1 220px; min-width: 120px; padding: 0 14px; text-transform: uppercase; }
+.paged-add-bar input::placeholder { color: #6f6f6f; }
+.paged-add-bar select { flex: 0 1 300px; min-width: 150px; padding: 0 12px; cursor: pointer; }
+.paged-add-bar input:focus,
+.paged-add-bar select:focus { border-color: #a46f20; box-shadow: 0 0 0 2px #a46f20; }
+.paged-add-bar input.has-error { border-color: var(--terminal-red); box-shadow: 0 0 0 2px rgb(223 64 80 / 45%); }
+.paged-add-bar button {
+    flex: 0 0 auto;
+    min-width: 120px;
+    padding: 0 20px;
+    border-color: #a46f20;
+    background: #211b12;
+    color: #e2b871;
+    letter-spacing: .06em;
+    cursor: pointer;
+}
+.paged-add-bar button:active { background: #3a2c14; }
+.paged-add-message {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    color: #55b98a;
+    font: 700 14px/1.25 -apple-system, "Segoe UI", sans-serif;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.paged-add-message.is-error { color: #ef7783; }
+
+/* Keep news ribbons above the add bar. */
+.is-paged .dashboard-news-ticker { bottom: calc(78px + var(--paged-safe-bottom)); }
+
+@media (max-width: 900px) {
+    .paged-add-bar { flex-wrap: wrap; }
+    .paged-add-bar input, .paged-add-bar select { flex: 1 1 140px; }
+    .paged-add-message { flex-basis: 100%; }
+}

@@ -630,7 +630,7 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   arrangement (Mag 7 + Financials | AI + Robotics; Space + Drones | Defense + Nuclear;
   Healthcare + Energy | Defensive + China + Other — four groups a page); a never-edited board (`savedAt` 0)
   follows it, and **Default pages** in edit mode reapplies it. `arrangePagedColumns` keeps
-  saved columns and packs any unplaced group into the last column (≤ 7 tile rows and ≤ 3
+  saved columns and packs any unplaced group into the last column (≤ 6 tile rows and ≤ 3
   groups); the `market` group is pinned above every page. Swipe, the
   pager dots, or ←/→ change page. Groups sit on a shared grid (`gridRow` = position in the column), so the Nth group of
   both columns starts at the same height. Tiles are three per row, sized so one pinned row plus seven
@@ -638,7 +638,12 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
 - **The stream follows the page.** `streamOrderedWidgets` puts the visible page (plus the
   pinned row) first, so everything on screen streams and the rest fills up to Finnhub's
   50-symbol cap; other pages keep refreshing from `/api/quotes` every 15s.
-- **Edit mode** (EDIT/DONE): add a ticker to a group, remove or reorder tiles, move a group
+- **Add bar** (always visible along the bottom, 48px finger-sized controls): ticker field,
+  group picker, **+ ADD**. Adding a ticker that is already on the board under another
+  group moves it there (that is how a ticker is re-categorized). The board then turns to
+  the tile's page and flashes it (`revealRequest`). The bar rides above the on-screen
+  keyboard (`keyboardInset` from `visualViewport`), and news ribbons sit above the bar.
+- **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
   editing never conflicts with swiping. The desktop dashboard and the board do not follow
   each other after the first copy.

@@ -178,8 +178,9 @@ const PAGED_BOARD_VERSION = 1
 const PAGED_PINNED_THEME_ID = 'market'
 const PAGED_COLUMNS_PER_PAGE = 2
 const PAGED_TILES_PER_ROW = 3
-// What fits in one column without scrolling on an 11" iPad in landscape.
-const PAGED_COLUMN_ROWS = 7
+// What fits in one column without scrolling on an 11" iPad in landscape, above the
+// add bar at the bottom of the board.
+const PAGED_COLUMN_ROWS = 6
 const PAGED_COLUMN_GROUPS = 3
 // A streamed page with no socket message for this long during the regular session
 // has a dead connection (iPadOS can leave one open-looking after a suspend).
@@ -938,7 +939,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 17
+const PAGED_BUILD = 18
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1144,6 +1145,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const [boardEditing, setBoardEditing] = useState(false)
     const [activePage, setActivePage] = useState(0)
     const [homeScreenApp] = useState(isHomeScreenApp)
+    const [addNotice, setAddNotice] = useState('')
+    // Height of the on-screen keyboard over the page, so the add bar can sit above it.
+    const [keyboardInset, setKeyboardInset] = useState(0)
+    const [revealRequest, setRevealRequest] = useState(null)
     const [chromeCollapsed, setChromeCollapsed] = useState(() => {
         try { return localStorage.getItem(CHROME_COLLAPSED_STORAGE_KEY) === '1' } catch { return false }
     })
@@ -1819,19 +1824,45 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
             return
         }
         const normalized = providerSymbol(symbol)
+        const themeId = THEME_BY_ID[newThemeId] ? newThemeId : 'other'
         const existingWidget = widgets.find((widget) => providerSymbol(widget.symbol) === normalized)
+        if (existingWidget && paged && existingWidget.themeId !== themeId) {
+            // On the board, adding a ticker that is already there under another group
+            // moves it: that is how a ticker is re-categorized.
+            setWidgets((current) => [
+                ...current.filter((widget) => widget.id !== existingWidget.id),
+                { ...existingWidget, themeId }
+            ])
+            setBoardSavedAt(Date.now())
+            setNewSymbol('')
+            setAddWidgetError('')
+            setAddNotice(`Moved ${displaySymbol(symbol)} to ${THEME_BY_ID[themeId].label}`)
+            setRevealRequest({ widgetId: existingWidget.id })
+            return
+        }
         if (existingWidget) {
-            setAddWidgetError(`${displaySymbol(symbol)} is already on the dashboard.`)
+            setAddNotice('')
+            setAddWidgetError(paged
+                ? `${displaySymbol(symbol)} is already in ${THEME_BY_ID[existingWidget.themeId].label}.`
+                : `${displaySymbol(symbol)} is already on the dashboard.`)
+            if (paged) {
+                setRevealRequest({ widgetId: existingWidget.id })
+                return
+            }
             setHighlightedWidgetId(existingWidget.id)
             if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
             highlightTimerRef.current = window.setTimeout(() => setHighlightedWidgetId(null), 1800)
             return
         }
-        const themeId = THEME_BY_ID[newThemeId] ? newThemeId : 'other'
         const widget = { id: makeId(), symbol, themeId, priority: false }
         setWidgets((current) => [...current, widget])
-        if (paged) setBoardSavedAt(Date.now())
-        else setLayouts((current) => appendWidgetToLayouts(current, widgets, widget))
+        if (paged) {
+            setBoardSavedAt(Date.now())
+            setAddNotice(`Added ${displaySymbol(symbol)} to ${THEME_BY_ID[themeId].label}`)
+            setRevealRequest({ widgetId: widget.id })
+        } else {
+            setLayouts((current) => appendWidgetToLayouts(current, widgets, widget))
+        }
         setNewSymbol('')
         setAddWidgetError('')
     }
@@ -1960,6 +1991,43 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         if (pageSettleTimerRef.current) window.clearTimeout(pageSettleTimerRef.current)
     }, [])
 
+    // After an add or a move, turn to the page that holds the tile and flash it. Runs
+    // once the new arrangement has rendered, so a page created by the add exists.
+    useEffect(() => {
+        if (!paged || !revealRequest) return
+        const widget = widgets.find((item) => item.id === revealRequest.widgetId)
+        if (!widget) return
+        const columnIndex = columns.findIndex((column) => column.includes(widget.themeId))
+        if (columnIndex >= 0) goToPage(Math.floor(columnIndex / PAGED_COLUMNS_PER_PAGE))
+        setHighlightedWidgetId(widget.id)
+        if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
+        highlightTimerRef.current = window.setTimeout(() => setHighlightedWidgetId(null), 2400)
+        setRevealRequest(null)
+    }, [paged, revealRequest, widgets, columns, goToPage])
+
+    useEffect(() => {
+        if (!addNotice) return undefined
+        const timer = window.setTimeout(() => setAddNotice(''), 5000)
+        return () => window.clearTimeout(timer)
+    }, [addNotice])
+
+    // The on-screen keyboard covers the bottom of the page without resizing it; the
+    // visual viewport says by how much.
+    useEffect(() => {
+        const viewport = typeof window !== 'undefined' ? window.visualViewport : null
+        if (!paged || !viewport) return undefined
+        const update = () => {
+            const covered = Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
+            setKeyboardInset(covered > 60 ? covered : 0)
+        }
+        viewport.addEventListener('resize', update)
+        viewport.addEventListener('scroll', update)
+        return () => {
+            viewport.removeEventListener('resize', update)
+            viewport.removeEventListener('scroll', update)
+        }
+    }, [paged])
+
     // Keep the tablet's screen on while the board is showing.
     useEffect(() => {
         if (!paged || typeof navigator === 'undefined' || !navigator.wakeLock) return undefined
@@ -2080,29 +2148,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
                 {boardEditing && (
                     <div className="finnhub-diagnostic-controls paged-controls">
-                        <div className="diagnostic-add-control">
-                            <input
-                                value={newSymbol}
-                                maxLength={MAX_SYMBOL_LENGTH}
-                                onChange={(event) => {
-                                    setNewSymbol(cleanSymbol(event.target.value))
-                                    if (addWidgetError) setAddWidgetError('')
-                                }}
-                                onKeyDown={(event) => event.key === 'Enter' && addWidget()}
-                                placeholder="SYMBOL"
-                                aria-label="Symbol for new tile"
-                                aria-invalid={Boolean(addWidgetError)}
-                                autoCapitalize="characters"
-                                autoCorrect="off"
-                                spellCheck={false}
-                                className={addWidgetError ? 'has-error' : ''}
-                            />
-                            <select value={newThemeId} onChange={(event) => setNewThemeId(event.target.value)} aria-label="Group for new tile">
-                                {DASHBOARD_THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
-                            </select>
-                            <button type="button" onClick={addWidget}>+ ADD</button>
-                            {addWidgetError && <span className="diagnostic-add-error" role="alert">{addWidgetError}</span>}
-                        </div>
                         <div className="diagnostic-control-buttons">
                             <button type="button" onClick={resetBoardPages}>DEFAULT PAGES</button>
                             <button type="button" onClick={recopyFromDesktop}>RE-COPY FROM DESKTOP</button>
@@ -2166,6 +2211,43 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                         </div>
                     ))}
                 </div>
+
+                {/* Always-visible add bar, sized for fingers. Adding a ticker that is already
+                    on the board under another group moves it to the chosen group. */}
+                <form
+                    className="paged-add-bar"
+                    style={keyboardInset ? { transform: `translateY(-${keyboardInset}px)` } : undefined}
+                    onSubmit={(event) => {
+                        event.preventDefault()
+                        addWidget()
+                    }}
+                >
+                    <input
+                        value={newSymbol}
+                        maxLength={MAX_SYMBOL_LENGTH}
+                        onChange={(event) => {
+                            setNewSymbol(cleanSymbol(event.target.value))
+                            if (addWidgetError) setAddWidgetError('')
+                            if (addNotice) setAddNotice('')
+                        }}
+                        placeholder="ADD TICKER"
+                        aria-label="Ticker to add"
+                        aria-invalid={Boolean(addWidgetError)}
+                        autoCapitalize="characters"
+                        autoCorrect="off"
+                        autoComplete="off"
+                        spellCheck={false}
+                        enterKeyHint="done"
+                        className={addWidgetError ? 'has-error' : ''}
+                    />
+                    <select value={newThemeId} onChange={(event) => setNewThemeId(event.target.value)} aria-label="Group for the ticker">
+                        {DASHBOARD_THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+                    </select>
+                    <button type="submit">+ ADD</button>
+                    <span className={`paged-add-message ${addWidgetError ? 'is-error' : ''}`} role="status">
+                        {addWidgetError || addNotice}
+                    </span>
+                </form>
 
                 {/* Tiles are large here, so keep the headline stack short. */}
                 <BreakingNewsTicker systemAlerts={systemAlerts} maxHeadlines={2} />
