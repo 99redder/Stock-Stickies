@@ -807,6 +807,9 @@ const firebaseConfig = {
             const [editingNickname, setEditingNickname] = useState(false);
             const [hidePortfolioValues, setHidePortfolioValues] = useState(false);
             const [robinhoodPerformance, setRobinhoodPerformance] = useState(null);
+            // Owner only: option positions other than cash secured puts, straight from the
+            // latest Plaid holdings. Display-only — never saved to the user document.
+            const [robinhoodOptions, setRobinhoodOptions] = useState(null);
             const [marketauxApiKey, setMarketauxApiKey] = useState('');
             const [newsData, setNewsData] = useState(null);
             const [newsLoading, setNewsLoading] = useState(false);
@@ -1823,6 +1826,67 @@ const firebaseConfig = {
                 radarQuoteLoadUserRef.current = userId;
                 void refreshRadarQuotes();
             }, [currentUser, userDataReady, radarList.length, finnhubApiKey, mainTab, pageVisible, refreshRadarQuotes]);
+
+            const renderOptionsSection = () => {
+                if (!isOwnerPortfolioUser) return null;
+                const options = [...(robinhoodOptions?.positions || [])].sort((a, b) =>
+                    a.ticker.localeCompare(b.ticker) || a.expiry.localeCompare(b.expiry) || a.strike - b.strike
+                );
+                const totalValue = options.reduce((sum, option) => sum + (option.value || 0), 0);
+                const fetchedAt = robinhoodOptions?.fetchedAt ? new Date(robinhoodOptions.fetchedAt) : null;
+                return (
+                    <div className="p-6 pb-2">
+                        <div className="mb-4">
+                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Options</h3>
+                            {options.length > 0 && (
+                                <div className={`text-sm mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                    Total market value: <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(totalValue)}</span>
+                                </div>
+                            )}
+                        </div>
+                        <div className="space-y-2 mb-2">
+                            {!robinhoodOptions ? (
+                                <p className={`text-sm text-center py-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading from Robinhood…</p>
+                            ) : options.length === 0 ? (
+                                <p className={`text-sm text-center py-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No other option positions</p>
+                            ) : (
+                                options.map((option) => {
+                                    const unrealized = option.value != null && option.costBasis != null
+                                        ? option.value - option.costBasis
+                                        : null;
+                                    return (
+                                        <div key={option.id} className={`p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{option.ticker}</div>
+                                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-blue-900/40 text-blue-200 border border-blue-700' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                                                    {option.side} {option.contractType}
+                                                </span>
+                                            </div>
+                                            <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>${option.strike} · Qty {option.qty} · {option.expiry}</div>
+                                            {option.value != null && (
+                                                <div className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                                    Market value: <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatUsd(option.value)}</span>
+                                                </div>
+                                            )}
+                                            {unrealized != null && (
+                                                <div className={`text-sm font-medium ${unrealized >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    Unrealized P&L: <span className={hidePortfolioValues ? 'blur-sm select-none' : ''}>{formatSignedUsd(unrealized)}</span>
+                                                </div>
+                                            )}
+                                            <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-300'}`}>{getAccountLabel(option.account)}</span>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                        {fetchedAt && !Number.isNaN(fetchedAt.getTime()) && (
+                            <p className={`text-xs ${robinhoodOptions.stale ? (darkMode ? 'text-amber-300' : 'text-amber-700') : (darkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+                                {robinhoodOptions.stale ? 'Older Plaid snapshot' : 'Plaid snapshot'} from {fetchedAt.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} — recent trades may not appear yet.
+                            </p>
+                        )}
+                    </div>
+                );
+            };
 
             const renderRadarSection = (idPrefix) => (
                 <section className={`border-y px-6 py-5 shadow-inner ${darkMode ? 'border-violet-500/50 bg-gradient-to-br from-violet-950 via-indigo-950 to-fuchsia-950/80' : 'border-violet-300 bg-gradient-to-br from-violet-100 via-fuchsia-50 to-indigo-100'}`}>
@@ -6802,6 +6866,7 @@ const firebaseConfig = {
                                                     return portfolioResult;
                                                 }}
                                                 onPerformanceChange={setRobinhoodPerformance}
+                                                onOptionPositionsChange={setRobinhoodOptions}
                                             />
                                         </Suspense>
                                     )}
@@ -8018,6 +8083,7 @@ const firebaseConfig = {
                                         )}
                                     </div>
                                 </div>
+                                {renderOptionsSection()}
                                 {renderRadarSection('notes')}
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
@@ -8172,6 +8238,7 @@ const firebaseConfig = {
                                         )}
                                     </div>
                                 </div>
+                                {renderOptionsSection()}
                                 {renderRadarSection('portfolio')}
                                 <div className="p-6 pb-4">
                                     <div className="flex items-center justify-between mb-4">
