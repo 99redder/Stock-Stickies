@@ -129,8 +129,8 @@ function normalizePlaidCoveredCall(position) {
   }
 }
 
-// Every option that is not a short put. Short puts live in the Cash Secured Puts
-// panel; these (long calls, long puts, short calls) are display-only and never saved.
+// Long option contracts only. Short puts live in the Cash Secured Puts panel and short
+// calls on their sticky note as covered calls; these are display-only and never saved.
 function normalizePlaidOptionPosition(position) {
   const contract = position?.optionContract
   if (!contract || typeof contract !== 'object') return null
@@ -145,26 +145,23 @@ function normalizePlaidOptionPosition(position) {
   if (
     (contractType !== 'call' && contractType !== 'put') ||
     !Number.isFinite(rawQuantity) ||
-    rawQuantity === 0 ||
-    (contractType === 'put' && rawQuantity < 0) ||
+    rawQuantity <= 0 ||
     !ticker ||
     !Number.isFinite(strike) ||
     strike <= 0 ||
     !/^\d{4}-\d{2}-\d{2}$/.test(expiry) ||
     !position.stockStickiesAccount
   ) return null
-  const side = rawQuantity > 0 ? 'long' : 'short'
   const value = Number(position.institutionValue)
-  // Cost basis is only meaningful for a long contract; a short one is a credit received.
-  const costBasis = side === 'long' && position.costBasis != null ? Number(position.costBasis) : NaN
+  const costBasis = position.costBasis != null ? Number(position.costBasis) : NaN
   return {
     id: `${position.accountId}:${position.securityId || normalizeTicker(position.ticker)}`,
     account: position.stockStickiesAccount,
     ticker,
     contractType,
-    side,
+    side: 'long',
     strike,
-    qty: Math.abs(rawQuantity),
+    qty: rawQuantity,
     expiry,
     value: Number.isFinite(value) ? value : null,
     costBasis: Number.isFinite(costBasis) && costBasis > 0 ? costBasis : null,

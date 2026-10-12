@@ -1848,7 +1848,7 @@ const firebaseConfig = {
                             {!robinhoodOptions ? (
                                 <p className={`text-sm text-center py-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading from Robinhood…</p>
                             ) : options.length === 0 ? (
-                                <p className={`text-sm text-center py-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No other option positions</p>
+                                <p className={`text-sm text-center py-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No long option positions</p>
                             ) : (
                                 options.map((option) => {
                                     const unrealized = option.value != null && option.costBasis != null

@@ -514,13 +514,13 @@ annotation with strike, contract count, and expiration. A completed fresh Plaid 
 removes annotations for calls that are no longer open; stale or cached snapshots never
 remove them.
 
-Every other option position (long calls, long puts, and short calls again) appears in an
-owner-only **Options** panel directly under Cash Secured Puts on the Notes and Portfolio
+Long option positions (long calls and long puts) appear in an owner-only **Options** panel directly under Cash Secured Puts on the Notes and Portfolio
 sidebars (`renderOptionsSection`). `RobinhoodSync` builds the list from the latest holdings
 (`normalizePlaidOptionPosition`) and reports it through `onOptionPositionsChange` into
 `robinhoodOptions`. It is display-only and **never saved**: it shows strike, contracts,
-expiry, account, Plaid market value, and Unrealized P&L for long contracts with a cost
-basis, plus the snapshot time. Option value is not added to portfolio or account totals.
+expiry, account, Plaid market value, and Unrealized P&L when a cost basis is supplied,
+plus the snapshot time. Short calls are left out — they stay on the sticky note as covered
+calls. Option value is not added to portfolio or account totals.
 
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
