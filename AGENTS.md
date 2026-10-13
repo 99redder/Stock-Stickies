@@ -1003,6 +1003,7 @@ stock_stickies:plaid:robinhood:performance:config
 stock_stickies:plaid:robinhood:performance:snapshots:
 stock_stickies:plaid:robinhood:performance:transactions:
 stock_stickies:plaid:robinhood:performance:daily:        # end-of-day values for risk stats
+stock_stickies:plaid:robinhood:performance:pending-flows # unexplained deposits/withdrawals awaiting a transaction
 ```
 
 The performance config supports `manualExternalFlows[year]` for institution exports that
@@ -1027,6 +1028,15 @@ time-weighted capital denominator with the institution-reported dollar gain. Com
 dollar YTD is the sum of account gains. The all-accounts percentage divides that combined
 gain by the sum of each account's Modified Dietz weighted capital, so the aggregate remains
 cash-flow adjusted even when an account's dollar gain comes from an institution anchor.
+
+**Deposits Plaid has not published yet (Oct 13, 2026).** A Robinhood instant deposit is in the
+account at once, but Plaid publishes the ACH transaction only after it settles. The Worker
+flags a cash/NAV jump with no matching flow (`provisional-external-flow`, YTD hidden), but
+that check compares only the last two snapshots and every page load takes a new one — so one
+refresh later a $15,000 Individual deposit was booked as gain. `reconcilePendingExternalFlows`
+now keeps the move in `performance:pending-flows` until a same-direction Plaid or manual flow
+accounts for it (no expiry). To show YTD before Plaid catches up, add the deposit to
+`manualExternalFlows`; the later Plaid copy is dropped when the amount matches within 10 days.
 
 The Worker also writes daily account snapshots so performance can continue from observed
 values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
