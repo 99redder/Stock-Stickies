@@ -668,7 +668,9 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   `/api/quotes`, every 2 minutes. It never touches the stream or Finnhub. **Starred** sales are copied into the board
   (`ipadDashboard.starredSales`), so they persist after leaving the latest 50; they are
   listed first in their own grid about a third larger (`--lookback-starred-height`), with a
-  20px gap, and the newest other sales fill the rows that still fit below.
+  20px gap, and the newest other sales fill the rows that still fit below. **×** on a sale
+  hides it (`ipadDashboard.dismissedSaleIds`, ids only, newest 300 kept); **CLEAR ALL** hides
+  every unstarred sale loaded so only new ones appear; **SHOW N HIDDEN** clears the list.
 - **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
   editing never conflicts with swiping. The desktop dashboard and the board do not follow

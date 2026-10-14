@@ -280,13 +280,20 @@ const sanitizeStarredSales = (list) => (Array.isArray(list) ? list : [])
         proceeds: Number(sale.proceeds) || 0,
     }))
 
+// Sales hidden from Lookback with ×. Ids only (account|TICKER|date); the newest are
+// kept, which is plenty since the page only ever loads the latest 50 sales.
+const MAX_DISMISSED_SALES = 300
+const sanitizeDismissedSaleIds = (list) => [...new Set((Array.isArray(list) ? list : [])
+    .filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 80))]
+    .slice(-MAX_DISMISSED_SALES)
+
 const readPagedBoard = (value) => {
     if (!value || typeof value !== 'object') return null
     const widgets = sanitizeBoardWidgets(value.widgets)
     if (widgets.length === 0) return null
     // Columns are stored as objects because Firestore rejects nested arrays.
     const columns = Array.isArray(value.columns) ? value.columns.map((column) => column?.themes) : null
-    return { widgets, columns, starredSales: sanitizeStarredSales(value.starredSales), savedAt: Number(value.savedAt) || 0 }
+    return { widgets, columns, starredSales: sanitizeStarredSales(value.starredSales), dismissedSaleIds: sanitizeDismissedSaleIds(value.dismissedSaleIds), savedAt: Number(value.savedAt) || 0 }
 }
 
 // The newer of this device's copy and the account's copy wins; with neither, the
@@ -301,9 +308,9 @@ const loadPagedBoard = (accountBoard, desktopDashboard) => {
     const account = readPagedBoard(accountBoard)
     const saved = local && account ? (account.savedAt > local.savedAt ? account : local) : (local || account)
     // A board that has never been edited (savedAt 0) follows the current default pages.
-    if (saved) return { widgets: saved.widgets, columns: arrangePagedColumns(saved.savedAt ? saved.columns : PAGED_DEFAULT_COLUMNS, saved.widgets), starredSales: saved.starredSales, savedAt: saved.savedAt }
+    if (saved) return { widgets: saved.widgets, columns: arrangePagedColumns(saved.savedAt ? saved.columns : PAGED_DEFAULT_COLUMNS, saved.widgets), starredSales: saved.starredSales, dismissedSaleIds: saved.dismissedSaleIds, savedAt: saved.savedAt }
     const widgets = pagedSeedWidgets(desktopDashboard)
-    return { widgets, columns: arrangePagedColumns(PAGED_DEFAULT_COLUMNS, widgets), starredSales: [], savedAt: 0 }
+    return { widgets, columns: arrangePagedColumns(PAGED_DEFAULT_COLUMNS, widgets), starredSales: [], dismissedSaleIds: [], savedAt: 0 }
 }
 
 const layoutItemsCollide = (item, other) => (
@@ -969,7 +976,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 22
+const PAGED_BUILD = 23
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1171,6 +1178,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const [subscriptionNotice, setSubscriptionNotice] = useState('')
     const [boardColumns, setBoardColumns] = useState(initial.columns)
     const [starredSales, setStarredSales] = useState(initial.starredSales || [])
+    const [dismissedSaleIds, setDismissedSaleIds] = useState(initial.dismissedSaleIds || [])
     // Changes only on an edit, so the newest copy (this device or the account) can win.
     const [boardSavedAt, setBoardSavedAt] = useState(initial.savedAt || 0)
     const [boardEditing, setBoardEditing] = useState(false)
@@ -1255,14 +1263,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
     useEffect(() => {
         if (!paged) return
-        const board = { version: PAGED_BOARD_VERSION, widgets, columns: columns.map((themes) => ({ themes })), starredSales, savedAt: boardSavedAt }
+        const board = { version: PAGED_BOARD_VERSION, widgets, columns: columns.map((themes) => ({ themes })), starredSales, dismissedSaleIds, savedAt: boardSavedAt }
         try {
             localStorage.setItem(PAGED_STORAGE_KEY, JSON.stringify(board))
         } catch {
             // The account copy still holds the board when browser storage is blocked/full.
         }
         onDashboardChange?.(board)
-    }, [paged, widgets, columns, starredSales, boardSavedAt, onDashboardChange])
+    }, [paged, widgets, columns, starredSales, dismissedSaleIds, boardSavedAt, onDashboardChange])
 
     useEffect(() => {
         if (paged) return
@@ -2002,6 +2010,16 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         setBoardSavedAt(Date.now())
     }, [])
 
+    const dismissSales = useCallback((sales) => {
+        setDismissedSaleIds((current) => sanitizeDismissedSaleIds([...current, ...sales.map((sale) => sale.id)]))
+        setBoardSavedAt(Date.now())
+    }, [])
+
+    const restoreDismissedSales = useCallback(() => {
+        setDismissedSaleIds([])
+        setBoardSavedAt(Date.now())
+    }, [])
+
     const moveBoardWidget = useCallback((widgetId, delta) => {
         setWidgets((current) => {
             const index = current.findIndex((widget) => widget.id === widgetId)
@@ -2355,6 +2373,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 starredSales={starredSales}
                                 onToggleStar={toggleStarredSale}
                                 knownPrice={readKnownSalePrice}
+                                dismissedSaleIds={dismissedSaleIds}
+                                onDismissSales={dismissSales}
+                                onRestoreDismissed={restoreDismissedSales}
                             />
                         </div>
                     )}

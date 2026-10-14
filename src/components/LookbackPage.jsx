@@ -30,7 +30,7 @@ const formatSaleDate = (date) => {
 }
 
 // One sale = two board-sized tiles side by side: what it sold for, and what it is now.
-function SaleCard({ sale, price, starred, onToggleStar }) {
+function SaleCard({ sale, price, starred, onToggleStar, onDismiss }) {
     const hasPrice = Number.isFinite(price) && price > 0
     const movePercent = hasPrice ? ((price - sale.price) / sale.price) * 100 : null
     // Positive: the stock rose after the sale (gain given up). Negative: it fell (loss avoided).
@@ -46,7 +46,7 @@ function SaleCard({ sale, price, starred, onToggleStar }) {
 
     return (
         <div className={`lookback-card is-${verdict} ${starred ? 'is-starred' : ''}`}>
-            <div className="paged-tile lookback-tile">
+            <div className={`paged-tile lookback-tile ${onDismiss ? 'has-dismiss' : ''}`}>
                 <div className="paged-tile-body">
                     <div className="paged-tile-row">
                         <span className="paged-tile-symbol">{sale.ticker}</span>
@@ -57,6 +57,11 @@ function SaleCard({ sale, price, starred, onToggleStar }) {
                         <span className="paged-tile-status">{formatQuantity(sale.quantity)} SH · {(ACCOUNT_LABELS[sale.account] || sale.account || '').toUpperCase()}</span>
                     </div>
                 </div>
+                {onDismiss && (
+                    <button type="button" className="lookback-dismiss" onClick={() => onDismiss(sale)} aria-label={`Hide ${sale.ticker} sale from Lookback`}>
+                        ×
+                    </button>
+                )}
             </div>
             <div className="paged-tile lookback-tile is-now">
                 <div className="paged-tile-body">
@@ -83,7 +88,7 @@ function SaleCard({ sale, price, starred, onToggleStar }) {
     )
 }
 
-export default function LookbackPage({ active, loadSales, starredSales, onToggleStar, knownPrice }) {
+export default function LookbackPage({ active, loadSales, starredSales, onToggleStar, knownPrice, dismissedSaleIds, onDismissSales, onRestoreDismissed }) {
     const [sales, setSales] = useState([])
     const [status, setStatus] = useState('idle') // idle | loading | ready | error
     const [error, setError] = useState('')
@@ -153,7 +158,12 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
 
     const starredIds = useMemo(() => new Set(starredSales.map((sale) => sale.id)), [starredSales])
     // Starred first (always all of them), then the newest sales in the slots left.
-    const recent = useMemo(() => sales.filter((sale) => !starredIds.has(sale.id)).slice(0, capacity), [sales, starredIds, capacity])
+    // Hidden (×) sales stay hidden; a hidden sale that is later starred shows again.
+    const hiddenIds = useMemo(() => new Set(dismissedSaleIds), [dismissedSaleIds])
+    const unstarred = useMemo(() => sales.filter((sale) => !starredIds.has(sale.id)), [sales, starredIds])
+    const hiddenCount = useMemo(() => unstarred.filter((sale) => hiddenIds.has(sale.id)).length, [unstarred, hiddenIds])
+    const visibleUnstarred = useMemo(() => unstarred.filter((sale) => !hiddenIds.has(sale.id)), [unstarred, hiddenIds])
+    const recent = useMemo(() => visibleUnstarred.slice(0, capacity), [visibleUnstarred, capacity])
     const shown = useMemo(() => [...starredSales, ...recent], [starredSales, recent])
     const symbolKey = useMemo(() => [...new Set(shown.map(quoteSymbolFor))].sort().join(','), [shown])
 
@@ -218,6 +228,22 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
                 <span>LOOKBACK · RECENT SALES VS PRICE NOW</span>
                 <span className="lookback-heading-side">
                     {error ? <span className="lookback-error">{error}</span> : asOf ? `ROBINHOOD AS OF ${asOf.toUpperCase()}` : ''}
+                    {visibleUnstarred.length > 0 && (
+                        <button
+                            type="button"
+                            className="lookback-refresh"
+                            onClick={() => {
+                                if (window.confirm(`Hide all ${visibleUnstarred.length} unstarred sales? Starred sales stay, and new sales will still appear.`)) onDismissSales(visibleUnstarred)
+                            }}
+                        >
+                            CLEAR ALL
+                        </button>
+                    )}
+                    {hiddenCount > 0 && (
+                        <button type="button" className="lookback-refresh" onClick={onRestoreDismissed}>
+                            SHOW {hiddenCount} HIDDEN
+                        </button>
+                    )}
                     <button type="button" className="lookback-refresh" onClick={refreshSales} disabled={status === 'loading'}>
                         {status === 'loading' ? 'LOADING…' : 'REFRESH'}
                     </button>
@@ -229,7 +255,11 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
                     {status === 'error' ? 'Sales could not be loaded. Tap REFRESH to try again.' : 'Loading your Robinhood sales…'}
                 </div>
             )}
-            {status === 'ready' && shown.length === 0 && <div className="lookback-empty">No stock sales found in your Robinhood activity.</div>}
+            {status === 'ready' && shown.length === 0 && (
+                <div className="lookback-empty">
+                    {hiddenCount > 0 ? 'All caught up. New sales will appear here as they come in.' : 'No stock sales found in your Robinhood activity.'}
+                </div>
+            )}
             {starredSales.length > 0 && (
                 <div className="lookback-grid is-starred">
                     {starredSales.map((sale) => (
@@ -239,7 +269,7 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
             )}
             <div className="lookback-grid" ref={gridRef}>
                 {recent.map((sale) => (
-                    <SaleCard key={sale.id} sale={sale} price={prices[quoteSymbolFor(sale)]} starred={false} onToggleStar={onToggleStar} />
+                    <SaleCard key={sale.id} sale={sale} price={prices[quoteSymbolFor(sale)]} starred={false} onToggleStar={onToggleStar} onDismiss={(item) => onDismissSales([item])} />
                 ))}
             </div>
         </div>

@@ -912,6 +912,21 @@ a.dashboard-news-headline:hover {
     cursor: pointer;
 }
 .lookback-star.is-on { color: #e2b871; }
+/* Hide (×) control, top-right of the sold tile, the same size as the star. */
+.lookback-tile.has-dismiss .paged-tile-row:first-child { padding-right: 34px; }
+.lookback-dismiss {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 40px;
+    border: 0;
+    background: transparent;
+    color: #6a6a6a;
+    font: 400 26px/1 Arial, sans-serif;
+    cursor: pointer;
+}
+.lookback-dismiss:active { color: #ff8792; }
 
 @media (max-width: 900px) {
     .lookback-grid { grid-template-columns: minmax(0, 1fr); }
