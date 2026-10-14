@@ -884,6 +884,13 @@ a.dashboard-news-headline:hover {
 .lookback-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; }
 .lookback-tile { cursor: default; }
 .lookback-card.is-starred .lookback-tile { border-color: #a46f20; }
+/* Starred sales are about a third larger: the tile height (and with it the price size)
+   is scaled for that grid, and the ticker gets bigger too. */
+.finnhub-diagnostic-shell.is-paged { --lookback-starred-height: calc(var(--paged-tile-height) * 1.32); }
+.lookback-grid.is-starred { --paged-tile-height: var(--lookback-starred-height); margin-bottom: 20px; }
+.lookback-grid.is-starred .paged-tile-symbol { font-size: 19px; }
+.lookback-grid.is-starred .lookback-label { font-size: 11px; }
+.lookback-grid.is-starred .paged-tile-foot { font-size: 10px; }
 .lookback-label { color: #8a8a8a; font-size: 10px; font-weight: 800; letter-spacing: .06em; white-space: nowrap; }
 .lookback-tile.is-now .paged-tile-row:first-child { padding-right: 34px; }
 .lookback-card.is-good .lookback-now-price,

@@ -86,6 +86,7 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
     const [error, setError] = useState('')
     const [fetchedAt, setFetchedAt] = useState(null)
     const [prices, setPrices] = useState({})
+    // How many recent (unstarred) sales fit in the room left below the starred ones.
     const [capacity, setCapacity] = useState(18)
     const loadedAtRef = useRef(0)
     const pageRef = useRef(null)
@@ -122,8 +123,8 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
         }
     }, [active, refreshSales])
 
-    // Show as many sales as fit on one screen: three across, as many rows as the
-    // page has room for at the board's tile height.
+    // Show as many sales as fit on one screen: the starred ones (larger) first, then
+    // three across, as many rows as the room left holds at the board's tile height.
     useEffect(() => {
         const page = pageRef.current?.parentElement
         const grid = gridRef.current
@@ -138,20 +139,19 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
             const gap = parseFloat(window.getComputedStyle(grid).rowGap) || 0
             const rows = Math.max(1, Math.floor((available + gap) / (tileHeight + gap)))
             const columns = window.matchMedia('(max-width: 900px)').matches ? 1 : 3
-            setCapacity(rows * columns)
+            // No room left below a long starred list: still show one row of recent sales.
+            setCapacity(Math.max(1, rows) * columns)
         }
         measure()
         const observer = new ResizeObserver(measure)
         observer.observe(page)
         return () => observer.disconnect()
-    }, [])
+    }, [starredSales.length])
 
     const starredIds = useMemo(() => new Set(starredSales.map((sale) => sale.id)), [starredSales])
     // Starred first (always all of them), then the newest sales in the slots left.
-    const shown = useMemo(() => [
-        ...starredSales,
-        ...sales.filter((sale) => !starredIds.has(sale.id)).slice(0, Math.max(0, capacity - starredSales.length)),
-    ], [sales, starredSales, starredIds, capacity])
+    const recent = useMemo(() => sales.filter((sale) => !starredIds.has(sale.id)).slice(0, capacity), [sales, starredIds, capacity])
+    const shown = useMemo(() => [...starredSales, ...recent], [starredSales, recent])
     const symbolKey = useMemo(() => [...new Set(shown.map(quoteSymbolFor))].sort().join(','), [shown])
 
     // Current prices from the batch endpoint (no Finnhub calls), every 30s while showing.
@@ -209,15 +209,16 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
                 </div>
             )}
             {status === 'ready' && shown.length === 0 && <div className="lookback-empty">No stock sales found in your Robinhood activity.</div>}
+            {starredSales.length > 0 && (
+                <div className="lookback-grid is-starred">
+                    {starredSales.map((sale) => (
+                        <SaleCard key={sale.id} sale={sale} price={prices[quoteSymbolFor(sale)]} starred onToggleStar={onToggleStar} />
+                    ))}
+                </div>
+            )}
             <div className="lookback-grid" ref={gridRef}>
-                {shown.map((sale) => (
-                    <SaleCard
-                        key={sale.id}
-                        sale={sale}
-                        price={prices[quoteSymbolFor(sale)]}
-                        starred={starredIds.has(sale.id)}
-                        onToggleStar={onToggleStar}
-                    />
+                {recent.map((sale) => (
+                    <SaleCard key={sale.id} sale={sale} price={prices[quoteSymbolFor(sale)]} starred={false} onToggleStar={onToggleStar} />
                 ))}
             </div>
         </div>

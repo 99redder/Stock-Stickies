@@ -665,7 +665,8 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   sales across, and only as many rows as fit one screen (measured). Prices come from
   `/api/quotes` every 30s. **Starred** sales are copied into the board
   (`ipadDashboard.starredSales`), so they persist after leaving the latest 50; they are
-  listed first and the newest other sales fill the remaining slots.
+  listed first in their own grid about a third larger (`--lookback-starred-height`), with a
+  20px gap, and the newest other sales fill the rows that still fit below.
 - **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
   editing never conflicts with swiping. The desktop dashboard and the board do not follow
