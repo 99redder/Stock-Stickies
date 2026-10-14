@@ -78,6 +78,8 @@ const decryptApiKey = async (stored, userId) => {
 }
 
 const SAVE_DELAY_MS = 1500
+// Owner-only Robinhood sales (rentals-api checks the Firebase ID token) for the Lookback page.
+const SALES_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/sales?limit=50'
 
 // The board is the owner's only. This check is what keeps other accounts out of the
 // page; their data was never reachable from here (Firestore rules limit every account
@@ -198,6 +200,15 @@ export default function IpadBoardApp() {
     scheduleBoardSave()
   }, [scheduleBoardSave])
 
+  const loadSales = useCallback(async () => {
+    const token = await auth?.currentUser?.getIdToken()
+    if (!token) throw new Error('Sign in again to load your sales.')
+    const response = await fetch(SALES_URL, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+    const data = await response.json().catch(() => null)
+    if (!response.ok || !data?.ok) throw new Error(data?.error || `Sales could not be loaded (${response.status}).`)
+    return data
+  }, [])
+
   const handleSignOut = useCallback(async () => {
     if (!window.confirm('Sign out of the board on this iPad?')) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -294,6 +305,7 @@ export default function IpadBoardApp() {
       seedDashboard={desktopDashboard}
       onDashboardChange={handleBoardChange}
       onSignOut={handleSignOut}
+      loadSales={loadSales}
     />
   )
 }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
 import { fetchFinnhubQuote } from '../utils/finnhubQuoteCache.js'
+import LookbackPage from './LookbackPage.jsx'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import './FinnhubDiagnosticDashboard.css'
@@ -261,13 +262,31 @@ const pagedSeedWidgets = (desktopDashboard) => {
         })
 }
 
+// Sales starred on the Lookback page are copied into the board, so they stay after
+// they drop out of the latest-50 list.
+const MAX_STARRED_SALES = 100
+const sanitizeStarredSales = (list) => (Array.isArray(list) ? list : [])
+    .filter((sale) => sale && typeof sale.id === 'string' && /^[A-Z0-9.-]{1,12}$/.test(String(sale.ticker || ''))
+        && Number(sale.price) > 0 && Number(sale.quantity) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(String(sale.date || '')))
+    .slice(0, MAX_STARRED_SALES)
+    .map((sale) => ({
+        id: sale.id,
+        ticker: String(sale.ticker),
+        date: String(sale.date),
+        account: String(sale.account || ''),
+        assetClass: sale.assetClass === 'crypto' ? 'crypto' : 'stock',
+        quantity: Number(sale.quantity),
+        price: Number(sale.price),
+        proceeds: Number(sale.proceeds) || 0,
+    }))
+
 const readPagedBoard = (value) => {
     if (!value || typeof value !== 'object') return null
     const widgets = sanitizeBoardWidgets(value.widgets)
     if (widgets.length === 0) return null
     // Columns are stored as objects because Firestore rejects nested arrays.
     const columns = Array.isArray(value.columns) ? value.columns.map((column) => column?.themes) : null
-    return { widgets, columns, savedAt: Number(value.savedAt) || 0 }
+    return { widgets, columns, starredSales: sanitizeStarredSales(value.starredSales), savedAt: Number(value.savedAt) || 0 }
 }
 
 // The newer of this device's copy and the account's copy wins; with neither, the
@@ -282,9 +301,9 @@ const loadPagedBoard = (accountBoard, desktopDashboard) => {
     const account = readPagedBoard(accountBoard)
     const saved = local && account ? (account.savedAt > local.savedAt ? account : local) : (local || account)
     // A board that has never been edited (savedAt 0) follows the current default pages.
-    if (saved) return { widgets: saved.widgets, columns: arrangePagedColumns(saved.savedAt ? saved.columns : PAGED_DEFAULT_COLUMNS, saved.widgets), savedAt: saved.savedAt }
+    if (saved) return { widgets: saved.widgets, columns: arrangePagedColumns(saved.savedAt ? saved.columns : PAGED_DEFAULT_COLUMNS, saved.widgets), starredSales: saved.starredSales, savedAt: saved.savedAt }
     const widgets = pagedSeedWidgets(desktopDashboard)
-    return { widgets, columns: arrangePagedColumns(PAGED_DEFAULT_COLUMNS, widgets), savedAt: 0 }
+    return { widgets, columns: arrangePagedColumns(PAGED_DEFAULT_COLUMNS, widgets), starredSales: [], savedAt: 0 }
 }
 
 const layoutItemsCollide = (item, other) => (
@@ -950,7 +969,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 19
+const PAGED_BUILD = 20
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1132,7 +1151,7 @@ function BreakingNewsTicker({ systemAlerts = [], maxHeadlines = MAX_VISIBLE_HEAD
     )
 }
 
-export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit, onSetupApiKeys, paged = false, seedDashboard = null, onSignOut }) {
+export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit, onSetupApiKeys, paged = false, seedDashboard = null, onSignOut, loadSales }) {
     const [initial] = useState(() => paged ? loadPagedBoard(persistedDashboard, seedDashboard) : loadSavedDashboard(persistedDashboard))
     const [initialQuotes] = useState(() => loadCachedQuotes())
     const [initialSubscriptionCap] = useState(() => loadRememberedSubscriptionCap())
@@ -1151,6 +1170,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const [streamedSymbols, setStreamedSymbols] = useState([])
     const [subscriptionNotice, setSubscriptionNotice] = useState('')
     const [boardColumns, setBoardColumns] = useState(initial.columns)
+    const [starredSales, setStarredSales] = useState(initial.starredSales || [])
     // Changes only on an edit, so the newest copy (this device or the account) can win.
     const [boardSavedAt, setBoardSavedAt] = useState(initial.savedAt || 0)
     const [boardEditing, setBoardEditing] = useState(false)
@@ -1215,8 +1235,13 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         for (let index = 0; index < columns.length; index += PAGED_COLUMNS_PER_PAGE) next.push(columns.slice(index, index + PAGED_COLUMNS_PER_PAGE))
         return next.length > 0 ? next : [[]]
     }, [columns])
-    const shownPage = Math.min(activePage, pages.length - 1)
-    const visibleThemeKey = paged ? [PAGED_PINNED_THEME_ID, ...pages[shownPage].flat()].join('|') : ''
+    // The Lookback page (when sales can be loaded) follows the board pages.
+    const lookbackEnabled = paged && typeof loadSales === 'function'
+    const pageCount = pages.length + (lookbackEnabled ? 1 : 0)
+    const shownPage = Math.min(activePage, pageCount - 1)
+    const lookbackActive = lookbackEnabled && shownPage === pages.length
+    const boardPage = Math.min(shownPage, pages.length - 1)
+    const visibleThemeKey = paged ? [PAGED_PINNED_THEME_ID, ...pages[boardPage].flat()].join('|') : ''
     // Stream order: what is on screen first on the paged board, starred tiles first
     // on the desktop grid. Whatever falls beyond Finnhub's cap refreshes by snapshot.
     const streamOrderedWidgets = useMemo(() => {
@@ -1230,14 +1255,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
     useEffect(() => {
         if (!paged) return
-        const board = { version: PAGED_BOARD_VERSION, widgets, columns: columns.map((themes) => ({ themes })), savedAt: boardSavedAt }
+        const board = { version: PAGED_BOARD_VERSION, widgets, columns: columns.map((themes) => ({ themes })), starredSales, savedAt: boardSavedAt }
         try {
             localStorage.setItem(PAGED_STORAGE_KEY, JSON.stringify(board))
         } catch {
             // The account copy still holds the board when browser storage is blocked/full.
         }
         onDashboardChange?.(board)
-    }, [paged, widgets, columns, boardSavedAt, onDashboardChange])
+    }, [paged, widgets, columns, starredSales, boardSavedAt, onDashboardChange])
 
     useEffect(() => {
         if (paged) return
@@ -1962,6 +1987,13 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         setRevealRequest({ widgetId: widget.id })
     }
 
+    const toggleStarredSale = useCallback((sale) => {
+        setStarredSales((current) => current.some((item) => item.id === sale.id)
+            ? current.filter((item) => item.id !== sale.id)
+            : sanitizeStarredSales([sale, ...current]))
+        setBoardSavedAt(Date.now())
+    }, [])
+
     const moveBoardWidget = useCallback((widgetId, delta) => {
         setWidgets((current) => {
             const index = current.findIndex((widget) => widget.id === widgetId)
@@ -2211,11 +2243,21 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 type="button"
                                 className={`paged-dot ${index === shownPage ? 'is-active' : ''}`}
                                 onClick={() => goToPage(index)}
-                                aria-label={`Page ${index + 1} of ${pages.length}`}
+                                aria-label={`Page ${index + 1} of ${pageCount}`}
                                 aria-current={index === shownPage ? 'page' : undefined}
                             />
                         ))}
-                        <button type="button" onClick={() => goToPage(shownPage + 1)} disabled={shownPage >= pages.length - 1} aria-label="Next page">›</button>
+                        {lookbackEnabled && (
+                            <button
+                                type="button"
+                                className={`paged-lookback-tab ${lookbackActive ? 'is-active' : ''}`}
+                                onClick={() => goToPage(pages.length)}
+                                aria-current={lookbackActive ? 'page' : undefined}
+                            >
+                                LOOKBACK
+                            </button>
+                        )}
+                        <button type="button" onClick={() => goToPage(shownPage + 1)} disabled={shownPage >= pageCount - 1} aria-label="Next page">›</button>
                     </nav>
                     <button
                         type="button"
@@ -2297,6 +2339,16 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                             })}
                         </div>
                     ))}
+                    {lookbackEnabled && (
+                        <div className="paged-page is-lookback" aria-label="Lookback">
+                            <LookbackPage
+                                active={lookbackActive}
+                                loadSales={loadSales}
+                                starredSales={starredSales}
+                                onToggleStar={toggleStarredSale}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {/* Bottom bar, sized for fingers. With a tile selected it manages that ticker

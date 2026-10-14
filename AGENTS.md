@@ -653,6 +653,19 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   / **Remove** / Cancel for that ticker; a removal shows **Undo** for 10s. After an add or
   move the board turns to the tile's page and flashes it (`revealRequest`). The bar rides above the on-screen
   keyboard (`keyboardInset` from `visualViewport`), and news ribbons sit above the bar.
+- **Lookback page** (owner only; last page, after the board pages, with its own LOOKBACK
+  pager tab): recent Robinhood stock sales against today's price, to judge whether a sale
+  was right. `IpadBoardApp` passes `loadSales`, which calls rentals-api
+  `GET /api/stock-stickies/plaid/sales?limit=50` with the Firebase ID token. That route
+  (`stockStickiesRecentSales` in the Worker's `src/stock-stickies-sales.js`) reads the daily
+  investment-transaction cache, combines fills per account/ticker/day, and leaves out
+  options, SGOV and cancelled trades; a sale appears once Plaid publishes it, often a day
+  later. `LookbackPage.jsx` shows each sale as two board-sized tiles side by side (sold
+  price | price now, % since, dollars saved or missed; green = fell after the sale), three
+  sales across, and only as many rows as fit one screen (measured). Prices come from
+  `/api/quotes` every 30s. **Starred** sales are copied into the board
+  (`ipadDashboard.starredSales`), so they persist after leaving the latest 50; they are
+  listed first and the newest other sales fill the remaining slots.
 - **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
   editing never conflicts with swiping. The desktop dashboard and the board do not follow

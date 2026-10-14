@@ -844,3 +844,68 @@ a.dashboard-news-headline:hover {
 .paged-add-bar button.is-undo { min-width: 110px; }
 .paged-add-message.is-hint { color: #8a8a8a; }
 .paged-add-bar form button.is-cancel, .paged-add-bar button.is-cancel { min-width: 100px; }
+
+/* Pager entry for the Lookback page. */
+.paged-pager .paged-lookback-tab {
+    width: auto;
+    height: 28px;
+    margin-left: 4px;
+    padding: 0 10px;
+    border: 1px solid #4a4a4a;
+    border-radius: 14px;
+    color: #9a9a9a;
+    font: 800 11px/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .08em;
+}
+.paged-pager .paged-lookback-tab.is-active { border-color: #a46f20; background: #211b12; color: #e2b871; }
+
+/* Lookback page: three sales across; each sale is a sold tile beside a now tile,
+   both the board's tile size, so the page fills the screen like the others. */
+.paged-page.is-lookback { display: block; overflow-y: auto; }
+.lookback-page { position: relative; min-width: 0; }
+.lookback-heading { height: 34px; align-items: center; }
+.lookback-heading-side { display: flex; align-items: center; gap: 12px; color: #a18c68; font-size: 10px; }
+.lookback-error { color: #e0a52e; font-size: 11px; letter-spacing: 0; }
+.lookback-refresh {
+    height: 30px;
+    min-width: 96px;
+    border: 1px solid #555;
+    border-radius: 6px;
+    background: #171717;
+    color: #cfcfcf;
+    font: 800 11px/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .08em;
+    cursor: pointer;
+}
+.lookback-refresh:disabled { opacity: .5; }
+.lookback-probe { position: absolute; visibility: hidden; height: var(--paged-tile-height); width: 1px; pointer-events: none; }
+.lookback-empty { margin: 8px 0 16px; color: #8a8a8a; font: 400 14px/1.4 -apple-system, "Segoe UI", sans-serif; }
+.lookback-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: var(--paged-tile-height); gap: 6px 24px; }
+.lookback-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+.lookback-tile { cursor: default; }
+.lookback-card.is-starred .lookback-tile { border-color: #a46f20; }
+.lookback-label { color: #8a8a8a; font-size: 10px; font-weight: 800; letter-spacing: .06em; white-space: nowrap; }
+.lookback-tile.is-now .paged-tile-row:first-child { padding-right: 34px; }
+.lookback-card.is-good .lookback-now-price,
+.lookback-card.is-good .lookback-move,
+.lookback-card.is-good .lookback-verdict { color: var(--terminal-green); }
+.lookback-card.is-early .lookback-now-price,
+.lookback-card.is-early .lookback-move,
+.lookback-card.is-early .lookback-verdict { color: var(--terminal-red); }
+.lookback-star {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 40px;
+    border: 0;
+    background: transparent;
+    color: #6a6a6a;
+    font: 400 22px/1 sans-serif;
+    cursor: pointer;
+}
+.lookback-star.is-on { color: #e2b871; }
+
+@media (max-width: 900px) {
+    .lookback-grid { grid-template-columns: minmax(0, 1fr); }
+}
