@@ -6,7 +6,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 // newest other sales fill the rest of one screen.
 
 const SALES_REFRESH_MS = 10 * 60 * 1000
-const PRICE_REFRESH_MS = 30 * 1000
+// Tickers already on the board are copied from its live prices (no network);
+// only the others are fetched, and less often than the board refreshes.
+const KNOWN_PRICE_REFRESH_MS = 15 * 1000
+const FETCHED_PRICE_REFRESH_MS = 2 * 60 * 1000
 const QUOTES_ENDPOINT = '/api/quotes'
 const QUOTES_PER_REQUEST = 90
 const ACCOUNT_LABELS = { individual: 'Individual', traditional: 'Traditional IRA', roth: 'Roth IRA' }
@@ -80,7 +83,7 @@ function SaleCard({ sale, price, starred, onToggleStar }) {
     )
 }
 
-export default function LookbackPage({ active, loadSales, starredSales, onToggleStar }) {
+export default function LookbackPage({ active, loadSales, starredSales, onToggleStar, knownPrice }) {
     const [sales, setSales] = useState([])
     const [status, setStatus] = useState('idle') // idle | loading | ready | error
     const [error, setError] = useState('')
@@ -154,13 +157,27 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
     const shown = useMemo(() => [...starredSales, ...recent], [starredSales, recent])
     const symbolKey = useMemo(() => [...new Set(shown.map(quoteSymbolFor))].sort().join(','), [shown])
 
-    // Current prices from the batch endpoint (no Finnhub calls), every 30s while showing.
+    // Prices, only while this page is showing. A ticker the board already prices is
+    // read from the board every 15s; the rest come from the batch endpoint (no Finnhub
+    // calls) every two minutes. Nothing here touches the board's stream or queue.
     useEffect(() => {
         if (!active || !symbolKey) return undefined
         const controller = new AbortController()
-        const symbols = symbolKey.split(',')
-        const load = async () => {
+        const allSymbols = symbolKey.split(',')
+        const readKnown = () => {
+            const next = {}
+            allSymbols.forEach((symbol) => {
+                const price = knownPrice?.(symbol)
+                if (Number.isFinite(price) && price > 0) next[symbol] = price
+            })
+            if (Object.keys(next).length) setPrices((current) => ({ ...current, ...next }))
+            return next
+        }
+        const fetchMissing = async () => {
             if (document.visibilityState !== 'visible') return
+            const known = readKnown()
+            const symbols = allSymbols.filter((symbol) => !(symbol in known))
+            if (symbols.length === 0) return
             const chunks = []
             for (let index = 0; index < symbols.length; index += QUOTES_PER_REQUEST) chunks.push(symbols.slice(index, index + QUOTES_PER_REQUEST))
             const results = await Promise.allSettled(chunks.map(async (chunk) => {
@@ -179,13 +196,17 @@ export default function LookbackPage({ active, loadSales, starredSales, onToggle
             })
             if (Object.keys(next).length) setPrices((current) => ({ ...current, ...next }))
         }
-        load()
-        const timer = window.setInterval(load, PRICE_REFRESH_MS)
+        fetchMissing()
+        const knownTimer = window.setInterval(() => {
+            if (document.visibilityState === 'visible') readKnown()
+        }, KNOWN_PRICE_REFRESH_MS)
+        const fetchTimer = window.setInterval(fetchMissing, FETCHED_PRICE_REFRESH_MS)
         return () => {
             controller.abort()
-            window.clearInterval(timer)
+            window.clearInterval(knownTimer)
+            window.clearInterval(fetchTimer)
         }
-    }, [active, symbolKey])
+    }, [active, symbolKey, knownPrice])
 
     const asOf = fetchedAt
         ? new Date(fetchedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })

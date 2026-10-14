@@ -969,7 +969,7 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 21
+const PAGED_BUILD = 22
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1987,6 +1987,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         setRevealRequest({ widgetId: widget.id })
     }
 
+    // Lookback copies the board's own latest price for any ticker the board carries.
+    // Takes Lookback's batch symbol (crypto as BTC-USD) and returns the board's price.
+    const readKnownSalePrice = useCallback((quoteSymbol) => {
+        const symbol = providerSymbol(quoteSymbol === 'BTC-USD' ? 'BTC' : quoteSymbol)
+        const price = Number(quotesRef.current[symbol]?.price)
+        return Number.isFinite(price) && price > 0 ? price : null
+    }, [])
+
     const toggleStarredSale = useCallback((sale) => {
         setStarredSales((current) => current.some((item) => item.id === sale.id)
             ? current.filter((item) => item.id !== sale.id)
@@ -2346,6 +2354,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 loadSales={loadSales}
                                 starredSales={starredSales}
                                 onToggleStar={toggleStarredSale}
+                                knownPrice={readKnownSalePrice}
                             />
                         </div>
                     )}

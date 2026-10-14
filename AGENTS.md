@@ -662,8 +662,10 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   options, SGOV and cancelled trades; a sale appears once Plaid publishes it, often a day
   later. `LookbackPage.jsx` shows each sale as two board-sized tiles side by side (sold
   price | price now, % since, dollars saved or missed; green = fell after the sale), three
-  sales across, and only as many rows as fit one screen (measured). Prices come from
-  `/api/quotes` every 30s. **Starred** sales are copied into the board
+  sales across, and only as many rows as fit one screen (measured). It does nothing while
+  another page is showing. Prices for tickers the board carries are copied from the board's
+  own quotes every 15s (`knownPrice`, no network); only the others are fetched from
+  `/api/quotes`, every 2 minutes. It never touches the stream or Finnhub. **Starred** sales are copied into the board
   (`ipadDashboard.starredSales`), so they persist after leaving the latest 50; they are
   listed first in their own grid about a third larger (`--lookback-starred-height`), with a
   20px gap, and the newest other sales fill the rows that still fit below.
