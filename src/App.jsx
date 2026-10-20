@@ -133,10 +133,10 @@ const dashboardLoadingFallback = (
 )
 
 const OWNER_FIREBASE_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
-// Two-step verification (TOTP) needs the Firebase project upgraded to Identity Platform with
-// TOTP turned on. Until then this hides the Security button and the owner's required setup;
+// Two-step verification (TOTP) needs the Firebase project on Identity Platform with TOTP turned
+// on (done Oct 20, 2026). false hides the Security button and the owner's required setup;
 // signing in with a code works either way.
-const TWO_STEP_VERIFICATION_AVAILABLE = false
+const TWO_STEP_VERIFICATION_AVAILABLE = true
 
 // Firebase web config (public client config; restrict key in Google Cloud Console)
 const firebaseConfig = {

@@ -762,13 +762,12 @@ The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
   card on the walkthrough's last step); required for the owner, whose desktop shows a setup
   that can't be dismissed until an authenticator app is enrolled. `TwoStepVerification.jsx`
   handles setup (verified email, recent sign-in, QR via `qrcode`) and turning it off; the
-  desktop, iPad and mobile sign-ins all ask for the code (`getMultiFactorResolver`). **Not yet
-  live:** Firebase allows MFA only after the project is upgraded to Identity Platform
-  (refused Oct 20, 2026: "MFA can only be enabled in GCIP"). After the upgrade: enable TOTP
-  (`identitytoolkit` admin `config?updateMask=mfa`, `mfa.state ENABLED` with a
-  `totpProviderConfig`), set `TWO_STEP_VERIFICATION_AVAILABLE = true` in `src/App.jsx` and
-  deploy, release mobile Build 40, have the owner enroll, then set `REQUIRE_OWNER_MFA`
-  (Ask K) and `STOCK_STICKIES_REQUIRE_MFA` (rentals-api) to `"true"` and deploy both Workers.
+  desktop, iPad and mobile sign-ins all ask for the code (`getMultiFactorResolver`). The project
+  was upgraded to **Identity Platform** on Oct 20, 2026 (permanent; needed for MFA; free at this
+  size) and TOTP enabled (`mfa.state ENABLED`, `totpProviderConfig.adjacentIntervals 5`; SMS
+  codes are off). `TWO_STEP_VERIFICATION_AVAILABLE` in `src/App.jsx` is `true`. **Still to do:**
+  release mobile Build 40, have the owner enroll, then set `REQUIRE_OWNER_MFA` (Ask K) and
+  `STOCK_STICKIES_REQUIRE_MFA` (rentals-api) to `"true"` and deploy both Workers.
 - **Known low-risk gap:** some localStorage caches (dashboard layout fallback,
   `portfolio_prices_cache`) are not per-user, so a second person on a shared browser could
   inherit cached tickers/layout.
