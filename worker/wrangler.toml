@@ -11,7 +11,7 @@ NON_OWNER_DAILY_LIMIT = "5"
 NON_OWNER_GLOBAL_DAILY_LIMIT = "150"
 # "true" = owner tokens must carry firebase.sign_in_second_factor (two-step verification).
 # Turn on once the owner has enrolled an authenticator app.
-REQUIRE_OWNER_MFA = "false"
+REQUIRE_OWNER_MFA = "true"
 ALLOWED_ORIGINS = "https://stockstickies.com,https://www.stockstickies.com,https://mobile.stockstickies.com,https://stock-stickies-mobile.eastern-shore-ai.chatgpt.site,http://localhost:5173,http://127.0.0.1:5173"
 
 # Ask K Assistant secrets (set via `wrangler secret put` from this folder):

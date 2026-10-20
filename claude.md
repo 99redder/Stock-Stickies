@@ -765,9 +765,11 @@ The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
   desktop, iPad and mobile sign-ins all ask for the code (`getMultiFactorResolver`). The project
   was upgraded to **Identity Platform** on Oct 20, 2026 (permanent; needed for MFA; free at this
   size) and TOTP enabled (`mfa.state ENABLED`, `totpProviderConfig.adjacentIntervals 5`; SMS
-  codes are off). `TWO_STEP_VERIFICATION_AVAILABLE` in `src/App.jsx` is `true`. **Still to do:**
-  release mobile Build 40, have the owner enroll, then set `REQUIRE_OWNER_MFA` (Ask K) and
-  `STOCK_STICKIES_REQUIRE_MFA` (rentals-api) to `"true"` and deploy both Workers.
+  codes are off). `TWO_STEP_VERIFICATION_AVAILABLE` in `src/App.jsx` is `true`. The owner
+  enrolled TOTP on Oct 20, 2026, mobile Build 40 went live, and `REQUIRE_OWNER_MFA` (Ask K) and
+  `STOCK_STICKIES_REQUIRE_MFA` (rentals-api) are `"true"`: owner tokens without
+  `firebase.sign_in_second_factor` get 401, so a device signed in before enrolling must sign in
+  again. Auth emails send as "Stock Stickies" (`senderDisplayName` on every template).
 - **Known low-risk gap:** some localStorage caches (dashboard layout fallback,
   `portfolio_prices_cache`) are not per-user, so a second person on a shared browser could
   inherit cached tickers/layout.
@@ -1157,10 +1159,10 @@ photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-The visible release is **Build 39** (released via Sites on 2026-09-23, from commit
-`91e207d`; `version.json` and the live asset hash were verified against the local build). Build 40
-(two-step sign-in, framing/HSTS headers from the Worker) is committed and awaiting a Sites
-release; see `mobile/CLAUDE.md`. Every mobile release must
+The visible release is **Build 40** (released via Sites on 2026-10-20; `version.json` and the
+live asset hash `index-DwIqnhW5.js` were verified against the local build). It added two-step
+sign-in and Worker-set security headers, which the Sites host doesn't apply; see
+`mobile/CLAUDE.md`. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |
