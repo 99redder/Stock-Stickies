@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './styles.css'
 
-const APP_BUILD = '39'
+const APP_BUILD = '40'
 const UPDATE_CHECK_INTERVAL = 5 * 60 * 1000
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
@@ -70,7 +70,23 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL)
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+// The Worker sends X-Frame-Options/frame-ancestors, but in case the host drops them,
+// never run signed-in inside another site's frame (clickjacking).
+const isFramed = (() => {
+  try {
+    return window.top !== window.self
+  } catch {
+    return true
+  }
+})()
+
+if (isFramed) {
+  try {
+    window.top.location.replace(window.location.href)
+  } catch {
+    // A cross-origin parent may block this; the app simply does not render.
+  }
+} else ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,

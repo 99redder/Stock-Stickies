@@ -263,7 +263,8 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 
 Every save path writes a full copy of the user document to `users/{uid}/snapshots` (autosave
 at most once per 10 minutes per session when notes/categories changed; `manual-sync` and
-`pre-plaid-apply` on each **Update positions**; on restore, `pre-restore` (the state being
+`pre-plaid-apply` on each **Update positions**; `save-conflict` when a save is refused because
+another tab or computer saved first (the refused state); on restore, `pre-restore` (the state being
 replaced, so a restore can be undone) and `restore-backup` (the restored state)). The
 **Backups** button in the header (next to **User Guide**) opens a modal that lists the newest 60 (scrollable) with note/text counts, categories in use, and whether
 the Finnhub key, nickname, and photo are present, so a full backup can be told apart from a
@@ -720,22 +721,54 @@ The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
   survival node product page (`node.html`, eastern-shore-ai repo). Prepaid means no surprise
   bill: when credits run out, requests fail. The low non-owner cap protects that shared
   balance; the owner plans to revisit Stock Stickies' Ask K if it drops below ~$5.
+- **Bounded cost (Oct 20, 2026 audit).** Free sign-ups made the per-account cap easy to
+  multiply, and request size was unbounded. Now: `NON_OWNER_GLOBAL_DAILY_LIMIT` (150) caps
+  all non-owner questions together (`usage:all:{date}`); non-owner bodies over 256 KB get 413
+  (owner 1 MB); `boundPortfolio` clips every string to 1,000 chars, objects to 40 keys and
+  5 levels, and keeps the non-owner portfolio JSON under 60,000 chars (shorter notes, then no
+  research notes, then fewer positions). Anonymous-provider tokens are refused.
+- `REQUIRE_OWNER_MFA` (`"false"` until the owner enrolls; see Two-step verification) makes
+  owner tokens without `firebase.sign_in_second_factor` get 401.
 - Secrets: `STOCKSTICKIES_ASKK_API_KEY`, `STOCKSTICKIES_ASKK_BASE_URL`,
   `STOCKSTICKIES_ASKK_MODEL`. Vars: `FIREBASE_PROJECT_ID`, `OWNER_UID`,
-  `NON_OWNER_DAILY_LIMIT`, `ALLOWED_ORIGINS`.
+  `NON_OWNER_DAILY_LIMIT`, `NON_OWNER_GLOBAL_DAILY_LIMIT`, `REQUIRE_OWNER_MFA`,
+  `ALLOWED_ORIGINS`.
 
 ---
 
 ## Security Notes
 
-- **Firestore rules** (console, project `red-s-stickies`, reviewed 2026-09-23):
-  `users/{userId}` and `users/{userId}/snapshots/{snapshotId}` are read/write only when
-  `request.auth.uid == userId`; everything else `allow read, write: if false`. These rules are
-  the real protection for users' API keys (below) — do not loosen them.
+- **Firestore rules** live in `firestore.rules` (project `red-s-stickies`; deploy with
+  `firebase deploy --only firestore:rules`; edits made only in the console are overwritten by
+  the next deploy). `users/{userId}` and `users/{userId}/snapshots/{snapshotId}` are
+  read/write only when `request.auth.uid == userId`; everything else `allow read, write: if
+  false`. Updates to `users/{userId}` must also carry `docVersion` = stored + 1 (see Race
+  Condition Fixes), except a write that changes only `ipadDashboard`. These rules are the
+  real protection for users' API keys (below) — do not loosen them. Before deploying a change,
+  test it with the Rules `projects/red-s-stickies:test` API (no emulator needed).
+- **App Check** is enforced on Firestore and Auth; the Firebase browser key is limited to the
+  site referrers and Firebase APIs; email-enumeration protection is on (checked Oct 20, 2026).
 - **API-key "encryption" is obfuscation.** The AES-GCM key is derived from the user's UID plus
   constants shipped in the client bundle, so anyone able to read a user document could
-  decrypt it. The `beforeunload` emergency save also writes keys in plain text. Keys are never
+  decrypt it. The `beforeunload` save uses copies encrypted ahead of time (`encryptedKeysRef`),
+  so plain text is written only in the moment after a key is typed. Keys are never
   logged, never stored in localStorage, and only sent directly to finnhub.io / MarketAux.
+- **Response headers.** `public/_headers` (desktop) sends `X-Frame-Options: DENY`,
+  `Content-Security-Policy: frame-ancestors 'none'` (clickjacking; a `<meta>` CSP can't set
+  it), HSTS, nosniff and a referrer policy. The mobile Sites host ignores `_headers`, so
+  `mobile/worker/index.js` runs first (`run_worker_first: true`) and sets the same headers plus
+  the app-shell no-store rules; `mobile/src/main.jsx` also refuses to render inside a frame.
+- **Two-step verification (TOTP).** Optional for everyone (header **Security** button, and a
+  card on the walkthrough's last step); required for the owner, whose desktop shows a setup
+  that can't be dismissed until an authenticator app is enrolled. `TwoStepVerification.jsx`
+  handles setup (verified email, recent sign-in, QR via `qrcode`) and turning it off; the
+  desktop, iPad and mobile sign-ins all ask for the code (`getMultiFactorResolver`). **Not yet
+  live:** Firebase allows MFA only after the project is upgraded to Identity Platform
+  (refused Oct 20, 2026: "MFA can only be enabled in GCIP"). After the upgrade: enable TOTP
+  (`identitytoolkit` admin `config?updateMask=mfa`, `mfa.state ENABLED` with a
+  `totpProviderConfig`), set `TWO_STEP_VERIFICATION_AVAILABLE = true` in `src/App.jsx` and
+  deploy, release mobile Build 40, have the owner enroll, then set `REQUIRE_OWNER_MFA`
+  (Ask K) and `STOCK_STICKIES_REQUIRE_MFA` (rentals-api) to `"true"` and deploy both Workers.
 - **Known low-risk gap:** some localStorage caches (dashboard layout fallback,
   `portfolio_prices_cache`) are not per-user, so a second person on a shared browser could
   inherit cached tickers/layout.
@@ -1126,7 +1159,9 @@ photo can be read safely.
 ### PWA Versioning and Update Behavior
 
 The visible release is **Build 39** (released via Sites on 2026-09-23, from commit
-`91e207d`; `version.json` and the live asset hash were verified against the local build). Every mobile release must
+`91e207d`; `version.json` and the live asset hash were verified against the local build). Build 40
+(two-step sign-in, framing/HSTS headers from the Worker) is committed and awaiting a Sites
+release; see `mobile/CLAUDE.md`. Every mobile release must
 increment and synchronize all three user-visible build markers:
 
 | File | Marker |
@@ -1213,6 +1248,19 @@ Unclassified notes use `bg-gray-300`.
 ---
 
 ## Race Condition Fixes
+
+### Problem: A stale tab or second computer overwrote newer saves (Oct 20, 2026)
+Every save replaces the whole document (`merge: false`), so a tab open since morning, or
+another computer, could write its older state over a newer save — and `beforeunload` saved on
+every close, even with nothing changed. **Fix**: optimistic concurrency. Each save writes
+`docVersion` = the version this tab's state came from + 1 (`docVersionRef`, advanced only when
+a snapshot is applied or a save is made), and `firestore.rules` rejects any other value. A
+rejected save goes to `handleSaveConflict`: it re-reads the server copy, keeps the rejected
+state as a `save-conflict` backup, applies the newer copy, and says so. `beforeunload` writes
+only while an edit is waiting for its autosave (`pendingSaveRef`). **Update positions** writes
+`currentData.docVersion + 1`. **Rule**: any new whole-document write must go through
+`saveUserDoc` or set `docVersion` itself; the iPad's single-field `ipadDashboard` update is
+the only exception the rules allow.
 
 ### Problem: Owner's document wiped on sign-in (Sep 24, 2026)
 The accounts change added `accountFieldsForSave` to the autosave dependencies. For the owner

@@ -3,6 +3,7 @@ import firebase from 'firebase/compat/app'
 import 'firebase/compat/auth'
 import 'firebase/compat/firestore'
 import 'firebase/compat/app-check'
+import { TotpMultiFactorGenerator } from 'firebase/auth'
 import { copyYtdCardToClipboard, createYtdShareCard, shareOrDownloadYtdCard } from './ytdShareCard'
 
 const firebaseConfig = {
@@ -252,6 +253,40 @@ function Login() {
   const [busy, setBusy] = useState(false)
   const [resetMode, setResetMode] = useState(false)
   const [success, setSuccess] = useState('')
+  // Two-step verification: the resolver waiting for an authenticator code.
+  const [mfaResolver, setMfaResolver] = useState(null)
+  const [mfaCode, setMfaCode] = useState('')
+
+  // The compat SDK attaches the resolver to the multi-factor error.
+  const startMfa = (reason) => {
+    if (reason?.code !== 'auth/multi-factor-auth-required' || !reason.resolver) return false
+    setPassword('')
+    setMfaCode('')
+    setMfaResolver(reason.resolver)
+    return true
+  }
+
+  const verifyMfaCode = async (event) => {
+    event.preventDefault()
+    const hint = mfaResolver?.hints?.find((item) => item.factorId === TotpMultiFactorGenerator.FACTOR_ID)
+    if (!hint) {
+      setError('This account uses a sign-in step the app does not support.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await mfaResolver.resolveSignIn(TotpMultiFactorGenerator.assertionForSignIn(hint.uid, mfaCode.trim()))
+      setMfaResolver(null)
+      setMfaCode('')
+    } catch (reason) {
+      setError(reason?.code === 'auth/invalid-verification-code'
+        ? 'That code didn’t match. Enter the newest code.'
+        : reason?.message || 'Unable to verify the code.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const signIn = async (event) => {
     event.preventDefault()
@@ -268,6 +303,7 @@ function Login() {
         await auth.signInWithEmailAndPassword(normalizedEmail, password)
       }
     } catch (reason) {
+      if (startMfa(reason)) return
       setError(reason?.message || (resetMode ? 'Unable to send the reset email.' : 'Unable to sign in.'))
     } finally {
       setBusy(false)
@@ -282,6 +318,7 @@ function Login() {
       if (!auth) throw new Error('Firebase is not configured for this app.')
       await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
     } catch (reason) {
+      if (startMfa(reason)) return
       setError(reason?.message || 'Unable to sign in with Google.')
     } finally {
       setBusy(false)
@@ -293,6 +330,14 @@ function Login() {
       <section className="login-card">
         <StockStickiesLogo />
         <p className="login-copy">Capture stock ideas, track your portfolio value, and keep your investing notes organized.</p>
+        {mfaResolver ? (
+          <form onSubmit={verifyMfaCode}>
+            <label>Authenticator code<input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ''))} required autoFocus /></label>
+            {error && <p className="form-error" role="alert">{error}</p>}
+            <button className="primary-button" type="submit" disabled={busy || mfaCode.length !== 6}>{busy ? 'Please wait…' : 'Verify'}</button>
+            <button className="google-button" type="button" onClick={() => { setMfaResolver(null); setError('') }} disabled={busy}>Back to login</button>
+          </form>
+        ) : (
         <form onSubmit={signIn}>
           <label>Email<input type="email" autoComplete="username" placeholder="Enter email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           {!resetMode && <label>Password<input type="password" autoComplete="current-password" placeholder="Enter password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>}
@@ -302,7 +347,8 @@ function Login() {
             {busy ? 'Please wait…' : resetMode ? 'Send Reset Email' : 'Login'}
           </button>
         </form>
-        {!resetMode && (
+        )}
+        {!resetMode && !mfaResolver && (
           <>
             <div className="divider"><span>or</span></div>
             <button className="google-button" type="button" onClick={googleSignIn} disabled={busy}>
@@ -1548,7 +1594,7 @@ export default function App() {
             <p className="profile-section-label">App details</p>
             <div className="profile-meta">
               <div><span>App</span><strong>Mobile Portfolio</strong></div>
-              <div><span>Version</span><strong>Build 39</strong></div>
+              <div><span>Version</span><strong>Build 40</strong></div>
               <div><span>Access</span><strong>Read only</strong></div>
             </div>
             <button className="signout-button" type="button" onClick={() => auth.signOut()}>

@@ -79,6 +79,13 @@ mobile.
 Current visible release: **Build 39** (released 2026-09-23 via Sites from commit
 `91e207d`; verified `version.json` and the live asset hash).
 
+**Build 40 is committed but not yet released** (Oct 20, 2026): the login asks for an
+authenticator code when the account has two-step verification; `worker/index.js` now runs
+first (`run_worker_first: true`) and sets `X-Frame-Options`, `frame-ancestors 'none'`, HSTS and
+the app-shell no-store headers itself, because the Sites host ignores `public/_headers`; and
+`src/main.jsx` won't render inside a frame. Release it before the owner turns on two-step
+verification — Build 39 can't complete a two-step sign-in.
+
 1. Increment all three build markers together: `APP_BUILD` in `src/main.jsx`, `build` in
    `public/version.json`, and the "Build N" label in the Profile modal (`src/App.jsx`).
 2. Review the service-worker cache name in `public/sw.js` only if shell caching changed

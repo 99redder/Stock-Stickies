@@ -1,0 +1,33 @@
+rules_version = '2';
+// Deployed with `firebase deploy --only firestore:rules` (project red-s-stickies).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedInAs(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read, create, delete: if signedInAs(userId);
+
+      // Whole-document saves must carry docVersion = stored docVersion + 1, so a stale
+      // tab or second computer can't overwrite a newer save (the desktop app reloads the
+      // newer copy and keeps its own as a 'save-conflict' backup). The iPad board writes
+      // only its own field. Documents saved before versioning accept the first versioned save.
+      allow update: if signedInAs(userId) && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ipadDashboard'])
+        || !('docVersion' in resource.data)
+        || request.resource.data.get('docVersion', -1) == resource.data.docVersion + 1
+      );
+
+      // Snapshot backups in the user's own subcollection
+      match /snapshots/{snapshotId} {
+        allow read, write: if signedInAs(userId);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

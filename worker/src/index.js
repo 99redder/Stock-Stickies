@@ -8,6 +8,20 @@
 // sees the portfolio the signed-in user's own app sends with the question.
 
 const DEFAULT_NON_OWNER_DAILY_LIMIT = 5;
+// All non-owner questions together, per UTC day. Free sign-ups make the
+// per-account cap easy to multiply, and every question spends the owner's
+// prepaid provider balance.
+const DEFAULT_NON_OWNER_GLOBAL_DAILY_LIMIT = 150;
+
+// Request and prompt size bounds. Each question is billed by its tokens, so a
+// non-owner request is held to a small prompt however large the body sent.
+const MAX_OWNER_BODY_BYTES = 1_000_000;
+const MAX_NON_OWNER_BODY_BYTES = 256_000;
+const MAX_NON_OWNER_PORTFOLIO_CHARS = 60_000;
+const MAX_STRING_CHARS = 1_000;
+const MAX_NOTE_CHARS_WHEN_TRIMMED = 200;
+const MAX_OBJECT_KEYS = 40;
+const MAX_DEPTH = 5;
 
 export default {
   async fetch(request, env) {
@@ -56,16 +70,30 @@ export default {
 
 async function handleAskK(request, env, corsHeaders, claims) {
   const isOwner = claims.sub === String(env.OWNER_UID || '').trim();
+  // The owner account must sign in with two-step verification (REQUIRE_OWNER_MFA).
+  if (isOwner && String(env.REQUIRE_OWNER_MFA || '').trim() === 'true' && !claims.firebase?.sign_in_second_factor) {
+    return json({ ok: false, error: 'Sign in again with two-step verification to use Ask K.' }, 401, corsHeaders);
+  }
+  if (!isOwner && claims.firebase?.sign_in_provider === 'anonymous') {
+    return json({ ok: false, error: 'Please sign in to Stock Stickies to use Ask K.' }, 401, corsHeaders);
+  }
+  const maxBodyBytes = isOwner ? MAX_OWNER_BODY_BYTES : MAX_NON_OWNER_BODY_BYTES;
+  const body = await readBodyLimited(request, maxBodyBytes);
+  if (body === null) {
+    return json({ ok: false, error: 'That request is too large for Ask K.' }, 413, corsHeaders);
+  }
   let data;
   try {
-    data = await request.json();
+    data = JSON.parse(body);
   } catch {
     return json({ ok: false, error: 'Invalid JSON' }, 400, corsHeaders);
   }
+  if (!data || typeof data !== 'object') return json({ ok: false, error: 'Invalid JSON' }, 400, corsHeaders);
 
   const question = String(data.message || '').trim();
   const history = Array.isArray(data.history) ? data.history.slice(-10) : [];
-  const portfolio = data.portfolio && typeof data.portfolio === 'object' ? data.portfolio : {};
+  const rawPortfolio = data.portfolio && typeof data.portfolio === 'object' ? data.portfolio : {};
+  const portfolio = isOwner ? clipPortfolio(rawPortfolio) : boundPortfolio(clipPortfolio(rawPortfolio));
 
   if (!question) return json({ ok: false, error: 'Missing message' }, 400, corsHeaders);
   if (question.length > 1500) return json({ ok: false, error: 'Message too long. Please keep it under 1500 characters.' }, 400, corsHeaders);
@@ -113,12 +141,82 @@ async function handleAskK(request, env, corsHeaders, claims) {
 // acceptable for a soft cost cap.
 async function consumeDailyQuestion(env, uid) {
   const limit = Math.max(1, Number(env.NON_OWNER_DAILY_LIMIT) || DEFAULT_NON_OWNER_DAILY_LIMIT);
+  const globalLimit = Math.max(1, Number(env.NON_OWNER_GLOBAL_DAILY_LIMIT) || DEFAULT_NON_OWNER_GLOBAL_DAILY_LIMIT);
   if (!env.ASKK_USAGE) return { allowed: false, limit, remaining: 0 };
-  const key = `usage:${uid}:${new Date().toISOString().slice(0, 10)}`;
-  const used = Number(await env.ASKK_USAGE.get(key)) || 0;
-  if (used >= limit) return { allowed: false, limit, remaining: 0 };
-  await env.ASKK_USAGE.put(key, String(used + 1), { expirationTtl: 2 * 86_400 });
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `usage:${uid}:${day}`;
+  const globalKey = `usage:all:${day}`;
+  const [used, globalUsed] = (await Promise.all([env.ASKK_USAGE.get(key), env.ASKK_USAGE.get(globalKey)]))
+    .map((value) => Number(value) || 0);
+  if (used >= limit || globalUsed >= globalLimit) return { allowed: false, limit, remaining: 0 };
+  await Promise.all([
+    env.ASKK_USAGE.put(key, String(used + 1), { expirationTtl: 2 * 86_400 }),
+    env.ASKK_USAGE.put(globalKey, String(globalUsed + 1), { expirationTtl: 2 * 86_400 }),
+  ]);
   return { allowed: true, limit, remaining: limit - used - 1 };
+}
+
+// Reads at most maxBytes of the body; null when it is larger.
+async function readBodyLimited(request, maxBytes) {
+  const declared = Number(request.headers.get('Content-Length'));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+// Shortens every string and caps object width and depth, so no single field
+// (a 10,000-character note, an oversized totals object) can inflate the prompt.
+function clipValue(value, depth = 0, maxString = MAX_STRING_CHARS) {
+  if (typeof value === 'string') return value.slice(0, maxString);
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
+  if (depth >= MAX_DEPTH) return null;
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => clipValue(item, depth + 1, maxString));
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .slice(0, MAX_OBJECT_KEYS)
+        .map(([key, item]) => [key.slice(0, 60), clipValue(item, depth + 1, maxString)])
+    );
+  }
+  return null;
+}
+
+// Non-owner prompts stay under MAX_NON_OWNER_PORTFOLIO_CHARS: first every
+// string is clipped, then notes are shortened, then research notes dropped,
+// then positions trimmed from the end.
+function boundPortfolio(portfolio) {
+  const size = (value) => JSON.stringify(value).length;
+  let bounded = clipValue(portfolio);
+  if (size(bounded) <= MAX_NON_OWNER_PORTFOLIO_CHARS) return bounded;
+  bounded = clipValue(portfolio, 0, MAX_NOTE_CHARS_WHEN_TRIMMED);
+  if (size(bounded) <= MAX_NON_OWNER_PORTFOLIO_CHARS) return bounded;
+  bounded = { ...bounded, researchNotes: [] };
+  while (size(bounded) > MAX_NON_OWNER_PORTFOLIO_CHARS && bounded.positions.length) {
+    bounded = { ...bounded, positions: bounded.positions.slice(0, -5) };
+  }
+  if (size(bounded) > MAX_NON_OWNER_PORTFOLIO_CHARS) {
+    bounded = { ...bounded, watchList: [], cashSecuredPuts: bounded.cashSecuredPuts.slice(0, 20), accounts: [], totals: {} };
+  }
+  return bounded;
 }
 
 // Verifies a Firebase Auth ID token (RS256, Google's securetoken keys) and
@@ -214,7 +312,7 @@ async function generateAskKAnswer(env, question, portfolio, history = [], isOwne
 
   const userPrompt = JSON.stringify({
     question,
-    portfolio: clipPortfolio(portfolio),
+    portfolio,
     history: trimmedHistory
   }, null, 2);
 

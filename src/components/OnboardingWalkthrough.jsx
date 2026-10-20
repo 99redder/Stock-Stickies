@@ -99,6 +99,7 @@ export default function OnboardingWalkthrough({
     onClose,
     onOpenDashboard,
     onOpenQuickStart,
+    onOpenTwoStep,
 }) {
     // mode: 'welcome' (first run), 'keys' (from the dashboard), 'accounts' (Manage accounts).
     const standaloneAccounts = mode === 'accounts'
@@ -472,6 +473,16 @@ export default function OnboardingWalkthrough({
                                         Click the lock on a note to enter how many shares you own{currentMode === 'multiple' ? ' and which account holds them' : ''} — it then shows up on the <span className="text-gray-200">Portfolio</span> tab with its value and allocation.
                                     </p>
                                 </div>
+                                {onOpenTwoStep && (
+                                    <div className="rounded-xl border border-gray-700 bg-gray-950/50 p-4">
+                                        <p className="font-semibold text-white">🔐 Protect your account <span className="text-xs font-semibold text-gray-500">(optional)</span></p>
+                                        <p className="mt-1 text-gray-400">
+                                            Turn on{' '}
+                                            <button type="button" onClick={onOpenTwoStep} className="font-semibold text-cyan-300 underline hover:text-cyan-200">two-step verification</button>
+                                            {' '}to ask for a code from an authenticator app each time you sign in. You can do this any time from the <span className="text-gray-200">Security</span> button next to Backups.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                             <p className="text-xs text-gray-500">
                                 Want the full tour? The{' '}

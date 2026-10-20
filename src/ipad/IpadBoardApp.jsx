@@ -12,11 +12,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { getApp, getApps, initializeApp } from 'firebase/app'
 import {
   getAuth,
+  getMultiFactorResolver,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  TotpMultiFactorGenerator,
 } from 'firebase/auth'
 import { doc, getFirestore, onSnapshot, updateDoc } from 'firebase/firestore'
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check'
@@ -116,6 +118,9 @@ export default function IpadBoardApp() {
   const [password, setPassword] = useState('')
   const [signInError, setSignInError] = useState('')
   const [signingIn, setSigningIn] = useState(false)
+  // Two-step verification: the resolver waiting for an authenticator code.
+  const [mfaResolver, setMfaResolver] = useState(null)
+  const [mfaCode, setMfaCode] = useState('')
   // 'loading' until the first document read; then 'ready', 'no-document' or 'error'.
   const [accountState, setAccountState] = useState('loading')
   const [apiKey, setApiKey] = useState('')
@@ -230,6 +235,7 @@ export default function IpadBoardApp() {
       await signInWithEmailAndPassword(auth, email.trim(), password)
       setPassword('')
     } catch (error) {
+      if (startMfa(error)) return
       setSignInError(signInErrorMessage(error))
     } finally {
       setSigningIn(false)
@@ -243,7 +249,39 @@ export default function IpadBoardApp() {
     try {
       await signInWithPopup(auth, new GoogleAuthProvider())
     } catch (error) {
+      if (startMfa(error)) return
       setSignInError(signInErrorMessage(error))
+    } finally {
+      setSigningIn(false)
+    }
+  }
+
+  const startMfa = (error) => {
+    if (error?.code !== 'auth/multi-factor-auth-required') return false
+    setPassword('')
+    setMfaCode('')
+    setMfaResolver(getMultiFactorResolver(auth, error))
+    return true
+  }
+
+  const verifyMfaCode = async (event) => {
+    event.preventDefault()
+    if (!mfaResolver || signingIn) return
+    const hint = mfaResolver.hints.find((item) => item.factorId === TotpMultiFactorGenerator.FACTOR_ID)
+    if (!hint) {
+      setSignInError('This account uses a sign-in step the board does not support.')
+      return
+    }
+    setSigningIn(true)
+    setSignInError('')
+    try {
+      await mfaResolver.resolveSignIn(TotpMultiFactorGenerator.assertionForSignIn(hint.uid, mfaCode.trim()))
+      setMfaResolver(null)
+      setMfaCode('')
+    } catch (error) {
+      setSignInError(error?.code === 'auth/invalid-verification-code'
+        ? 'That code didn’t match. Enter the newest code.'
+        : signInErrorMessage(error))
     } finally {
       setSigningIn(false)
     }
@@ -255,6 +293,22 @@ export default function IpadBoardApp() {
 
   if (user === undefined) {
     return <Screen><div className="ipad-board-status">LOADING…</div></Screen>
+  }
+
+  if ((!user || !userId) && mfaResolver) {
+    return (
+      <Screen>
+        <form className="ipad-board-form" onSubmit={verifyMfaCode}>
+          <label>
+            AUTHENTICATOR CODE
+            <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ''))} required autoFocus />
+          </label>
+          {signInError && <p className="ipad-board-error" role="alert">{signInError}</p>}
+          <button type="submit" className="ipad-board-button" disabled={signingIn || mfaCode.length !== 6}>{signingIn ? 'VERIFYING…' : 'VERIFY'}</button>
+          <button type="button" className="ipad-board-button is-secondary" onClick={() => { setMfaResolver(null); setSignInError('') }} disabled={signingIn}>BACK</button>
+        </form>
+      </Screen>
+    )
   }
 
   if (!user || !userId) {

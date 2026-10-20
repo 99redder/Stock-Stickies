@@ -65,18 +65,22 @@ import {
   createUserWithEmailAndPassword,
   fetchSignInMethodsForEmail,
   getAuth,
+  getMultiFactorResolver,
   GoogleAuthProvider,
+  multiFactor,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  TotpMultiFactorGenerator,
 } from 'firebase/auth'
 import {
   addDoc,
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   getFirestore,
   initializeFirestore,
@@ -100,6 +104,7 @@ import { BACKUP_RETENTION, selectBackupsToPrune } from './utils/backupRetention.
 const RobinhoodSync = lazy(() => import('./components/RobinhoodSync.jsx'))
 const AskK = lazy(() => import('./components/AskK.jsx'))
 const OnboardingWalkthrough = lazy(() => import('./components/OnboardingWalkthrough.jsx'))
+const TwoStepVerification = lazy(() => import('./components/TwoStepVerification.jsx'))
 
 const loadFinnhubDiagnosticDashboard = () => import('./components/FinnhubDiagnosticDashboard.jsx')
 const FinnhubDiagnosticDashboard = lazy(loadFinnhubDiagnosticDashboard)
@@ -128,6 +133,10 @@ const dashboardLoadingFallback = (
 )
 
 const OWNER_FIREBASE_UID = 'tQ4KeGwCjsb5CSbrFwmWYWX3BvI2'
+// Two-step verification (TOTP) needs the Firebase project upgraded to Identity Platform with
+// TOTP turned on. Until then this hides the Security button and the owner's required setup;
+// signing in with a code works either way.
+const TWO_STEP_VERIFICATION_AVAILABLE = false
 
 // Firebase web config (public client config; restrict key in Google Cloud Console)
 const firebaseConfig = {
@@ -637,6 +646,15 @@ const firebaseConfig = {
             const [loginPassword, setLoginPassword] = useState('');
             const [isSignup, setIsSignup] = useState(false);
             const [loginError, setLoginError] = useState('');
+            // Second sign-in step for accounts with two-step verification: the resolver from
+            // auth/multi-factor-auth-required, waiting for an authenticator code.
+            const [mfaSignIn, setMfaSignIn] = useState(null);
+            const [mfaCode, setMfaCode] = useState('');
+            const [mfaBusy, setMfaBusy] = useState(false);
+            const [twoStepOpen, setTwoStepOpen] = useState(false);
+            const [twoStepEnrolled, setTwoStepEnrolled] = useState(false);
+            // Set when the required (owner) setup is closed because the project can't offer it.
+            const [twoStepDeferred, setTwoStepDeferred] = useState(false);
             const [darkMode, setDarkMode] = useState(false);
             const [isResettingPassword, setIsResettingPassword] = useState(false);
             const [resetSuccess, setResetSuccess] = useState(false);
@@ -651,6 +669,20 @@ const firebaseConfig = {
             // The iPad board (/ipad) saves its own `ipadDashboard` field. This app never edits it,
             // but its saves replace the whole document, so they carry the latest copy along.
             const ipadDashboardRef = useRef(null);
+            // Optimistic concurrency for whole-document saves. `docVersion` is the version of the
+            // user document this session's state is based on; every save writes docVersion + 1, and
+            // the Firestore rules reject a save whose version doesn't follow the stored one. So a
+            // stale tab or second computer can no longer overwrite a newer save (see
+            // handleSaveConflict).
+            const docVersionRef = useRef(0);
+            // True from an edit until its debounced autosave fires; the beforeunload save only
+            // runs while something is actually unsaved.
+            const pendingSaveRef = useRef(false);
+            // Encrypted copies of the API keys, made ahead of time so the synchronous
+            // beforeunload save never has to write them in plain text.
+            const encryptedKeysRef = useRef({});
+            const applySnapshotRef = useRef(null);
+            const handlingConflictRef = useRef(0);
             const lastBackupSignatureRef = useRef('');
             const lastBackupAtRef = useRef(0);
             const importedPositionBadgeBackfillRef = useRef(false);
@@ -1061,6 +1093,7 @@ const firebaseConfig = {
             useEffect(() => {
                 if (!auth) return;
                 const unsubscribe = onAuthStateChanged(auth, (user) => {
+                    setTwoStepEnrolled(!!user && multiFactor(user).enrolledFactors.length > 0);
                     if (user) {
                         setUserDataReady(false);
                         setCurrentUser(user.email);
@@ -1091,8 +1124,9 @@ const firebaseConfig = {
                 // it blocks every snapshot in the new session and the user's data never loads.
                 isSavingRef.current = false;
                 lastAppliedSnapshotRef.current = null;
+                docVersionRef.current = 0;
 
-                const unsubscribe = onSnapshot(doc(db, 'users', userId), (doc) => {
+                const handleSnapshot = (doc) => {
                         // New user — no Firestore doc yet. Seed Google avatar if available so
                         // they see their photo immediately; the auto-save will persist it shortly.
                         if (!doc.exists()) {
@@ -1101,6 +1135,7 @@ const firebaseConfig = {
                             // treating it as a new user would let the autosave write the
                             // empty defaults over a real account.
                             if (doc.metadata.fromCache) return;
+                            docVersionRef.current = 0;
                             if (auth.currentUser?.photoURL) setProfilePhoto(auth.currentUser.photoURL);
                             setUserDataReady(true);
                             setApiKeysChecked(true); // no saved keys to decrypt
@@ -1152,6 +1187,10 @@ const firebaseConfig = {
                                     : null
                             };
                             const incomingKey = JSON.stringify(incoming);
+                            // State now matches this snapshot (applied below, or already equal),
+                            // so the next save builds on its version. Snapshots skipped while
+                            // saving leave it alone: that state is still based on the older one.
+                            docVersionRef.current = Number(data.docVersion) || 0;
                             if (incomingKey === lastAppliedSnapshotRef.current) {
                                 // Pure echo of our own write — nothing to apply.
                                 return;
@@ -1232,11 +1271,36 @@ const firebaseConfig = {
                             ]).finally(() => setApiKeysChecked(true));
                             setUserDataReady(true);
                         }
-                    }, (error) => {
+                    };
+                applySnapshotRef.current = handleSnapshot;
+                const unsubscribe = onSnapshot(doc(db, 'users', userId), handleSnapshot, (error) => {
                         console.error('Firestore snapshot error:', error);
                     });
-                return () => unsubscribe();
+                return () => {
+                    unsubscribe();
+                    applySnapshotRef.current = null;
+                };
             }, [currentUser]);
+
+            // Keep encrypted copies of the keys ready for the beforeunload save.
+            useEffect(() => {
+                const userId = auth?.currentUser?.uid;
+                if (!currentUser || !userId) return;
+                let cancelled = false;
+                const prepare = async (field, plain) => {
+                    const cached = encryptedKeysRef.current[field];
+                    if (!plain || (cached && cached.plain === plain && cached.uid === userId)) return;
+                    try {
+                        const value = await encryptApiKey(plain, userId);
+                        if (!cancelled && value) encryptedKeysRef.current[field] = { uid: userId, plain, value };
+                    } catch {
+                        // beforeunload falls back to plain text only if this never succeeds
+                    }
+                };
+                prepare('finnhubApiKey', finnhubApiKey);
+                prepare('marketauxApiKey', marketauxApiKey);
+                return () => { cancelled = true; };
+            }, [currentUser, finnhubApiKey, marketauxApiKey]);
 
             useEffect(() => {
                 // Never save before this session has loaded the user's document: the state
@@ -1248,8 +1312,10 @@ const firebaseConfig = {
 
                     // Immediately block incoming updates while we have pending changes
                     isSavingRef.current = true;
+                    pendingSaveRef.current = true;
 
                     const timeout = setTimeout(async () => {
+                        pendingSaveRef.current = false;
                         setSyncStatus('syncing');
                         const userId = auth.currentUser.uid;
 
@@ -1314,6 +1380,10 @@ const firebaseConfig = {
                             setSyncStatus('synced');
                             setTimeout(() => { isSavingRef.current = false; }, 1000);
                         }).catch((err) => {
+                            if (err?.code === 'save-conflict') {
+                                setSyncStatus('synced');
+                                return;
+                            }
                             console.error('Firestore save error:', err);
                             setSyncStatus('offline');
                             isSavingRef.current = false;
@@ -1329,14 +1399,23 @@ const firebaseConfig = {
 
             useEffect(() => {
                 // IMPORTANT: beforeunload handlers MUST be synchronous. The browser kills the page
-                // before any awaited Promise resolves, so async encryption cannot be used here.
-                // We save API keys as plain text in this emergency path — better than losing data.
+                // before any awaited Promise resolves, so async encryption cannot run here; the keys
+                // use the copies encryptedKeysRef prepared ahead of time (plain text only in the
+                // moment after a key is typed, before that finishes).
                 // Firestore persistence (IndexedDB) queues the write locally even if the tab closes
-                // before the server ACK, so the data survives.
+                // before the server ACK, so the data survives. It only runs while an edit is still
+                // waiting for its autosave: closing an idle (possibly stale) tab writes nothing, and
+                // the docVersion rule rejects it if another device saved in the meantime.
                 const handleBeforeUnload = () => {
                     if (!userDataReady) return; // nothing loaded yet — never overwrite with defaults
+                    if (!pendingSaveRef.current) return;
                     if (currentUser && auth.currentUser && db) {
                         const userId = auth.currentUser.uid;
+                        const keyForSave = (field, plain) => {
+                            if (!plain) return null;
+                            const cached = encryptedKeysRef.current[field];
+                            return cached && cached.plain === plain && cached.uid === userId ? cached.value : plain;
+                        };
                         const updateData = sanitizeUserDocForSave({
                             notes,
                             colorLabels,
@@ -1365,11 +1444,12 @@ const firebaseConfig = {
                             hideToolbarPanel,
                             sharesPrivacyMode,
                             diagnosticDashboard,
-                            // Store as plain text — async encryption cannot run in beforeunload
-                            finnhubApiKey: finnhubApiKey || null,
-                            marketauxApiKey: marketauxApiKey || null,
+                            finnhubApiKey: keyForSave('finnhubApiKey', finnhubApiKey),
+                            marketauxApiKey: keyForSave('marketauxApiKey', marketauxApiKey),
+                            docVersion: docVersionRef.current + 1,
                             updatedAt: serverTimestamp()
                         });
+                        docVersionRef.current += 1;
                         if (ipadDashboardRef.current) updateData.ipadDashboard = ipadDashboardRef.current;
                         // Fire-and-forget — Firestore persistence queues this to IndexedDB synchronously
                         void setDoc(doc(db, 'users', userId), updateData, { merge: false });
@@ -1421,7 +1501,45 @@ const firebaseConfig = {
                     setLoginUsername('');
                     setLoginPassword('');
                 } catch (error) {
+                    if (startMfaSignIn(error)) return;
                     setLoginError(error.message);
+                }
+            };
+
+            // Returns true when the error asks for the second step and the code prompt is shown.
+            const startMfaSignIn = (error) => {
+                if (error?.code !== 'auth/multi-factor-auth-required') return false;
+                const resolver = getMultiFactorResolver(auth, error);
+                if (!resolver.hints.some((hint) => hint.factorId === TotpMultiFactorGenerator.FACTOR_ID)) {
+                    setLoginError('This account uses a sign-in step Stock Stickies does not support.');
+                    return true;
+                }
+                setMfaCode('');
+                setMfaSignIn(resolver);
+                return true;
+            };
+
+            const handleMfaSignIn = async (e) => {
+                e.preventDefault();
+                if (!mfaSignIn || !/^\d{6}$/.test(mfaCode)) {
+                    setLoginError('Enter the 6-digit code from your authenticator app.');
+                    return;
+                }
+                setLoginError('');
+                setMfaBusy(true);
+                try {
+                    const hint = mfaSignIn.hints.find((item) => item.factorId === TotpMultiFactorGenerator.FACTOR_ID);
+                    await mfaSignIn.resolveSignIn(TotpMultiFactorGenerator.assertionForSignIn(hint.uid, mfaCode));
+                    setMfaSignIn(null);
+                    setMfaCode('');
+                    setLoginUsername('');
+                    setLoginPassword('');
+                } catch (error) {
+                    setLoginError(error?.code === 'auth/invalid-verification-code'
+                        ? 'That code didn’t match. Enter the newest code from your authenticator app.'
+                        : error.message);
+                } finally {
+                    setMfaBusy(false);
                 }
             };
 
@@ -1440,6 +1558,7 @@ const firebaseConfig = {
                         setLoginError('That email already exists with email/password. Sign in with your password first, then we can link Google to the same account.');
                         return;
                     }
+                    if (startMfaSignIn(error)) return;
                     setLoginError(error.message);
                 }
             };
@@ -1533,7 +1652,19 @@ const firebaseConfig = {
                 const { reason = 'save', forceBackup = false, minIntervalMs = 10 * 60 * 1000 } = options;
                 const cleanData = sanitizeUserDocForSave(data);
                 if (ipadDashboardRef.current) cleanData.ipadDashboard = ipadDashboardRef.current;
-                await setDoc(doc(db, 'users', userId), cleanData, { merge: false });
+                // Advance before awaiting so a save queued right behind this one stacks on it.
+                cleanData.docVersion = docVersionRef.current + 1;
+                docVersionRef.current = cleanData.docVersion;
+                try {
+                    await setDoc(doc(db, 'users', userId), cleanData, { merge: false });
+                } catch (err) {
+                    if (err?.code === 'permission-denied' && await handleSaveConflict(userId, cleanData)) {
+                        const conflict = new Error('A newer save from another tab or device was kept.');
+                        conflict.code = 'save-conflict';
+                        throw conflict;
+                    }
+                    throw err;
+                }
 
                 const now = Date.now();
                 const signature = JSON.stringify({ notes: cleanData.notes, categories: cleanData.categories });
@@ -1550,6 +1681,45 @@ const firebaseConfig = {
                     };
                     await addDoc(collection(db, 'users', userId, 'snapshots'), snapshotData);
                 }
+            };
+
+            // A save was refused. If that's because the stored document moved past the version this
+            // tab's state was based on (another tab or computer saved since), keep the rejected copy
+            // as a 'save-conflict' backup — nothing typed here is lost — and switch to the newer
+            // stored copy instead of overwriting it. Returns false for any other refusal.
+            const handleSaveConflict = async (userId, rejectedData) => {
+                const userRef = doc(db, 'users', userId);
+                let server;
+                try {
+                    server = await getDocFromServer(userRef);
+                } catch {
+                    return false;
+                }
+                if (!server.exists()) return false;
+                const serverVersion = Number(server.data()?.docVersion) || 0;
+                if (serverVersion === rejectedData.docVersion - 1) return false;
+                // Saves queued behind the first refused one are refused too; handle the conflict once.
+                if (Date.now() - handlingConflictRef.current < 15000) return true;
+                handlingConflictRef.current = Date.now();
+                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                pendingSaveRef.current = false;
+                try {
+                    await addDoc(collection(userRef, 'snapshots'), {
+                        ...rejectedData,
+                        backupCreatedAt: serverTimestamp(),
+                        backupReason: 'save-conflict'
+                    });
+                } catch (backupErr) {
+                    console.error('Could not back up the conflicting save:', backupErr);
+                }
+                isSavingRef.current = false;
+                lastAppliedSnapshotRef.current = null;
+                applySnapshotRef.current?.(server);
+                showBrandedNotice(
+                    'This account was saved from another tab or computer after this one loaded, so this tab switched to that newer copy instead of overwriting it. The change made here is kept in Backups as "save-conflict".',
+                    'Loaded the newer copy'
+                );
+                return true;
             };
 
             // Check if a user's data exists under an old email-keyed doc and migrate it to UID key
@@ -2338,6 +2508,11 @@ const firebaseConfig = {
                 // Logout resets state to defaults, so the next session must re-apply its
                 // first snapshot even if the payload is byte-identical to this one.
                 lastAppliedSnapshotRef.current = null;
+                docVersionRef.current = 0;
+                pendingSaveRef.current = false;
+                encryptedKeysRef.current = {};
+                setTwoStepDeferred(false);
+                setTwoStepOpen(false);
                 if (auth) await signOut(auth);
                 ipadDashboardRef.current = null;
                 setUserDataReady(false);
@@ -2584,13 +2759,16 @@ const firebaseConfig = {
                     importedNextId += 1;
                 }
 
+                const nextDocVersion = (Number(currentData.docVersion) || 0) + 1;
                 await setDoc(userRef, {
                     ...currentData,
                     notes: updatedNotes,
                     cashSecuredPuts: updatedPuts,
                     nextId: importedNextId,
+                    docVersion: nextDocVersion,
                     updatedAt: serverTimestamp()
                 }, { merge: false });
+                docVersionRef.current = nextDocVersion;
                 isSavingRef.current = true;
                 setNotes(updatedNotes);
                 setCashSecuredPuts(updatedPuts);
@@ -5235,6 +5413,29 @@ const firebaseConfig = {
                                 Capture stock ideas, track your portfolio value, and keep your investing notes organized.
                             </p>
                             {!auth && <div className="bg-yellow-900 border border-yellow-600 text-yellow-200 px-4 py-3 rounded mb-4 text-sm"><strong>Setup Required:</strong> Add Firebase credentials</div>}
+                            {mfaSignIn ? (
+                            <form onSubmit={handleMfaSignIn} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Two-step verification</label>
+                                    <p className="text-sm text-gray-400 mb-3">Enter the 6-digit code from your authenticator app.</p>
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="one-time-code"
+                                        autoFocus
+                                        maxLength={6}
+                                        value={mfaCode}
+                                        onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white text-center text-lg tracking-[0.4em] rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none placeholder-gray-500"
+                                        placeholder="123456"
+                                    />
+                                </div>
+                                {loginError && <p className="text-red-400 text-sm">{loginError}</p>}
+                                <button type="submit" disabled={mfaBusy || mfaCode.length !== 6} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white py-2 rounded-lg font-medium">Verify</button>
+                                <button type="button" onClick={() => { setMfaSignIn(null); setMfaCode(''); setLoginError(''); }} className="w-full text-center text-sm text-gray-400 hover:text-gray-200">Back to login</button>
+                            </form>
+                            ) : (
+                            <>
                             <form onSubmit={handleLogin} className="space-y-4">
                                 <div><label className="block text-sm font-medium text-gray-300 mb-2">Email</label><input type="email" autocomplete="username" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none placeholder-gray-400" placeholder="Enter email"/></div>
                                 {!isResettingPassword && <div><label className="block text-sm font-medium text-gray-300 mb-2">Password</label><input type="password" autocomplete="current-password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none placeholder-gray-400" placeholder="Enter password"/></div>}
@@ -5267,6 +5468,8 @@ const firebaseConfig = {
                                 {!isSignup && !isResettingPassword && <button onClick={() => setIsResettingPassword(true)} className="text-gray-400 hover:text-gray-300 text-sm">Forgot password?</button>}
                                 {isResettingPassword && <button onClick={() => setIsResettingPassword(false)} className="text-gray-400 hover:text-gray-300 text-sm">Back to login</button>}
                             </div>
+                            </>
+                            )}
                             <div className="mt-6 text-center text-xs text-gray-400 space-y-2">
                                 <div>
                                     Website created and maintained by <a href="https://www.easternshore.ai" target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:text-cyan-200">Eastern Shore AI, LLC</a>
@@ -5304,16 +5507,32 @@ const firebaseConfig = {
                         onSaveMarketauxKey={setMarketauxApiKey}
                         onClose={() => setOnboardingOpen(false)}
                         onOpenQuickStart={() => { setOnboardingOpen(false); setQuickStartOpen(true); }}
+                        onOpenTwoStep={TWO_STEP_VERIFICATION_AVAILABLE ? () => { setOnboardingOpen(false); setTwoStepOpen(true); } : undefined}
                         onOpenDashboard={() => { setOnboardingOpen(false); setMainTab('dashboard'); }}
                     />
                 </Suspense>
             ) : null;
             const openKeySetup = () => setOnboardingOpen('keys');
+            // Optional for everyone, from the Security button; required for the owner (brokerage
+            // access), whose Worker calls are refused until a second factor is enrolled.
+            const twoStepRequired = TWO_STEP_VERIFICATION_AVAILABLE && isOwnerAccount && userDataReady && !twoStepEnrolled && !twoStepDeferred;
+            const twoStepModal = (twoStepOpen || twoStepRequired) && auth?.currentUser ? (
+                <Suspense fallback={null}>
+                    <TwoStepVerification
+                        user={auth.currentUser}
+                        required={isOwnerAccount}
+                        onChange={setTwoStepEnrolled}
+                        onClose={() => { setTwoStepOpen(false); setTwoStepDeferred(true); }}
+                        onSignOut={() => { setTwoStepOpen(false); handleLogout(); }}
+                    />
+                </Suspense>
+            ) : null;
 
             if (mainTab === 'dashboard') {
                 return (
                     <>
                         {onboardingModal}
+                        {twoStepModal}
                         <Suspense fallback={dashboardLoadingFallback}>
                             <FinnhubDiagnosticDashboard
                                 key={dashboardMountKey}
@@ -5332,6 +5551,7 @@ const firebaseConfig = {
             return (
                 <>
                 {onboardingModal}
+                {twoStepModal}
                 {quickStartOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
                         <div className="bg-gray-900 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
@@ -6689,6 +6909,14 @@ const firebaseConfig = {
                                     >
                                         Backups
                                     </button>
+                                    {TWO_STEP_VERIFICATION_AVAILABLE && <button
+                                        type="button"
+                                        onClick={() => setTwoStepOpen(true)}
+                                        className={`ml-2 px-3 py-1 rounded-md text-xs font-extrabold tracking-wide border ${darkMode ? 'border-emerald-500/60 text-emerald-300 hover:bg-emerald-500/10' : 'border-emerald-600 text-emerald-700 hover:bg-emerald-50'}`}
+                                        title={twoStepEnrolled ? 'Two-step verification is on' : 'Turn on two-step verification'}
+                                    >
+                                        Security{twoStepEnrolled ? ' ✓' : ''}
+                                    </button>}
                                     {mainTab === 'notes' && (
                                         <>
                                             <button
