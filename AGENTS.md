@@ -769,7 +769,15 @@ The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
   enrolled TOTP on Oct 20, 2026, mobile Build 40 went live, and `REQUIRE_OWNER_MFA` (Ask K) and
   `STOCK_STICKIES_REQUIRE_MFA` (rentals-api) are `"true"`: owner tokens without
   `firebase.sign_in_second_factor` get 401, so a device signed in before enrolling must sign in
-  again. Auth emails send as "Stock Stickies" (`senderDisplayName` on every template).
+  again.
+- **Auth email sender** (Oct 20, 2026): every Firebase Auth email template sends as **Stock
+  Stickies `<noreply@stockstickies.com>`** (`senderDisplayName` + verified custom domain,
+  `dnsInfo.useCustomDomain`). Cloudflare DNS for stockstickies.com carries what that needs:
+  SPF `v=spf1 include:_spf.firebasemail.com ~all` (replaced `v=spf1 -all`; keep exactly one SPF
+  record), TXT `firebase=red-s-stickies`, and DNS-only CNAMEs `firebase1._domainkey` /
+  `firebase2._domainkey` → `mail-stockstickies-com.dkim{1,2}._domainkey.firebasemail.com`. The
+  strict DMARC (`p=reject`, `adkim=s`) passes through Firebase's DKIM. Removing any of these
+  breaks auth email delivery. Links in the emails still use `red-s-stickies.firebaseapp.com`.
 - **Known low-risk gap:** some localStorage caches (dashboard layout fallback,
   `portfolio_prices_cache`) are not per-user, so a second person on a shared browser could
   inherit cached tickers/layout.
