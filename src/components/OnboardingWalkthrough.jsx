@@ -10,6 +10,7 @@ const STEP_LABELS = {
     news: 'News key',
     accounts: 'Accounts',
     dashboard: 'Dashboard',
+    security: 'Two-step verification',
     done: 'Get started',
 }
 
@@ -99,7 +100,9 @@ export default function OnboardingWalkthrough({
     onClose,
     onOpenDashboard,
     onOpenQuickStart,
-    onOpenTwoStep,
+    includeSecurityStep = false,
+    twoStepEnrolled = false,
+    onSetUpTwoStep,
 }) {
     // mode: 'welcome' (first run), 'keys' (from the dashboard), 'accounts' (Manage accounts).
     const standaloneAccounts = mode === 'accounts'
@@ -109,6 +112,7 @@ export default function OnboardingWalkthrough({
             'welcome', 'finnhub', 'news',
             ...(includeAccountsStep ? ['accounts'] : []),
             ...(includeDashboardStep ? ['dashboard'] : []),
+            ...(includeSecurityStep ? ['security'] : []),
             'done',
         ]
     const initialStep = standaloneAccounts ? 'accounts'
@@ -454,6 +458,37 @@ export default function OnboardingWalkthrough({
                         </>
                     )}
 
+                    {stepKey === 'security' && (
+                        <>
+                            <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">
+                                Protect your account <span className="text-base font-semibold text-gray-500">(optional)</span>
+                            </h2>
+                            <p className="text-gray-400">
+                                Two-step verification asks for a 6-digit code from an authenticator app each time you sign in, so a
+                                stolen password alone can’t open your account.
+                            </p>
+                            <Instructions items={[
+                                <>Install an authenticator app if you don’t have one — Google Authenticator, Microsoft Authenticator, 1Password, or Authy all work.</>,
+                                <>Click <span className="font-semibold text-white">Set up now</span> and scan the QR code with the app.</>,
+                                <>Enter the 6-digit code it shows. That’s it.</>,
+                            ]} />
+                            {twoStepEnrolled ? (
+                                <SavedBadge>Two-step verification is on.</SavedBadge>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={onSetUpTwoStep}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-bold text-gray-950 hover:bg-emerald-400"
+                                >
+                                    🔐 Set up now
+                                </button>
+                            )}
+                            <p className="text-xs text-gray-500">
+                                Not now? Skip it — you can turn it on any time from the <span className="text-gray-300">Security</span> button next to Backups.
+                            </p>
+                        </>
+                    )}
+
                     {stepKey === 'done' && (
                         <>
                             <h2 id="onboarding-title" className="text-2xl font-extrabold text-white">You’re all set 🎉</h2>
@@ -473,16 +508,6 @@ export default function OnboardingWalkthrough({
                                         Click the lock on a note to enter how many shares you own{currentMode === 'multiple' ? ' and which account holds them' : ''} — it then shows up on the <span className="text-gray-200">Portfolio</span> tab with its value and allocation.
                                     </p>
                                 </div>
-                                {onOpenTwoStep && (
-                                    <div className="rounded-xl border border-gray-700 bg-gray-950/50 p-4">
-                                        <p className="font-semibold text-white">🔐 Protect your account <span className="text-xs font-semibold text-gray-500">(optional)</span></p>
-                                        <p className="mt-1 text-gray-400">
-                                            Turn on{' '}
-                                            <button type="button" onClick={onOpenTwoStep} className="font-semibold text-cyan-300 underline hover:text-cyan-200">two-step verification</button>
-                                            {' '}to ask for a code from an authenticator app each time you sign in. You can do this any time from the <span className="text-gray-200">Security</span> button next to Backups.
-                                        </p>
-                                    </div>
-                                )}
                             </div>
                             <p className="text-xs text-gray-500">
                                 Want the full tour? The{' '}
@@ -525,7 +550,9 @@ export default function OnboardingWalkthrough({
                                     title={canContinue ? undefined : stepKey === 'finnhub' ? 'Save your Finnhub key to continue' : 'Choose how you keep your investments'}
                                     className="rounded-lg bg-cyan-500 px-5 py-2 font-bold text-gray-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
                                 >
-                                    {stepKey === 'welcome' ? 'Let’s go' : stepKey === 'news' && !marketauxApiKey ? 'Skip for now' : 'Next'}
+                                    {stepKey === 'welcome' ? 'Let’s go'
+                                        : (stepKey === 'news' && !marketauxApiKey) || (stepKey === 'security' && !twoStepEnrolled) ? 'Skip for now'
+                                            : 'Next'}
                                 </button>
                             ) : (
                                 <div className="flex gap-2">

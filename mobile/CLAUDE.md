@@ -76,6 +76,8 @@ mobile.
 
 ## Releasing
 
+**Build 41 is committed but not yet released** (Oct 20, 2026): it adds a `<meta>` Content-Security-Policy to `index.html` (scripts only from self, Google/reCAPTCHA; network only to Firebase, Finnhub, the two Workers, and Google profile photos) — add a host there before calling a new API.
+
 **Build 40 was released Oct 20, 2026** (live asset `index-DwIqnhW5.js`): the login asks for an
 authenticator code when the account has two-step verification; `worker/index.js` now runs
 first (`run_worker_first: true`) and sets `X-Frame-Options`, `frame-ancestors 'none'`, HSTS and

@@ -540,7 +540,9 @@ owner-only `OWNER_ACCOUNT_CONTEXT` (see Ask K).
 
 - `'welcome'` — steps: Welcome → Finnhub key (required; **Test & save** does a real AAPL
   quote, 401/403 = rejected) → MarketAux key (optional) → Accounts (non-owners only) →
-  Dashboard (only when the user has no saved `diagnosticDashboard`) → Get started. Opens automatically once per sign-in while the Finnhub key is missing **or** a
+  Dashboard (only when the user has no saved `diagnosticDashboard`) → Two-step verification
+  (non-owners, optional: **Set up now** opens `TwoStepVerification` over the walkthrough,
+  **Skip for now** moves on) → Get started. Opens automatically once per sign-in while the Finnhub key is missing **or** a
   non-owner hasn't answered the accounts question (`needsAccountSetup`). It skips ahead to the
   first unfinished step.
 - `'keys'` — opened by the Live Dashboard's missing-key notice ("Set up API keys →"); starts
@@ -558,8 +560,17 @@ dashboard that is already open. Packs are defined in `STARTER_PACK_THEME_IDS`.
 `apiKeysChecked` waits for the async key decryption (and is set immediately for brand-new
 users with no document) so the modal never flashes for users who already have keys. Keys
 typed here go through the normal `setFinnhubApiKey` / `setMarketauxApiKey` state and
-encrypted autosave. The **User Guide** (header button; formerly "Quick Start Guide") remains
-the long-form reference and includes a Backups & restore section.
+encrypted autosave. The **User Guide** (header button; formerly "Quick Start Guide";
+`src/components/UserGuide.jsx`, lazy-loaded) is the long-form reference: a section sidebar
+(chip row on phones) covering getting started, notes, positions & accounts, board layout,
+Portfolio tab, Watch List & RADAR, Live Dashboard, Ask K, Security & two-step verification,
+Backups & restore, and the mobile app. Update it whenever a user-visible feature changes.
+
+The **Privacy Policy** and **Terms of Use** live in `src/components/LegalModal.jsx` (one copy
+for the login page and the footer; effective Oct 20, 2026; contact contact@easternshore.ai).
+They describe what is collected and which providers see it (Firebase, Cloudflare, Finnhub /
+MarketAux via the user's own keys, public market sources, the Ask K AI provider, mobile
+hosting), so update them whenever data handling or a provider changes.
 
 ---
 
@@ -758,6 +769,16 @@ The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
   it), HSTS, nosniff and a referrer policy. The mobile Sites host ignores `_headers`, so
   `mobile/worker/index.js` runs first (`run_worker_first: true`) and sets the same headers plus
   the app-shell no-store rules; `mobile/src/main.jsx` also refuses to render inside a frame.
+- **CSP.** Desktop (`index.html`, `ipad.html`) and mobile (`mobile/index.html`, Build 41) set a
+  `<meta>` CSP. `frame-src` is limited to the Firebase auth domain, Google/reCAPTCHA, and Plaid;
+  add a host there before embedding anything new, and to `connect-src` before calling a new API.
+- **Rate limit.** A Cloudflare rate-limiting rule on the stockstickies.com zone blocks an IP for
+  10s after 30 requests to `/api/*` in 10s (the public Pages Functions). Normal dashboards make
+  about one request per 15s.
+- **Firestore database** has delete protection and 7-day point-in-time recovery (enabled
+  Oct 20, 2026), in addition to the in-app backups.
+- **Finnhub keys stay in the URL** (`?token=`): Finnhub's CORS preflight doesn't allow the
+  `X-Finnhub-Token` header from browsers.
 - **Two-step verification (TOTP).** Optional for everyone (header **Security** button, and a
   card on the walkthrough's last step); required for the owner, whose desktop shows a setup
   that can't be dismissed until an authenticator app is enrolled. `TwoStepVerification.jsx`
@@ -1167,7 +1188,8 @@ photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-The visible release is **Build 40** (released via Sites on 2026-10-20; `version.json` and the
+Build 41 (mobile CSP) is committed and awaiting a Sites release. The previous release,
+**Build 40** (released via Sites on 2026-10-20; `version.json` and the
 live asset hash `index-DwIqnhW5.js` were verified against the local build). It added two-step
 sign-in and Worker-set security headers, which the Sites host doesn't apply; see
 `mobile/CLAUDE.md`. Every mobile release must
