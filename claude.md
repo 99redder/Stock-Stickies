@@ -665,8 +665,17 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   / **Remove** / Cancel for that ticker; a removal shows **Undo** for 10s. After an add or
   move the board turns to the tile's page and flashes it (`revealRequest`). The bar rides above the on-screen
   keyboard (`keyboardInset` from `visualViewport`), and news ribbons sit above the bar.
-- **Lookback page** (owner only; last page, after the board pages, with its own LOOKBACK
-  pager tab): recent Robinhood stock sales against today's price, to judge whether a sale
+- **Runners page** (right after the board pages; **RUNNERS** tab): the board's five biggest
+  % gainers today in a row across the top half and the five biggest % losers across the bottom
+  half, as large tiles that fill the screen (`RunnersPage` / `RunnerTile`; type sized with
+  container units). It reads the board's own quotes — no extra network or Finnhub calls — and
+  re-ranks every 5s while showing, so tiles don't reshuffle per tick; prices tick live. The
+  pinned market row (indexes/ETFs) and DGS30 are left out. The stream keeps following the last
+  board page while it shows; other runners refresh from `/api/quotes` every 15s.
+- The **RUNNERS** and **LOOKBACK** tabs sit right of the stream status (46px tall pill
+  buttons, `.paged-page-tab`); the toolbar is 54px tall and the pager has only board dots.
+- **Lookback page** (owner only; last page, after Runners, with its own LOOKBACK
+  tab): recent Robinhood stock sales against today's price, to judge whether a sale
   was right. `IpadBoardApp` passes `loadSales`, which calls rentals-api
   `GET /api/stock-stickies/plaid/sales?limit=50` with the Firebase ID token. That route
   (`stockStickiesRecentSales` in the Worker's `src/stock-stickies-sales.js`) reads the daily

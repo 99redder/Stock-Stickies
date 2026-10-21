@@ -547,14 +547,14 @@ a.dashboard-news-headline:hover {
        over the page; keep the toolbar and the last row clear of them. */
     --paged-safe-top: env(safe-area-inset-top, 0px);
     --paged-safe-bottom: env(safe-area-inset-bottom, 0px);
-    --paged-tile-height: clamp(58px, calc((100dvh - 252px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px);
+    --paged-tile-height: clamp(58px, calc((100dvh - 266px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px);
     display: flex;
     flex-direction: column;
     height: 100dvh;
     min-height: 0;
     -webkit-tap-highlight-color: transparent;
 }
-.finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 298px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px); }
+.finnhub-diagnostic-shell.is-paged.is-editing { --paged-tile-height: clamp(58px, calc((100dvh - 312px - var(--paged-safe-top) - var(--paged-safe-bottom)) / 8), 128px); }
 /* Opened from the Home Screen (class set from navigator.standalone, which iPadOS always
    reports): leave room for the strip even if the browser reports no inset. */
 .finnhub-diagnostic-shell.is-paged.is-home-screen-app { --paged-safe-top: max(env(safe-area-inset-top, 0px), 32px); }
@@ -566,7 +566,7 @@ a.dashboard-news-headline:hover {
     align-items: center;
     gap: 14px;
     box-sizing: content-box;
-    height: 40px;
+    height: 54px;
     padding: var(--paged-safe-top) max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
     border-bottom: 1px solid #444;
     background: #111;
@@ -845,19 +845,59 @@ a.dashboard-news-headline:hover {
 .paged-add-message.is-hint { color: #8a8a8a; }
 .paged-add-bar form button.is-cancel, .paged-add-bar button.is-cancel { min-width: 100px; }
 
-/* Pager entry for the Lookback page. */
-.paged-pager .paged-lookback-tab {
-    width: auto;
-    height: 28px;
-    margin-left: 4px;
-    padding: 0 10px;
-    border: 1px solid #4a4a4a;
-    border-radius: 14px;
-    color: #9a9a9a;
-    font: 800 11px/1 "SFMono-Regular", Consolas, monospace;
-    letter-spacing: .08em;
+/* Runners and Lookback page tabs, right of the stream status: finger-sized. */
+.paged-page-tabs { display: flex; align-items: center; gap: 10px; }
+.paged-page-tab {
+    height: 46px;
+    min-width: 136px;
+    padding: 0 20px;
+    border: 1px solid #555;
+    border-radius: 23px;
+    background: #171717;
+    color: #c4c4c4;
+    font: 800 14px/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .1em;
+    white-space: nowrap;
+    cursor: pointer;
 }
-.paged-pager .paged-lookback-tab.is-active { border-color: #a46f20; background: #211b12; color: #e2b871; }
+.paged-page-tab:active { background: #2a2a2a; }
+.paged-page-tab.is-active { border-color: #a46f20; background: #211b12; color: #e2b871; }
+
+/* Runners page: five gainers across the top half, five losers across the bottom half,
+   each tile as tall as its half allows. Type scales with the tile (container units). */
+.paged-page.is-runners { display: flex; flex-direction: column; align-items: stretch; gap: 20px; overflow: hidden; }
+.runners-section { display: flex; flex: 1 1 0; flex-direction: column; min-height: 0; }
+.runners-heading { flex: 0 0 auto; }
+.runners-section.is-up .runners-heading span:first-child { color: var(--terminal-green); }
+.runners-section.is-down .runners-heading span:first-child { color: var(--terminal-red); }
+.runners-tiles { display: grid; flex: 1 1 auto; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; min-height: 0; }
+.runners-empty { grid-column: 1 / -1; align-self: center; color: #8a8a8a; font: 400 15px/1.4 -apple-system, "Segoe UI", sans-serif; text-align: center; }
+.runner-tile { cursor: default; container-type: size; }
+.runner-tile-body { padding: 8px 12px; }
+.runner-tile-row { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 8px; white-space: nowrap; }
+.runner-tile-symbol { overflow: hidden; color: #e2e2e2; font-size: clamp(18px, min(15cqh, 17cqw), 40px); font-weight: 800; letter-spacing: -.02em; line-height: 1.1; text-overflow: ellipsis; }
+.runner-tile-rank { color: #6f6f6f; font-size: clamp(11px, 7cqh, 16px); font-weight: 800; }
+.runner-tile-percent {
+    color: #a8a8a8;
+    font-size: clamp(22px, min(26cqh, 19cqw), 64px);
+    font-weight: 800;
+    letter-spacing: -.04em;
+    line-height: 1.1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.runner-tile-foot { color: #a8a8a8; font-weight: 700; font-variant-numeric: tabular-nums; }
+.runner-tile-price { font-size: clamp(14px, min(11cqh, 11cqw), 28px); }
+.runner-tile-change { font-size: clamp(12px, min(8cqh, 8cqw), 20px); }
+.runner-tile-group { overflow: hidden; color: #777; font-size: clamp(9px, 5.5cqh, 12px); font-weight: 800; letter-spacing: .08em; text-overflow: ellipsis; white-space: nowrap; }
+.runner-tile.quote-up .runner-tile-percent,
+.runner-tile.quote-up .runner-tile-foot { color: var(--terminal-green); }
+.runner-tile.quote-down .runner-tile-percent,
+.runner-tile.quote-down .runner-tile-foot { color: var(--terminal-red); }
+@media (max-width: 900px) {
+    .paged-page-tab { min-width: 0; padding: 0 14px; font-size: 12px; }
+    .runners-tiles { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); grid-auto-rows: minmax(110px, 1fr); overflow-y: auto; }
+}
 
 /* Lookback page: three sales across; each sale is a sold tile beside a now tile,
    both the board's tile size, so the page fills the screen like the others. */

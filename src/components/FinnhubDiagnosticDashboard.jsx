@@ -974,9 +974,95 @@ const PagedQuoteTile = React.memo(function PagedQuoteTile({ widget, quoteStore, 
     && previous.editing === next.editing
 ))
 
+// Runners page tile: one of the day's biggest movers, much larger than a board tile.
+// The day's % change is the headline; it ticks live like the board's tiles.
+const RunnerTile = React.memo(function RunnerTile({ widget, rank, quoteStore }) {
+    const symbol = providerSymbol(widget.symbol)
+    const subscribe = useCallback((listener) => quoteStore.subscribe(symbol, listener), [quoteStore, symbol])
+    const getSnapshot = useCallback(() => quoteStore.getSnapshot(symbol), [quoteStore, symbol])
+    const quote = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+    const price = quote?.price
+    const change = quote?.change
+    const changePercent = quote?.changePercent
+    const direction = Number.isFinite(changePercent) ? (changePercent >= 0 ? 'up' : 'down') : 'flat'
+
+    return (
+        <div className={`paged-tile runner-tile quote-${direction}`}>
+            <div key={quote?.events || 'no-live-ticks'} className={`paged-tile-body runner-tile-body ${quote?.events ? 'quote-tick-blink' : ''}`}>
+                <div className="runner-tile-row">
+                    <span className="runner-tile-symbol">{displaySymbol(widget.symbol)}</span>
+                    <span className="runner-tile-rank">#{rank}</span>
+                </div>
+                <div className="runner-tile-percent">{Number.isFinite(changePercent) ? `${formatSigned(changePercent)}%` : '—'}</div>
+                <div className="runner-tile-row runner-tile-foot">
+                    <span className="runner-tile-price">{Number.isFinite(price) ? `$${formatPrice(price)}` : '—'}</span>
+                    <span className="runner-tile-change">{Number.isFinite(change) ? formatSigned(change) : ''}</span>
+                </div>
+                <div className="runner-tile-group">{(THEME_BY_ID[widget.themeId]?.label || '').toUpperCase()}</div>
+            </div>
+        </div>
+    )
+})
+
+const RUNNERS_PER_SIDE = 5
+const RUNNERS_RERANK_MS = 5000
+
+// Runners page: the five biggest % gainers on the board (top) and the five biggest
+// % losers (bottom). The pinned market row (indexes/ETFs) and DGS30 are left out.
+// Ranking is redone every 5s while the page shows, so tiles don't reshuffle per tick.
+function RunnersPage({ active, widgets, quotesRef, quoteStore }) {
+    const [ranking, setRanking] = useState({ gainers: [], losers: [] })
+
+    useEffect(() => {
+        if (!active) return undefined
+        const rank = () => {
+            const seen = new Set()
+            const movers = []
+            widgets.forEach((widget) => {
+                if (widget.themeId === PAGED_PINNED_THEME_ID || isDailyMacroSymbol(widget.symbol)) return
+                const symbol = providerSymbol(widget.symbol)
+                if (!symbol || seen.has(symbol)) return
+                seen.add(symbol)
+                const changePercent = Number(quotesRef.current[symbol]?.changePercent)
+                if (Number.isFinite(changePercent)) movers.push({ widget, changePercent })
+            })
+            movers.sort((a, b) => b.changePercent - a.changePercent)
+            const gainers = movers.filter((mover) => mover.changePercent > 0).slice(0, RUNNERS_PER_SIDE).map((mover) => mover.widget)
+            const losers = movers.filter((mover) => mover.changePercent < 0).reverse().slice(0, RUNNERS_PER_SIDE).map((mover) => mover.widget)
+            setRanking((current) => (
+                current.gainers.map((widget) => widget.id).join() === gainers.map((widget) => widget.id).join()
+                && current.losers.map((widget) => widget.id).join() === losers.map((widget) => widget.id).join()
+            ) ? current : { gainers, losers })
+        }
+        rank()
+        const timer = window.setInterval(rank, RUNNERS_RERANK_MS)
+        return () => window.clearInterval(timer)
+    }, [active, widgets, quotesRef])
+
+    const renderSection = (title, list, emptyText, tone) => (
+        <div className={`runners-section is-${tone}`}>
+            <div className="diagnostic-theme-heading paged-group-heading runners-heading">
+                <span>{title}</span>
+                <span>TODAY · % CHANGE</span>
+            </div>
+            <div className="runners-tiles">
+                {list.length === 0 && <div className="runners-empty">{emptyText}</div>}
+                {list.map((widget, index) => <RunnerTile key={widget.id} widget={widget} rank={index + 1} quoteStore={quoteStore} />)}
+            </div>
+        </div>
+    )
+
+    return (
+        <>
+            {renderSection('RUNNERS · TOP GAINERS', ranking.gainers, 'Nothing on the board is up today yet.', 'up')}
+            {renderSection('RUNNERS · TOP LOSERS', ranking.losers, 'Nothing on the board is down today yet.', 'down')}
+        </>
+    )
+}
+
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 23
+const PAGED_BUILD = 24
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1243,11 +1329,14 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         for (let index = 0; index < columns.length; index += PAGED_COLUMNS_PER_PAGE) next.push(columns.slice(index, index + PAGED_COLUMNS_PER_PAGE))
         return next.length > 0 ? next : [[]]
     }, [columns])
-    // The Lookback page (when sales can be loaded) follows the board pages.
+    // The Runners page follows the board pages, then Lookback (when sales can be loaded).
+    const runnersPageIndex = pages.length
     const lookbackEnabled = paged && typeof loadSales === 'function'
-    const pageCount = pages.length + (lookbackEnabled ? 1 : 0)
+    const lookbackPageIndex = pages.length + 1
+    const pageCount = pages.length + 1 + (lookbackEnabled ? 1 : 0)
     const shownPage = Math.min(activePage, pageCount - 1)
-    const lookbackActive = lookbackEnabled && shownPage === pages.length
+    const runnersActive = paged && shownPage === runnersPageIndex
+    const lookbackActive = lookbackEnabled && shownPage === lookbackPageIndex
     const boardPage = Math.min(shownPage, pages.length - 1)
     const visibleThemeKey = paged ? [PAGED_PINNED_THEME_ID, ...pages[boardPage].flat()].join('|') : ''
     // Stream order: what is on screen first on the paged board, starred tiles first
@@ -2261,6 +2350,26 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                         <span>{displayedConnectionState.replace('-', ' ').toUpperCase()}</span>
                         <span className="paged-stream-count">{streamedSymbols.length}/{uniqueSymbolCount} STREAMING</span>
                     </div>
+                    <div className="paged-page-tabs">
+                        <button
+                            type="button"
+                            className={`paged-page-tab ${runnersActive ? 'is-active' : ''}`}
+                            onClick={() => goToPage(runnersPageIndex)}
+                            aria-current={runnersActive ? 'page' : undefined}
+                        >
+                            RUNNERS
+                        </button>
+                        {lookbackEnabled && (
+                            <button
+                                type="button"
+                                className={`paged-page-tab ${lookbackActive ? 'is-active' : ''}`}
+                                onClick={() => goToPage(lookbackPageIndex)}
+                                aria-current={lookbackActive ? 'page' : undefined}
+                            >
+                                LOOKBACK
+                            </button>
+                        )}
+                    </div>
                     <nav className="paged-pager" aria-label="Board pages">
                         <button type="button" onClick={() => goToPage(shownPage - 1)} disabled={shownPage === 0} aria-label="Previous page">‹</button>
                         {pages.map((_, index) => (
@@ -2273,16 +2382,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 aria-current={index === shownPage ? 'page' : undefined}
                             />
                         ))}
-                        {lookbackEnabled && (
-                            <button
-                                type="button"
-                                className={`paged-lookback-tab ${lookbackActive ? 'is-active' : ''}`}
-                                onClick={() => goToPage(pages.length)}
-                                aria-current={lookbackActive ? 'page' : undefined}
-                            >
-                                LOOKBACK
-                            </button>
-                        )}
                         <button type="button" onClick={() => goToPage(shownPage + 1)} disabled={shownPage >= pageCount - 1} aria-label="Next page">›</button>
                     </nav>
                     <button
@@ -2365,6 +2464,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                             })}
                         </div>
                     ))}
+                    <div className="paged-page is-runners" aria-label="Runners">
+                        <RunnersPage active={runnersActive} widgets={widgets} quotesRef={quotesRef} quoteStore={quoteStore} />
+                    </div>
                     {lookbackEnabled && (
                         <div className="paged-page is-lookback" aria-label="Lookback">
                             <LookbackPage
