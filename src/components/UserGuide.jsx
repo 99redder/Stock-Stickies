@@ -268,6 +268,7 @@ export default function UserGuide({
                                     <>From then on, signing in — on the website, the iPad board, or the mobile app — asks for the current code after your password or Google sign-in.</>,
                                 ]} />
                                 <Tip tone="amber">Keep your authenticator app backed up (most can sync to the cloud). Without it you can’t sign in. To switch phones, turn two-step off from <Ui>Security</Ui> and set it up again on the new one.</Tip>
+                                <Tip tone="amber">Leaving? <Ui>Security</Ui> → <span className="font-semibold">Delete my account</span> permanently removes your notes, settings, keys, every backup, and your login. You’ll confirm twice, type <span className="font-mono font-semibold">delete</span>, and sign in once more first — it can’t be undone.</Tip>
                                 <Tip tone="emerald">Account emails (password reset, verification) always come from <span className="font-semibold">noreply@stockstickies.com</span>. If an email asks you to sign in somewhere else, don’t.</Tip>
                             </Section>
 

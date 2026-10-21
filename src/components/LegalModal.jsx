@@ -73,8 +73,8 @@ function PrivacyPolicy() {
                 <p>
                     Your data is kept while your account is active. Automatic backups thin out over time: everything from the last
                     two weeks, one per day for three months, and one per week for up to a year, after which they are deleted. Our
-                    database also keeps a seven-day recovery history. When you ask us to delete your account, we delete your data
-                    and backups; copies in that recovery history expire within seven days.
+                    database also keeps a seven-day recovery history. When you delete your account (or ask us to), your data,
+                    backups, and login are deleted right away; copies in that recovery history expire within seven days.
                 </p>
             </div>
             <div>
@@ -90,7 +90,8 @@ function PrivacyPolicy() {
                 <List items={[
                     'Edit or delete your notes, keys, and settings at any time in the app.',
                     'Restore an earlier version of your data from Backups.',
-                    'Request a copy of your data, or deletion of your account and all of its data, by emailing us.',
+                    'Delete your account and all of its data yourself at any time: Security → Delete my account. It takes effect immediately.',
+                    'Request a copy of your data, or help with deletion, by emailing us.',
                 ]} />
             </div>
             <div>
@@ -181,7 +182,7 @@ function TermsOfUse() {
             <div>
                 <H>Termination</H>
                 <p>
-                    You may stop using the app and ask us to delete your account at any time. We may suspend or end access for
+                    You may stop using the app and delete your account at any time from Security → Delete my account. We may suspend or end access for
                     anyone who violates these terms or misuses the service.
                 </p>
             </div>

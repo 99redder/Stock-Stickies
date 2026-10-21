@@ -791,6 +791,14 @@ The Worker (`worker/src/index.js`, config `worker/wrangler.toml`):
   `STOCK_STICKIES_REQUIRE_MFA` (rentals-api) are `"true"`: owner tokens without
   `firebase.sign_in_second_factor` get 401, so a device signed in before enrolling must sign in
   again.
+- **Self-service account deletion** (non-owners): **Security → Delete my account…** opens
+  `DeleteAccountDialog.jsx`: a warning step (*I understand, continue*), then typing `delete`
+  plus the password (or a Google re-sign-in, plus the authenticator code when two-step is on)
+  before *Delete my account forever* enables. `deleteOwnAccount` sets `accountDeletingRef`
+  (every save path and the snapshot listener stand down), deletes `snapshots` in batches of 20,
+  then `users/{uid}`, then the Auth user, clears that user's localStorage keys, and reloads to
+  `/?account-deleted=1` (the login page shows a confirmation) so no state of the deleted
+  account stays in memory. The owner account can't be deleted from the app.
 - **Auth email sender** (Oct 20, 2026): every Firebase Auth email template sends as **Stock
   Stickies `<noreply@stockstickies.com>`** (`senderDisplayName` + verified custom domain,
   `dnsInfo.useCustomDomain`). Cloudflare DNS for stockstickies.com carries what that needs:

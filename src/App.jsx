@@ -63,6 +63,7 @@ import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallbac
 import { getApp, getApps, initializeApp } from 'firebase/app'
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   fetchSignInMethodsForEmail,
   getAuth,
   getMultiFactorResolver,
@@ -78,6 +79,7 @@ import {
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocFromServer,
@@ -107,6 +109,7 @@ const OnboardingWalkthrough = lazy(() => import('./components/OnboardingWalkthro
 const TwoStepVerification = lazy(() => import('./components/TwoStepVerification.jsx'))
 const UserGuide = lazy(() => import('./components/UserGuide.jsx'))
 const LegalModal = lazy(() => import('./components/LegalModal.jsx'))
+const DeleteAccountDialog = lazy(() => import('./components/DeleteAccountDialog.jsx'))
 
 const loadFinnhubDiagnosticDashboard = () => import('./components/FinnhubDiagnosticDashboard.jsx')
 const FinnhubDiagnosticDashboard = lazy(loadFinnhubDiagnosticDashboard)
@@ -657,6 +660,18 @@ const firebaseConfig = {
             const [twoStepEnrolled, setTwoStepEnrolled] = useState(false);
             // Set when the required (owner) setup is closed because the project can't offer it.
             const [twoStepDeferred, setTwoStepDeferred] = useState(false);
+            const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+            // Shown on the login page after the account was deleted.
+            const [loginNotice, setLoginNotice] = useState(() => {
+                try {
+                    const params = new URLSearchParams(window.location.search);
+                    if (params.get('account-deleted') !== '1') return '';
+                    window.history.replaceState(null, '', window.location.pathname);
+                    return 'Your account and all of its data have been deleted.';
+                } catch {
+                    return '';
+                }
+            });
             const [darkMode, setDarkMode] = useState(false);
             const [isResettingPassword, setIsResettingPassword] = useState(false);
             const [resetSuccess, setResetSuccess] = useState(false);
@@ -684,6 +699,10 @@ const firebaseConfig = {
             // beforeunload save never has to write them in plain text.
             const encryptedKeysRef = useRef({});
             const applySnapshotRef = useRef(null);
+            // Set for the whole of a self-service account deletion: every save path and the
+            // snapshot listener stand down, so nothing writes the document back while (or after)
+            // it is deleted.
+            const accountDeletingRef = useRef(false);
             const handlingConflictRef = useRef(0);
             const lastBackupSignatureRef = useRef('');
             const lastBackupAtRef = useRef(0);
@@ -1129,6 +1148,7 @@ const firebaseConfig = {
                 docVersionRef.current = 0;
 
                 const handleSnapshot = (doc) => {
+                        if (accountDeletingRef.current) return;
                         // New user — no Firestore doc yet. Seed Google avatar if available so
                         // they see their photo immediately; the auto-save will persist it shortly.
                         if (!doc.exists()) {
@@ -1308,7 +1328,7 @@ const firebaseConfig = {
                 // Never save before this session has loaded the user's document: the state
                 // is still the empty defaults, and saveUserDoc overwrites (merge: false).
                 // Saving here once wiped the owner's portfolio right after sign-in.
-                if (!userDataReady) return;
+                if (!userDataReady || accountDeletingRef.current) return;
                 if (currentUser && auth.currentUser && db) {
                     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
@@ -1410,7 +1430,7 @@ const firebaseConfig = {
                 // the docVersion rule rejects it if another device saved in the meantime.
                 const handleBeforeUnload = () => {
                     if (!userDataReady) return; // nothing loaded yet — never overwrite with defaults
-                    if (!pendingSaveRef.current) return;
+                    if (!pendingSaveRef.current || accountDeletingRef.current) return;
                     if (currentUser && auth.currentUser && db) {
                         const userId = auth.currentUser.uid;
                         const keyForSave = (field, plain) => {
@@ -1465,6 +1485,7 @@ const firebaseConfig = {
             const handleLogin = async (e) => {
                 e.preventDefault();
                 setLoginError('');
+                setLoginNotice('');
                 setResetSuccess(false);
                 if (!loginUsername || !loginPassword) {
                     setLoginError('Please enter both email and password');
@@ -1652,6 +1673,7 @@ const firebaseConfig = {
             // Write user data to Firestore and optionally create a snapshot backup
             const saveUserDoc = async (userId, email, data, options = {}) => {
                 const { reason = 'save', forceBackup = false, minIntervalMs = 10 * 60 * 1000 } = options;
+                if (accountDeletingRef.current) return;
                 const cleanData = sanitizeUserDocForSave(data);
                 if (ipadDashboardRef.current) cleanData.ipadDashboard = ipadDashboardRef.current;
                 // Advance before awaiting so a save queued right behind this one stacks on it.
@@ -1745,7 +1767,7 @@ const firebaseConfig = {
             };
 
             const syncNow = async () => {
-                if (!userDataReady) return; // nothing loaded yet — never overwrite with defaults
+                if (!userDataReady || accountDeletingRef.current) return; // nothing loaded yet — never overwrite with defaults
                 if (currentUser && auth.currentUser && db) {
                     const userId = auth.currentUser.uid;
 
@@ -2498,6 +2520,55 @@ const firebaseConfig = {
                         setYtdCopyStatus('Unable to share the image. Please try again.');
                     }
                 }
+            };
+
+            // Self-service account deletion (Security → Delete my account). The dialog has already
+            // re-authenticated the user, so deleteUser will be accepted. Order: stop every save,
+            // delete the backups, then the user document, then the login itself.
+            const deleteOwnAccount = async (onProgress = () => {}) => {
+                const user = auth?.currentUser;
+                if (!user || !db) throw new Error('Sign in again before deleting your account.');
+                if (user.uid === OWNER_FIREBASE_UID) throw new Error('The owner account can’t be deleted from the app.');
+                const uid = user.uid;
+                accountDeletingRef.current = true;
+                try {
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                    pendingSaveRef.current = false;
+                    isSavingRef.current = true;
+
+                    const snapshotsRef = collection(db, 'users', uid, 'snapshots');
+                    let removed = 0;
+                    for (;;) {
+                        const page = await getDocs(query(snapshotsRef, limit(100)));
+                        if (page.empty) break;
+                        // Backups are whole-account copies; small batches keep each commit
+                        // under Firestore's transaction size limit (see runBackupCleanup).
+                        for (let start = 0; start < page.docs.length; start += 20) {
+                            const batch = writeBatch(db);
+                            page.docs.slice(start, start + 20).forEach((snap) => batch.delete(snap.ref));
+                            await batch.commit();
+                            removed += Math.min(20, page.docs.length - start);
+                            onProgress(`${removed} backup${removed === 1 ? '' : 's'} removed`);
+                        }
+                    }
+                    onProgress('removing your data');
+                    await deleteDoc(doc(db, 'users', uid));
+                    onProgress('removing your login');
+                    await deleteUser(user);
+                } catch (err) {
+                    accountDeletingRef.current = false;
+                    isSavingRef.current = false;
+                    throw err;
+                }
+
+                try {
+                    Object.keys(localStorage)
+                        .filter((key) => key.includes(uid) || key === 'portfolio_prices_cache')
+                        .forEach((key) => localStorage.removeItem(key));
+                } catch { /* storage unavailable */ }
+                // A fresh page load drops every bit of the deleted account's state from memory,
+                // so nothing of it can be saved into whichever account signs in next.
+                window.location.replace('/?account-deleted=1');
             };
 
             const handleLogout = async () => {
@@ -5341,6 +5412,7 @@ const firebaseConfig = {
                                 {!isResettingPassword && <div><label className="block text-sm font-medium text-gray-300 mb-2">Password</label><input type="password" autocomplete="current-password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none placeholder-gray-400" placeholder="Enter password"/></div>}
                                 {loginError && <p className="text-red-400 text-sm">{loginError}</p>}
                                 {resetSuccess && <p className="text-green-400 text-sm">Password reset email sent!</p>}
+                                {loginNotice && <p className="text-green-400 text-sm">{loginNotice}</p>}
                                 <button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-2 rounded-lg font-medium">{isResettingPassword ? 'Send Reset Email' : (isSignup ? 'Sign Up with Email' : 'Login')}</button>
                                 {!isResettingPassword && (
                                     <>
@@ -5426,9 +5498,18 @@ const firebaseConfig = {
                         onChange={setTwoStepEnrolled}
                         onClose={() => { setTwoStepOpen(false); setTwoStepDeferred(true); }}
                         onSignOut={() => { setTwoStepOpen(false); handleLogout(); }}
+                        onDeleteAccount={isOwnerAccount || onboardingOpen ? undefined : () => { setTwoStepOpen(false); setDeleteAccountOpen(true); }}
                     />
                 </Suspense>
-            ) : null;
+            ) : (deleteAccountOpen && auth?.currentUser && !isOwnerAccount ? (
+                <Suspense fallback={null}>
+                    <DeleteAccountDialog
+                        user={auth.currentUser}
+                        onDeleteAccount={deleteOwnAccount}
+                        onClose={() => setDeleteAccountOpen(false)}
+                    />
+                </Suspense>
+            ) : null);
 
             if (mainTab === 'dashboard') {
                 return (

@@ -43,7 +43,7 @@ const friendlyError = (error) => {
     }
 }
 
-export default function TwoStepVerification({ user, required = false, onClose, onSignOut, onChange }) {
+export default function TwoStepVerification({ user, required = false, onClose, onSignOut, onChange, onDeleteAccount }) {
     // step: 'status' | 'verify-email' | 'reauth' | 'scan' | 'done' | 'unavailable'
     const [step, setStep] = useState('status')
     const [pendingAction, setPendingAction] = useState(null) // 'enroll' | 'remove'
@@ -220,7 +220,7 @@ export default function TwoStepVerification({ user, required = false, onClose, o
         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-4">
             <div role="dialog" aria-modal="true" aria-labelledby="two-step-title" className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 text-sm shadow-2xl">
                 <div className="space-y-4 px-6 py-5">
-                    <h2 id="two-step-title" className="text-xl font-extrabold text-white">Two-step verification</h2>
+                    <h2 id="two-step-title" className="text-xl font-extrabold text-white">{onDeleteAccount ? 'Account security' : 'Two-step verification'}</h2>
 
                     {required && !enrolled && step !== 'unavailable' && step !== 'done' && (
                         <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
@@ -322,6 +322,15 @@ export default function TwoStepVerification({ user, required = false, onClose, o
                     )}
 
                     {error && <p className="text-red-400">{error}</p>}
+
+                    {onDeleteAccount && step === 'status' && (
+                        <div className="border-t border-gray-800 pt-4">
+                            <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Danger zone</p>
+                            <button type="button" onClick={onDeleteAccount} className="mt-1 text-sm font-semibold text-red-400 hover:text-red-300">
+                                Delete my account…
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center justify-between gap-2 border-t border-gray-800 px-6 py-4">
