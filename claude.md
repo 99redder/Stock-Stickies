@@ -1196,7 +1196,7 @@ photo can be read safely.
 
 ### PWA Versioning and Update Behavior
 
-Build 41 (mobile CSP) is committed and awaiting a Sites release. The previous release,
+Build 41 (mobile CSP; Sites version 43, commit `2e5fc83`) was released Oct 20, 2026. Before it,
 **Build 40** (released via Sites on 2026-10-20; `version.json` and the
 live asset hash `index-DwIqnhW5.js` were verified against the local build). It added two-step
 sign-in and Worker-set security headers, which the Sites host doesn't apply; see

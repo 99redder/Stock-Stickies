@@ -76,7 +76,11 @@ mobile.
 
 ## Releasing
 
-**Build 41 is committed but not yet released** (Oct 20, 2026): it adds a `<meta>` Content-Security-Policy to `index.html` (scripts only from self, Google/reCAPTCHA; network only to Firebase, Finnhub, the two Workers, and Google profile photos) — add a host there before calling a new API.
+**Build 41 was released Oct 20, 2026** (Sites version 43, commit `2e5fc83`, live asset `index-C5f6W6O0.js`): it adds a `<meta>` Content-Security-Policy to `index.html` (scripts only from self, Google/reCAPTCHA; network only to Firebase, Finnhub, the two Workers, and Google profile photos) — add a host there before calling a new API. **Expected console error:** Cloudflare's
+zone-level "JavaScript detections" injects an inline bot-check script into mobile pages (not
+desktop, which is served by Pages), and the CSP blocks it. Its hash changes on every request,
+so it can't be allow-listed. The owner chose to leave this as is (Oct 20, 2026). Don't add
+`'unsafe-inline'` to fix it; the only clean fix is turning JavaScript detections off in Cloudflare.
 
 **Build 40 was released Oct 20, 2026** (live asset `index-DwIqnhW5.js`): the login asks for an
 authenticator code when the account has two-step verification; `worker/index.js` now runs
