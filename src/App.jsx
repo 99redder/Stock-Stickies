@@ -7132,13 +7132,13 @@ const firebaseConfig = {
                                                             }
                                                         }}
                                                         placeholder="Add a theme"
-                                                        className={`w-44 min-w-0 rounded border px-2 py-0.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500 ${darkMode ? 'border-gray-600 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
+                                                        className={`w-96 min-w-0 rounded border px-2 py-0.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500 ${darkMode ? 'border-gray-600 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
                                                         aria-label={`Theme for ${getAccountLabel(accountId)}`}
                                                     />
                                                     <button type="button" onClick={() => saveAccountTheme(accountId)} className="rounded p-1 text-green-600 hover:bg-green-500/10" title="Save theme title"><Check size={18}/></button>
                                                     <button type="button" onClick={() => { setEditingAccountTheme(null); setTempAccountTheme(''); }} className="rounded p-1 text-gray-500 hover:bg-gray-500/10" title="Cancel"><X size={18}/></button>
                                                 </>) : (<>
-                                                    <span className={`max-w-56 truncate text-sm font-semibold ${getAccountTheme(accountId) ? '' : 'italic opacity-60'}`}>
+                                                    <span className={`truncate text-sm font-semibold ${getAccountTheme(accountId) ? '' : 'italic opacity-60'}`}>
                                                         {getAccountTheme(accountId) || 'Not set'}
                                                     </span>
                                                     <button
@@ -7153,7 +7153,7 @@ const firebaseConfig = {
                                                 </>)}
                                             </span>
                                         )}
-                                        <span className={`ml-auto text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                        <span className={`ml-auto shrink-0 text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                             {accountValue > 0 && (
                                                 <span className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     {formatUsd(accountValue)}
