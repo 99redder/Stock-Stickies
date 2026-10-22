@@ -644,6 +644,54 @@ const firebaseConfig = {
             return note?.plaidSource === 'robinhood' && Number.isFinite(price) && price > 0 ? price : 0;
         };
 
+        // Plaid's nightly snapshot only fills a position that has no quote yet, and is the
+        // only price for crypto. It never replaces a fetched quote: re-applying it on every
+        // note edit used to put last night's price back over Update positions' fresh one.
+        const withPlaidPrices = (prices, noteList) => {
+            let next = prices;
+            noteList.forEach(note => {
+                const ticker = String(note?.title || '').trim().toUpperCase();
+                const cryptoPrice = getPlaidCryptoPrice(note);
+                const price = cryptoPrice || getPlaidPositionPrice(note);
+                if (!ticker || !(price > 0) || next[ticker] === price) return;
+                if (cryptoPrice > 0 || !(next[ticker] > 0)) {
+                    if (next === prices) next = { ...prices };
+                    next[ticker] = price;
+                }
+            });
+            return next;
+        };
+
+        // Portfolio prices from the site's /api/quotes (Yahoo) in one request, without spending
+        // Finnhub calls. extended=1 uses a pre-market or after-hours trade when it is newer
+        // than the close, as Robinhood does. Tickers it can't price are simply missing.
+        const PORTFOLIO_QUOTES_ENDPOINT = '/api/quotes';
+        const PORTFOLIO_QUOTES_PER_REQUEST = 100;
+        const fetchBatchQuotePrices = async (tickers) => {
+            const symbols = [...new Set(tickers.filter(Boolean))];
+            const chunks = [];
+            for (let index = 0; index < symbols.length; index += PORTFOLIO_QUOTES_PER_REQUEST) {
+                chunks.push(symbols.slice(index, index + PORTFOLIO_QUOTES_PER_REQUEST));
+            }
+            const results = await Promise.allSettled(chunks.map(async (chunk) => {
+                const response = await fetch(`${PORTFOLIO_QUOTES_ENDPOINT}?extended=1&symbols=${encodeURIComponent(chunk.join(','))}`);
+                if (!response.ok) throw new Error(`Quotes returned ${response.status}`);
+                return (await response.json())?.quotes || {};
+            }));
+            const prices = {};
+            results.forEach(result => {
+                if (result.status !== 'fulfilled') {
+                    console.warn('Batch quotes unavailable; using Finnhub:', result.reason?.message || result.reason);
+                    return;
+                }
+                Object.entries(result.value).forEach(([symbol, quote]) => {
+                    const price = Number(quote?.extendedPrice ?? quote?.price);
+                    if (Number.isFinite(price) && price > 0) prices[symbol] = price;
+                });
+            });
+            return prices;
+        };
+
         function StickyNotesApp() {
             const [currentUser, setCurrentUser] = useState(null);
             const [userDataReady, setUserDataReady] = useState(false);
@@ -2179,15 +2227,65 @@ const firebaseConfig = {
                 </section>
             );
 
+            // Latest price for each position: the batch quote (pre-market and after-hours
+            // included), then Finnhub for any ticker the batch missed, then Plaid's nightly
+            // price. USD is always 1 and crypto comes from Plaid.
+            const loadPortfolioPrices = async (uniqueNotes, basePrices) => {
+                const prices = { ...normalizePriceMap(basePrices) };
+                let refreshedCount = 0;
+                let fallbackCount = 0;
+                const failedTickers = [];
+                const batchPrices = await fetchBatchQuotePrices(uniqueNotes
+                    .filter(note => !isUsdTicker(note.title) && !(getPlaidCryptoPrice(note) > 0))
+                    .map(note => normalizeTicker(note.title)));
+
+                for (const note of uniqueNotes) {
+                    const ticker = normalizeTicker(note.title);
+                    try {
+                        const knownPrice = isUsdTicker(ticker)
+                            ? 1
+                            : getPlaidCryptoPrice(note) || batchPrices[ticker] || 0;
+                        if (knownPrice > 0) {
+                            prices[ticker] = knownPrice;
+                            refreshedCount += 1;
+                            continue;
+                        }
+                        if (finnhubApiKey) {
+                            const data = await fetchFinnhubQuote(ticker, finnhubApiKey);
+                            const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
+                            if (Number.isFinite(currentPrice) && currentPrice > 0) {
+                                prices[ticker] = currentPrice;
+                                refreshedCount += 1;
+                                continue;
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Failed to fetch ${note.title}`, error);
+                    }
+
+                    const institutionPrice = getPlaidPositionPrice(note);
+                    if (institutionPrice > 0) {
+                        prices[ticker] = institutionPrice;
+                        fallbackCount += 1;
+                    } else {
+                        failedTickers.push(ticker);
+                    }
+                }
+
+                return { prices: normalizePriceMap(prices), refreshedCount, fallbackCount, failedTickers };
+            };
+
+            const uniquePortfolioNotes = (targetNotes) => Array.from(new Map(
+                (Array.isArray(targetNotes) ? targetNotes : [])
+                    .map(note => [normalizeTicker(note.title), note])
+                    .filter(([ticker]) => ticker)
+            ).values());
+
             const refreshPortfolioPrices = async (
                 targetNotes,
                 { showNotices = false, cacheReason = 'manual' } = {}
             ) => {
-                const uniqueNotes = Array.from(new Map(
-                    (Array.isArray(targetNotes) ? targetNotes : [])
-                        .map(note => [normalizeTicker(note.title), note])
-                        .filter(([ticker]) => ticker)
-                ).values());
+                const uniqueNotes = uniquePortfolioNotes(targetNotes);
                 if (uniqueNotes.length === 0) {
                     if (showNotices) showBrandedNotice('No portfolio positions to refresh.');
                     return { requestedCount: 0, refreshedCount: 0, fallbackCount: 0, failedTickers: [] };
@@ -2202,72 +2300,24 @@ const firebaseConfig = {
                 }
 
                 setPortfolioLoading(true);
-                const prices = { ...normalizePriceMap(portfolioPrices) };
-                let refreshedCount = 0;
-                let fallbackCount = 0;
-                const failedTickers = [];
-
                 try {
-                    for (const note of uniqueNotes) {
-                        const ticker = normalizeTicker(note.title);
-                        try {
-                            if (isUsdTicker(ticker)) {
-                                prices[ticker] = 1;
-                                refreshedCount += 1;
-                                continue;
-                            }
-                            const plaidCryptoPrice = getPlaidCryptoPrice(note);
-                            if (plaidCryptoPrice > 0) {
-                                prices[ticker] = plaidCryptoPrice;
-                                refreshedCount += 1;
-                                continue;
-                            }
-                            if (finnhubApiKey) {
-                                const data = await fetchFinnhubQuote(ticker, finnhubApiKey);
-                                const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
-                                if (Number.isFinite(currentPrice) && currentPrice > 0) {
-                                    prices[ticker] = currentPrice;
-                                    refreshedCount += 1;
-                                    continue;
-                                }
-                            }
-
-                            const institutionPrice = getPlaidPositionPrice(note);
-                            if (institutionPrice > 0) {
-                                prices[ticker] = institutionPrice;
-                                fallbackCount += 1;
-                            } else {
-                                failedTickers.push(ticker);
-                            }
-                        } catch (error) {
-                            const institutionPrice = getPlaidPositionPrice(note);
-                            if (institutionPrice > 0) {
-                                prices[ticker] = institutionPrice;
-                                fallbackCount += 1;
-                            } else {
-                                failedTickers.push(ticker);
-                            }
-                            console.error(`Failed to fetch ${note.title}`, error);
-                        }
-                    }
-
-                    const normalizedPrices = normalizePriceMap(prices);
-                    setPortfolioPrices(normalizedPrices);
+                    const { prices, refreshedCount, fallbackCount, failedTickers } =
+                        await loadPortfolioPrices(uniqueNotes, portfolioPrices);
+                    setPortfolioPrices(prices);
                     localStorage.setItem('portfolio_prices_cache', JSON.stringify({
-                        prices: normalizedPrices,
+                        prices,
                         timestamp: Date.now(),
                         fetchedWindow: `${cacheReason}-${Date.now()}`
                     }));
+                    return {
+                        requestedCount: uniqueNotes.length,
+                        refreshedCount,
+                        fallbackCount,
+                        failedTickers
+                    };
                 } finally {
                     setPortfolioLoading(false);
                 }
-
-                return {
-                    requestedCount: uniqueNotes.length,
-                    refreshedCount,
-                    fallbackCount,
-                    failedTickers
-                };
             };
 
             const handleRefreshPortfolioPrices = async () => {
@@ -3706,24 +3756,11 @@ const firebaseConfig = {
                 `${normalizeTicker(n.title)}:${n.shares || 0}:${getPlaidPositionPrice(n)}`
             ).sort().join('|');
 
-            // Plaid's nightly snapshot provides a daily price floor for every synced
-            // Robinhood position. Finnhub can still overwrite stocks with fresher quotes.
             useEffect(() => {
-                const plaidPrices = {};
-                portfolioNotes.forEach(note => {
-                    const ticker = normalizeTicker(note.title);
-                    const price = getPlaidPositionPrice(note);
-                    if (ticker && price > 0) plaidPrices[ticker] = price;
-                });
-                if (!Object.keys(plaidPrices).length) return;
-                setPortfolioPrices(previous => {
-                    const hasChange = Object.entries(plaidPrices)
-                        .some(([ticker, price]) => previous[ticker] !== price);
-                    return hasChange ? { ...previous, ...plaidPrices } : previous;
-                });
+                setPortfolioPrices(previous => withPlaidPrices(previous, portfolioNotes));
             }, [portfolioNotes, portfolioTickerKey]);
 
-            // Portfolio price fetching effect - updates at 9:35am, 1pm, and 4:05pm EST
+            // Portfolio price fetching effect - updates at 9:35am, 1pm, and 4:05pm Eastern
             useEffect(() => {
                 if (!pageVisible || mainTab === 'dashboard') return;
                 if (portfolioNotes.length === 0) return;
@@ -3735,24 +3772,27 @@ const firebaseConfig = {
 
                 let isMounted = true;
 
-                // Check if we should fetch prices (9:35am, 1pm, or 4:05pm EST windows, or no cached data)
+                // Check if we should fetch prices (9:35am, 1pm, or 4:05pm Eastern windows, or no cached data)
                 const shouldFetchPrices = () => {
                     const cacheKey = 'portfolio_prices_cache';
                     const cached = localStorage.getItem(cacheKey);
 
-                    // Get current time in EST
-                    const now = new Date();
-                    const estOffset = -5; // EST is UTC-5 (ignoring DST for simplicity)
-                    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-                    const estTime = new Date(utc + (3600000 * estOffset));
-                    const estHour = estTime.getHours();
-                    const estMinutes = estTime.getMinutes();
-                    const totalMinutes = estHour * 60 + estMinutes;
+                    // Wall-clock time in New York, so the windows follow EDT as well as EST
+                    const easternParts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+                        timeZone: 'America/New_York',
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hourCycle: 'h23'
+                    }).formatToParts(new Date()).map(part => [part.type, part.value]));
+                    const totalMinutes = Number(easternParts.hour) * 60 + Number(easternParts.minute);
 
-                    // Define fetch windows (15-minute windows):
-                    // - Market open: 9:35-9:50 EST (575-590 minutes)
-                    // - Mid day: 13:00-13:15 EST (780-795 minutes)
-                    // - Market close: 16:05-16:20 EST (965-980 minutes)
+                    // Define fetch windows (15-minute windows, Eastern time):
+                    // - Market open: 9:35-9:50 (575-590 minutes)
+                    // - Mid day: 13:00-13:15 (780-795 minutes)
+                    // - Market close: 16:05-16:20 (965-980 minutes)
                     const isMarketOpenWindow = totalMinutes >= 575 && totalMinutes < 590;
                     const isMiddayWindow = totalMinutes >= 780 && totalMinutes < 795;
                     const isMarketCloseWindow = totalMinutes >= 965 && totalMinutes < 980;
@@ -3767,7 +3807,7 @@ const firebaseConfig = {
                         const oneHour = 60 * 60 * 1000;
 
                         // Determine current window identifier
-                        const today = estTime.toISOString().split('T')[0];
+                        const today = `${easternParts.year}-${easternParts.month}-${easternParts.day}`;
                         const currentWindow = isMarketOpenWindow ? `${today}-935am` :
                                              isMiddayWindow ? `${today}-1pm` :
                                              isMarketCloseWindow ? `${today}-405pm` : null;
@@ -3794,7 +3834,7 @@ const firebaseConfig = {
 
                 // If we have cached prices, use them immediately
                 if (cachedPrices && Object.keys(cachedPrices).length > 0) {
-                    setPortfolioPrices(cachedPrices);
+                    setPortfolioPrices(withPlaidPrices(cachedPrices, portfolioNotes));
                     if (!shouldFetch) {
                         setPortfolioLoading(false);
                         return;
@@ -3809,27 +3849,10 @@ const firebaseConfig = {
                 setPortfolioLoading(true);
 
                 const fetchPrices = async () => {
-                    const prices = { ...normalizePriceMap(portfolioPrices) };
-                    for (const note of portfolioNotes) {
-                        try {
-                            const ticker = normalizeTicker(note.title);
-                            if (isUsdTicker(ticker)) {
-                                prices[ticker] = 1;
-                                continue;
-                            }
-                            const plaidCryptoPrice = getPlaidCryptoPrice(note);
-                            if (plaidCryptoPrice > 0) {
-                                prices[ticker] = plaidCryptoPrice;
-                                continue;
-                            }
-                            const data = await fetchFinnhubQuote(ticker, finnhubApiKey);
-                            const currentPrice = typeof data?.c === 'number' ? data.c : parseFloat(data?.c);
-                            if (ticker && Number.isFinite(currentPrice) && currentPrice > 0) prices[ticker] = currentPrice;
-                        } catch (e) {
-                            console.error(`Failed to fetch ${note.title}`);
-                        }
-                    }
-                    const normalizedPrices = normalizePriceMap(prices);
+                    const { prices: normalizedPrices } = await loadPortfolioPrices(
+                        uniquePortfolioNotes(portfolioNotes),
+                        portfolioPrices
+                    );
                     if (isMounted) {
                         setPortfolioPrices(normalizedPrices);
                         setPortfolioLoading(false);

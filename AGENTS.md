@@ -51,7 +51,7 @@ Sticky-Notes/
 ├── functions/api/                     # Cloudflare Pages Functions (public, no auth):
 │   ├── news/breaking.js               #   breaking-news feed for the Live Dashboard
 │   ├── treasury/dgs30.js              #   30-year Treasury yield (DGS30 widget)
-│   └── quotes.js                      #   batch quotes for non-streaming dashboard widgets
+│   └── quotes.js                      #   batch quotes (dashboard widgets; portfolio prices with extended=1)
 ├── worker/                            # Ask K Worker (stock-stickies-askk) — deploy with
 │   ├── wrangler.toml                  #   `npx wrangler deploy --config wrangler.toml` from worker/
 │   └── src/index.js                   #   (plain `wrangler` there picks up the Pages config)
@@ -200,7 +200,7 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 | 1343–1357 | **Missing label repair** — resets blank category labels to "Category"; skips if `isLoadingRef` |
 | 1358–1493 | Watch list quote fetching; news fetching |
 | 1494–1617 | Various UI effects (portfolio card screenshot, etc.) |
-| 1617–1726 | **Portfolio price fetching** — updates at 9:35 AM, 1:00 PM, 4:05 PM EST; 8-hour cache |
+| 1617–1726 | **Portfolio price fetching** — updates at 9:35 AM, 1:00 PM, 4:05 PM Eastern; 8-hour cache |
 | 1727–1751 | Additional portfolio computed data effects |
 | 1752+ | Remaining cleanup/sync effects |
 
@@ -245,7 +245,7 @@ The intended production address is always `https://mobile.stockstickies.com`. Th
 ## Key Features
 1. **Sticky Notes** — Create, edit, delete notes; each note has a ticker symbol (1–5 chars) and optional share count
 2. **Categories** — Up to 10 color-coded categories (add, delete, rename, recolor); minimum 1
-3. **Portfolio View** — Donut/treemap of holdings with real-time prices; updates 3× daily at 9:35 AM, 1:00 PM, 4:05 PM EST; 8-hour cache. A `sector` view mode groups holdings by **user-defined sector buckets** (see Custom sector buckets)
+3. **Portfolio View** — Donut/treemap of holdings with real-time prices; updates 3× daily at 9:35 AM, 1:00 PM, 4:05 PM Eastern; 8-hour cache (see Portfolio Update Schedule). A `sector` view mode groups holdings by **user-defined sector buckets** (see Custom sector buckets)
 4. **Stock Data** — Live quotes, fundamentals, 52-week range, earnings dates (Finnhub API)
 5. **News Feed** — Per-ticker news from MarketAux API
 6. **Watch List** — Track tickers without creating notes
@@ -904,7 +904,9 @@ Free plan allows only 5 cron triggers per account across all Workers.
 Every successful manual `Update positions` run also refreshes prices for the complete
 post-reconciliation position list, even when share quantities already match. Newly
 imported positions are included in the same refresh, and the completion summary reports
-how many ticker prices were refreshed or filled from brokerage data.
+how many ticker prices were refreshed or filled from brokerage data. The prices come from
+the same `loadPortfolioPrices` as the scheduled refresh, so they include pre-market and
+after-hours trades (see Portfolio Update Schedule).
 
 Never describe a zero-change sync as “Robinhood positions are current.” The Worker
 can only compare against Plaid's latest available Investments snapshot, which is not
@@ -1360,12 +1362,29 @@ Auto-save useEffect was missing `categories` in the data object.
 
 ## Portfolio Update Schedule
 ```
-// 15-minute fetch windows (EST):
+// 15-minute fetch windows (Eastern time — EDT or EST, via Intl 'America/New_York'):
 // - Market open:  9:35–9:50 AM
 // - Midday:       1:00–1:15 PM
 // - Market close: 4:05–4:20 PM
 // Cache expires after 8 hours
 ```
+
+Until Oct 22, 2026 the window check hardcoded UTC−5, so from March to November every refresh
+ran an hour late (10:35 AM, 2:00 PM, 5:05 PM).
+
+`loadPortfolioPrices` serves the scheduled refresh, **Refresh Prices**, and **Update
+positions** (manual and scheduled-sync apply). Per ticker: USD = 1; crypto = Plaid's price;
+otherwise one `/api/quotes?extended=1` request for every ticker (Yahoo, no Finnhub calls),
+then Finnhub `/quote` for any ticker the batch missed, then Plaid's `plaidInstitutionPrice`.
+With `extended=1` a quote carries `extendedPrice` when the latest 5-minute bar is a trade
+outside the regular session and newer than the close, and the portfolio uses it. So before
+9:30 and after 4:00 PM ET prices (and Unrealized P&L) include pre-market and after-hours
+trades, as Robinhood shows them. The dashboard and iPad don't pass `extended`.
+
+Plaid's nightly price is a **fallback only** (`withPlaidPrices`): it fills a ticker that has
+no price yet and is the only source for crypto, but never replaces a fetched quote. It used
+to be re-applied over every price on any note change, which put last night's close back
+over a fresh quote (and undid **Update positions'** refresh).
 
 ---
 

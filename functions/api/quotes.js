@@ -2,6 +2,8 @@
 // WebSocket streams at most 50 symbols and its REST quote costs one call per symbol
 // against a 60/minute key limit, so everything past the stream cap refreshes here in
 // one request instead. Source: Yahoo Finance's spark endpoint (≤20 symbols a call).
+// The portfolio passes extended=1: each quote then also carries the latest pre-market or
+// after-hours trade when it is newer than the close, so prices match Robinhood's.
 const MAX_SYMBOLS = 100
 const YAHOO_BATCH_SIZE = 20
 const CACHE_SECONDS = 10
@@ -25,8 +27,22 @@ const finite = (value) => {
     return Number.isFinite(number) ? number : null
 }
 
-const fetchYahooBatch = async (yahooSymbols) => {
-    const params = new URLSearchParams({ symbols: yahooSymbols.join(','), range: '1d', interval: '1d' })
+// Latest 5-minute bar with a trade; extended-hours bars are included when requested.
+const latestTrade = (response) => {
+    const timestamps = response?.timestamp
+    const closes = response?.indicators?.quote?.[0]?.close
+    if (!Array.isArray(timestamps) || !Array.isArray(closes)) return null
+    for (let index = Math.min(timestamps.length, closes.length) - 1; index >= 0; index -= 1) {
+        const price = finite(closes[index])
+        if (price && price > 0 && finite(timestamps[index])) return { price, time: timestamps[index] }
+    }
+    return null
+}
+
+const fetchYahooBatch = async (yahooSymbols, extended) => {
+    const params = new URLSearchParams(extended
+        ? { symbols: yahooSymbols.join(','), range: '1d', interval: '5m', includePrePost: 'true' }
+        : { symbols: yahooSymbols.join(','), range: '1d', interval: '1d' })
     const upstream = await fetch(`https://query1.finance.yahoo.com/v7/finance/spark?${params}`, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; stock-stickies)', Accept: 'application/json' }
     })
@@ -39,6 +55,7 @@ const fetchYahooBatch = async (yahooSymbols) => {
 
 export async function onRequestGet(context) {
     const url = new URL(context.request.url)
+    const extended = url.searchParams.get('extended') === '1'
     const symbols = [...new Set(String(url.searchParams.get('symbols') || '')
         .toUpperCase()
         .split(',')
@@ -49,7 +66,7 @@ export async function onRequestGet(context) {
     if (symbols.length > MAX_SYMBOLS) return jsonResponse({ error: `At most ${MAX_SYMBOLS} symbols per request.` }, 400)
 
     // Normalized (sorted, de-duplicated) key so equivalent requests share the edge cache.
-    const cacheKey = new Request(`${url.origin}${url.pathname}?symbols=${symbols.join(',')}`, { method: 'GET' })
+    const cacheKey = new Request(`${url.origin}${url.pathname}?symbols=${symbols.join(',')}${extended ? '&extended=1' : ''}`, { method: 'GET' })
     const cache = caches.default
     const cached = await cache.match(cacheKey)
     if (cached) return cached
@@ -61,7 +78,7 @@ export async function onRequestGet(context) {
         batches.push(yahooSymbols.slice(index, index + YAHOO_BATCH_SIZE))
     }
 
-    const settled = await Promise.allSettled(batches.map(fetchYahooBatch))
+    const settled = await Promise.allSettled(batches.map((batch) => fetchYahooBatch(batch, extended)))
     const quotes = {}
     settled.forEach((outcome) => {
         if (outcome.status !== 'fulfilled') return
@@ -80,6 +97,15 @@ export async function onRequestGet(context) {
                 high: finite(meta.regularMarketDayHigh),
                 low: finite(meta.regularMarketDayLow),
                 timestamp: finite(meta.regularMarketTime) ? meta.regularMarketTime * 1000 : null
+            }
+            // Only a trade after the close or before the open; in session the regular price is current.
+            const latest = extended ? latestTrade(result.response[0]) : null
+            const session = meta.currentTradingPeriod?.regular
+            const outsideSession = latest && finite(session?.start) && finite(session?.end)
+                && (latest.time < session.start || latest.time >= session.end)
+            if (outsideSession && finite(meta.regularMarketTime) && latest.time > meta.regularMarketTime) {
+                quotes[symbol].extendedPrice = latest.price
+                quotes[symbol].extendedTimestamp = latest.time * 1000
             }
         })
     })

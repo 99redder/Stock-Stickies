@@ -216,7 +216,7 @@ export default function UserGuide({
                                 ]} />
                             </Section>
 
-                            <Section {...sectionProps('portfolio')} lead="Your holdings, priced and charted. Prices refresh at 9:35 AM, 1:00 PM, and 4:05 PM Eastern, or on demand with Refresh Prices.">
+                            <Section {...sectionProps('portfolio')} lead="Your holdings, priced and charted. Prices refresh at 9:35 AM, 1:00 PM, and 4:05 PM Eastern, or on demand with Refresh Prices. Before the open and after the close they include pre-market and after-hours trades.">
                                 <div className="grid gap-3 sm:grid-cols-3">
                                     <Feature title="Allocation"><Ui>Donut</Ui> by ticker, <Ui>Sector</Ui> by your own sector buckets, or <Ui>Map</Ui> as a treemap.</Feature>
                                     <Feature title="Positions">A table of market value, cost basis, and unrealized P&amp;L where available.</Feature>
