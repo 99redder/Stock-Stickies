@@ -1133,8 +1133,12 @@ flags a cash/NAV jump with no matching flow (`provisional-external-flow`, YTD hi
 that check compares only the last two snapshots and every page load takes a new one — so one
 refresh later a $15,000 Individual deposit was booked as gain. `reconcilePendingExternalFlows`
 now keeps the move in `performance:pending-flows` until a same-direction Plaid or manual flow
-accounts for it (no expiry). To show YTD before Plaid catches up, add the deposit to
-`manualExternalFlows`; the later Plaid copy is dropped when the amount matches within 10 days.
+accounts for it, or for at most 7 days: Plaid publishes ACH transfers within about five business
+days, and on Oct 21 a Traditional IRA market move that lined up with an unexplained cash change
+kept YTD on "pending cash activity" with no transfer to match (cleared by hand Oct 22). A real
+transfer Plaid publishes after that still counts as a flow. To show YTD before Plaid catches up,
+add the deposit to `manualExternalFlows`; the later Plaid copy is dropped when the amount
+matches within 10 days.
 
 The Worker also writes daily account snapshots so performance can continue from observed
 values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
