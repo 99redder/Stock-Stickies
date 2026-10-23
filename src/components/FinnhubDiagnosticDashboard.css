@@ -985,6 +985,7 @@ a.dashboard-news-headline:hover {
 .reflect-tile .runner-tile-group { display: flex; justify-content: space-between; gap: 8px; }
 .reflect-tile .runner-tile-group span { overflow: hidden; text-overflow: ellipsis; }
 .reflect-estimate { margin-right: .12em; color: #e0a52e; }
+.reflect-pending { color: #a18c68; }
 .reflect-performance { display: flex; flex: 2 1 0; flex-direction: column; min-height: 0; }
 .reflect-heading { flex: 0 0 auto; height: 52px; align-items: center; }
 .reflect-heading-side { gap: 14px; }

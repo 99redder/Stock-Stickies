@@ -60,7 +60,9 @@ function TradeTile({ trade, rank }) {
                 </div>
                 <div className="runner-tile-row runner-tile-group">
                     <span>{ACCOUNT_LABELS[trade.account] || trade.account.toUpperCase()}</span>
-                    <span>{held}</span>
+                    {trade.pending && !trade.estimated
+                        ? <span className="reflect-pending" title="Today's trades in this position aren't in Plaid yet">TODAY PENDING</span>
+                        : <span>{held}</span>}
                 </div>
             </div>
         </div>
@@ -240,7 +242,9 @@ export default function ReflectPage({ active, loadReflect }) {
         </div>
     )
 
-    const estimatedShown = [...(trades?.best || []), ...(trades?.worst || [])].some((trade) => trade.estimated)
+    const shownTrades = [...(trades?.best || []), ...(trades?.worst || [])]
+    const estimatedShown = shownTrades.some((trade) => trade.estimated)
+    const pendingShown = shownTrades.some((trade) => trade.pending && !trade.estimated)
 
     return (
         <>
@@ -311,7 +315,7 @@ export default function ReflectPage({ active, loadReflect }) {
                             {risk?.firstDate && risk?.lastDate ? ` · RISK FROM DAILY CLOSES ${formatDay(risk.firstDate)} – ${formatDay(risk.lastDate)}` : ''}
                         </span>
                     )}
-                    {trades?.status === 'ready' && <span>TRADES: {describeThrough(trades.through)}{estimatedShown ? ' · ≈ PLAID IS MISSING A TRADE, ESTIMATED' : ''}</span>}
+                    {trades?.status === 'ready' && <span>TRADES: {describeThrough(trades.through)}{estimatedShown ? ' · ≈ PLAID IS MISSING A TRADE, ESTIMATED' : ''}{pendingShown ? ' · TODAY PENDING: TODAY’S TRADES COUNT ONCE PLAID PUBLISHES THEM, USUALLY BY MORNING' : ''}</span>}
                 </div>
             </div>
         </>

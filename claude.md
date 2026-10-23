@@ -723,14 +723,20 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
     8 PM ET belong to the next session, as Robinhood dates them). It drops doubled option fills,
     reads option counts from the description (some fills are in contracts), applies splits
     after the export, treats an in-the-money short contract that vanished along with its shares
-    as assigned at the strike, and prices open stock from Yahoo. A row whose records disagree
-    with the holdings shows **≈**: shares sold beyond the records are charged at the last trade
-    price, and shares the records still hold are valued at today's price.
-  - Exports on file: both IRAs Jan 1 – Sep 22, Individual Jan 1 – Jul 26 (last activity Jul 24).
-    On Oct 23, 2026 the trades through the exports matched the daily store's YTD within $150
-    (Traditional) and $1.6k (Roth; the rest is SGOV dividends). Since Sep 22, Plaid's gaps
-    leave Traditional about $8k under its YTD, nearly all in ≈ rows. For exact figures, add
-    exports from the day after each file through today and rerun the import.
+    as assigned at the strike, and prices open stock from Yahoo. When the records disagree with
+    the holdings, the row is **pending** ("TODAY PENDING") if the holdings were fetched on a
+    weekday from the 9:30 open on — Plaid publishes a day's fills overnight — and otherwise an
+    estimate (**≈**): shares sold beyond the records are charged at the last trade price, and
+    shares the records still hold are valued at today's price.
+  - The exports' own corporate actions count: `SPL` / `SPR` splits add or remove shares, and
+    `OCA` swaps the adjusted contracts ("1" undoes the old one, "3S" opens three short new
+    ones), so ZCSH's Sep 30 3-for-1 carries through. An export taken during the day still
+    holds part of that day; the import drops today's rows and Plaid supplies today.
+  - Exports on file: all three accounts Jan 1 – Oct 23, 2026 (imported through Oct 22; the
+    earlier Sep 22 / Jul 26 files are kept). With them, Traditional's trades total $23,643 and
+    Roth's $23,144 against YTD gains of $23,486 and $22,783 at the Oct 22 close, with no ≈ rows;
+    one contract has no closing record and one was opened in 2025. Plaid's gaps only affect
+    days after the newest export, so a fresh export now and then keeps the figures exact.
 - **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
   editing never conflicts with swiping. The desktop dashboard and the board do not follow
