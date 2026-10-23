@@ -48,6 +48,8 @@ Sticky-Notes/
 ├── CNAME                              # www.stockstickies.com (copied into dist/ on deploy)
 ├── wrangler.jsonc                     # Cloudflare Pages project config (desktop)
 ├── .github/workflows/deploy.yml       # Manual-only fallback GitHub Pages workflow
+├── private/                           # Git-ignored, never commit: Robinhood activity exports
+│                                      #   for the iPad Reflect page (see iPad Board)
 ├── functions/api/                     # Cloudflare Pages Functions (public, no auth):
 │   ├── news/breaking.js               #   breaking-news feed for the Live Dashboard
 │   ├── treasury/dgs30.js              #   30-year Treasury yield (DGS30 widget)
@@ -672,9 +674,9 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   re-ranks every 5s while showing, so tiles don't reshuffle per tick; prices tick live. The
   pinned market row (indexes/ETFs) and DGS30 are left out. The stream keeps following the last
   board page while it shows; other runners refresh from `/api/quotes` every 15s.
-- The **RUNNERS** and **LOOKBACK** tabs sit right of the stream status (46px tall pill
+- The **RUNNERS**, **LOOKBACK** and **REFLECT** tabs sit right of the stream status (46px tall pill
   buttons, `.paged-page-tab`); the toolbar is 54px tall and the pager has only board dots.
-- **Lookback page** (owner only; last page, after Runners, with its own LOOKBACK
+- **Lookback page** (owner only; after Runners, with its own LOOKBACK
   tab): recent Robinhood stock sales against today's price, to judge whether a sale
   was right. `IpadBoardApp` passes `loadSales`, which calls rentals-api
   `GET /api/stock-stickies/plaid/sales?limit=50` with the Firebase ID token. That route
@@ -692,6 +694,38 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   20px gap, and the newest other sales fill the rows that still fit below. **×** on a sale
   hides it (`ipadDashboard.dismissedSaleIds`, ids only, newest 300 kept); **CLEAR ALL** hides
   every unstarred sale loaded so only new ones appear; **SHOW N HIDDEN** clears the list.
+- **Reflect page** (owner only; last page, after Lookback, REFLECT tab): the year's five best
+  and five worst trades by dollar P&L, then YTD return vs SPY. `IpadBoardApp` passes
+  `loadReflect`, which calls rentals-api `GET /api/stock-stickies/plaid/reflect` and the existing
+  `/plaid/performance` side by side. A trade is one account and ticker, the stock and its
+  options together: value now − Dec 31 value + cash in − cash out. Plaid books dividends to the
+  account, so only the exports' CDIV rows count; options opened last year are left out.
+  `ReflectPage.jsx` shows the trades as Runners-sized tiles (STOCK / OPT split, account, shares
+  held) and the desktop's YTD vs SPY panel (`ytdSeries` time-weighted return, SPY, the
+  difference, the headline YTD gain) as an SVG chart — no Chart.js in the iPad bundle. It
+  loads when first shown and every 10 minutes while showing.
+  - **Data.** Plaid's history starts Jun 12, 2026 and misses assignments, some fills and
+    splits, so the year comes from Robinhood's activity exports (one CSV per account), kept
+    git-ignored in `private/robinhood-activity/<year>/` as `<account>-<from>_<to>.csv`, with
+    `opening-positions-<year-1>-12-31.json` (Dec 31 stock positions, reconciled to the December
+    statements; they can't be rebuilt from today's holdings because of Plaid's gaps).
+    `node scripts/stock-stickies-reflect-import.mjs` in the rentals Worker repo parses them
+    (`src/stock-stickies-reflect.js`), fetches Dec 31 closes and the year's splits from Yahoo
+    (whole-number ratios only; Yahoo books spinoffs as splits), and writes a ~160 KB summary to
+    KV `stock_stickies:plaid:robinhood:performance:reflect:<year>`. `--dry-run` prints the
+    lists and a per-account total to compare with the YTD gains.
+  - Each request adds the Plaid trades after each account's export, by trading day (fills from
+    8 PM ET belong to the next session, as Robinhood dates them). It drops doubled option fills,
+    reads option counts from the description (some fills are in contracts), applies splits
+    after the export, treats an in-the-money short contract that vanished along with its shares
+    as assigned at the strike, and prices open stock from Yahoo. A row whose records disagree
+    with the holdings shows **≈**: shares sold beyond the records are charged at the last trade
+    price, and shares the records still hold are valued at today's price.
+  - Exports on file: both IRAs Jan 1 – Sep 22, Individual Jan 1 – Jul 26 (last activity Jul 24).
+    On Oct 23, 2026 the trades through the exports matched the daily store's YTD within $150
+    (Traditional) and $1.6k (Roth; the rest is SGOV dividends). Since Sep 22, Plaid's gaps
+    leave Traditional about $8k under its YTD, nearly all in ≈ rows. For exact figures, add
+    exports from the day after each file through today and rerun the import.
 - **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
   between columns or within one, **Re-copy from desktop**, Sign out. There is no drag, so
   editing never conflicts with swiping. The desktop dashboard and the board do not follow
@@ -1531,3 +1565,5 @@ Same Eastern Shore AI credit blurb appears above Privacy/Terms buttons on the lo
 - **YTD return vs SPY chart** (owner only) on the Portfolio tab, from the daily-closes store.
 - **iPad board** at `/ipad`: the Live Dashboard as swipeable pages of large tiles, on its own
   entry page with no whole-document saves (see iPad Board).
+- **iPad Reflect page** (Oct 23, 2026): best / worst five trades YTD from Robinhood's activity
+  exports plus Plaid, and YTD return vs SPY (see iPad Board).

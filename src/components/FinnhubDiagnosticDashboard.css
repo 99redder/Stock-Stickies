@@ -971,3 +971,52 @@ a.dashboard-news-headline:hover {
 @media (max-width: 900px) {
     .lookback-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Reflect page: the year's five best and five worst trades as Runners-sized tiles,
+   then YTD return vs SPY (all accounts) with the headline figures beside the chart. */
+.paged-page.is-reflect { display: flex; flex-direction: column; align-items: stretch; gap: 14px; overflow: hidden; }
+.reflect-section { flex: 1 1 0; }
+.reflect-tile-split { color: #9a9a9a; font-size: clamp(10px, min(8cqh, 6.5cqw), 16px); font-weight: 700; font-variant-numeric: tabular-nums; }
+.reflect-tile .runner-tile-group { display: flex; justify-content: space-between; gap: 8px; }
+.reflect-tile .runner-tile-group span { overflow: hidden; text-overflow: ellipsis; }
+.reflect-estimate { margin-right: .12em; color: #e0a52e; }
+.reflect-performance { display: flex; flex: 1.45 1 0; flex-direction: column; min-height: 0; }
+.reflect-heading { flex: 0 0 auto; height: 34px; align-items: center; }
+.reflect-performance-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    border: 1px solid var(--terminal-border);
+    background: var(--terminal-black);
+    padding: 8px 12px 4px;
+}
+.reflect-stats { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: baseline; gap: 4px 32px; }
+.reflect-stat { display: flex; align-items: baseline; gap: 10px; }
+.reflect-stat-label { color: #8a8a8a; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.reflect-stat-value { color: #a8a8a8; font-size: 28px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reflect-stat.is-small .reflect-stat-value { font-size: 20px; }
+.reflect-stat.is-up .reflect-stat-value { color: var(--terminal-green); }
+.reflect-stat.is-down .reflect-stat-value { color: var(--terminal-red); }
+.reflect-chart { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.reflect-chart svg { display: block; }
+.reflect-chart-grid { stroke: #262626; stroke-width: 1; }
+.reflect-chart-zero { stroke: #5a5a5a; stroke-width: 1; }
+.reflect-chart-axis { fill: #777; font-size: 10px; font-weight: 700; }
+.reflect-chart-portfolio { fill: none; stroke: #22d3ee; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.reflect-chart-spy { fill: none; stroke: #9ca3af; stroke-width: 2; stroke-dasharray: 6 4; }
+.reflect-chart-dot { fill: #22d3ee; }
+.reflect-chart-end { fill: #22d3ee; font-size: 11px; font-weight: 800; letter-spacing: .06em; }
+.reflect-chart-end.is-spy { fill: #9ca3af; }
+.reflect-chart-empty { display: flex; align-items: center; justify-content: center; color: #8a8a8a; font: 400 14px/1.4 -apple-system, "Segoe UI", sans-serif; }
+.reflect-footnote { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 2px 16px; margin-top: 5px; color: #6f6f6f; font-size: 9px; font-weight: 800; letter-spacing: .06em; line-height: 1.35; }
+
+@media (max-width: 900px) {
+    .paged-page.is-reflect { overflow-y: auto; }
+    .reflect-section { flex: 0 0 auto; }
+    .reflect-performance { flex: 0 0 auto; }
+    .reflect-performance-body { height: 380px; }
+    .reflect-section .runners-tiles { grid-auto-rows: minmax(132px, auto); }
+    .reflect-tile-split { flex-wrap: wrap; row-gap: 0; }
+}

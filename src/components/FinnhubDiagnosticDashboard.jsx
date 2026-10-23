@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExtern
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
 import { fetchFinnhubQuote } from '../utils/finnhubQuoteCache.js'
 import LookbackPage from './LookbackPage.jsx'
+import ReflectPage from './ReflectPage.jsx'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import './FinnhubDiagnosticDashboard.css'
@@ -1062,7 +1063,7 @@ function RunnersPage({ active, widgets, quotesRef, quoteStore }) {
 
 // Shown in the board's edit bar so a layout problem on the tablet can be reported
 // exactly: build, Home Screen mode, and the insets the browser reports.
-const PAGED_BUILD = 24
+const PAGED_BUILD = 25
 const isHomeScreenApp = () => typeof window !== 'undefined' && (
     window.navigator?.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
 )
@@ -1244,7 +1245,7 @@ function BreakingNewsTicker({ systemAlerts = [], maxHeadlines = MAX_VISIBLE_HEAD
     )
 }
 
-export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit, onSetupApiKeys, paged = false, seedDashboard = null, onSignOut, loadSales }) {
+export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard = null, onDashboardChange, fullScreen = false, onExit, onSetupApiKeys, paged = false, seedDashboard = null, onSignOut, loadSales, loadReflect }) {
     const [initial] = useState(() => paged ? loadPagedBoard(persistedDashboard, seedDashboard) : loadSavedDashboard(persistedDashboard))
     const [initialQuotes] = useState(() => loadCachedQuotes())
     const [initialSubscriptionCap] = useState(() => loadRememberedSubscriptionCap())
@@ -1329,14 +1330,18 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         for (let index = 0; index < columns.length; index += PAGED_COLUMNS_PER_PAGE) next.push(columns.slice(index, index + PAGED_COLUMNS_PER_PAGE))
         return next.length > 0 ? next : [[]]
     }, [columns])
-    // The Runners page follows the board pages, then Lookback (when sales can be loaded).
+    // The Runners page follows the board pages, then Lookback (when sales can be
+    // loaded) and Reflect (when trades can be loaded).
     const runnersPageIndex = pages.length
     const lookbackEnabled = paged && typeof loadSales === 'function'
     const lookbackPageIndex = pages.length + 1
-    const pageCount = pages.length + 1 + (lookbackEnabled ? 1 : 0)
+    const reflectEnabled = paged && typeof loadReflect === 'function'
+    const reflectPageIndex = pages.length + 1 + (lookbackEnabled ? 1 : 0)
+    const pageCount = pages.length + 1 + (lookbackEnabled ? 1 : 0) + (reflectEnabled ? 1 : 0)
     const shownPage = Math.min(activePage, pageCount - 1)
     const runnersActive = paged && shownPage === runnersPageIndex
     const lookbackActive = lookbackEnabled && shownPage === lookbackPageIndex
+    const reflectActive = reflectEnabled && shownPage === reflectPageIndex
     const boardPage = Math.min(shownPage, pages.length - 1)
     const visibleThemeKey = paged ? [PAGED_PINNED_THEME_ID, ...pages[boardPage].flat()].join('|') : ''
     // Stream order: what is on screen first on the paged board, starred tiles first
@@ -2369,6 +2374,16 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 LOOKBACK
                             </button>
                         )}
+                        {reflectEnabled && (
+                            <button
+                                type="button"
+                                className={`paged-page-tab ${reflectActive ? 'is-active' : ''}`}
+                                onClick={() => goToPage(reflectPageIndex)}
+                                aria-current={reflectActive ? 'page' : undefined}
+                            >
+                                REFLECT
+                            </button>
+                        )}
                     </div>
                     <nav className="paged-pager" aria-label="Board pages">
                         <button type="button" onClick={() => goToPage(shownPage - 1)} disabled={shownPage === 0} aria-label="Previous page">‹</button>
@@ -2479,6 +2494,11 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 onDismissSales={dismissSales}
                                 onRestoreDismissed={restoreDismissedSales}
                             />
+                        </div>
+                    )}
+                    {reflectEnabled && (
+                        <div className="paged-page is-reflect" aria-label="Reflect">
+                            <ReflectPage active={reflectActive} loadReflect={loadReflect} />
                         </div>
                     )}
                 </div>

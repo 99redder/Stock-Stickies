@@ -80,8 +80,11 @@ const decryptApiKey = async (stored, userId) => {
 }
 
 const SAVE_DELAY_MS = 1500
-// Owner-only Robinhood sales (rentals-api checks the Firebase ID token) for the Lookback page.
+// Owner-only Robinhood data (rentals-api checks the Firebase ID token): sales for the
+// Lookback page; best / worst trades and YTD vs SPY for the Reflect page.
 const SALES_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/sales?limit=50'
+const REFLECT_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/reflect'
+const PERFORMANCE_URL = 'https://rentals-api.99redder.workers.dev/api/stock-stickies/plaid/performance'
 
 // The board is the owner's only. This check is what keeps other accounts out of the
 // page; their data was never reachable from here (Firestore rules limit every account
@@ -212,6 +215,26 @@ export default function IpadBoardApp() {
     const data = await response.json().catch(() => null)
     if (!response.ok || !data?.ok) throw new Error(data?.error || `Sales could not be loaded (${response.status}).`)
     return data
+  }, [])
+
+  // Trades and performance load side by side; either can fail without the other.
+  const loadReflect = useCallback(async () => {
+    const token = await auth?.currentUser?.getIdToken()
+    if (!token) throw new Error('Sign in again to load Reflect.')
+    const fetchJson = async (url, what) => {
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.ok) throw new Error(data?.error || `${what} could not be loaded (${response.status}).`)
+      return data
+    }
+    const [trades, performance] = await Promise.allSettled([fetchJson(REFLECT_URL, 'Trades'), fetchJson(PERFORMANCE_URL, 'Performance')])
+    if (trades.status === 'rejected' && performance.status === 'rejected') throw trades.reason
+    return {
+      trades: trades.status === 'fulfilled' ? trades.value : null,
+      tradesError: trades.status === 'rejected' ? trades.reason?.message : '',
+      performance: performance.status === 'fulfilled' ? performance.value.performance : null,
+      performanceError: performance.status === 'rejected' ? performance.reason?.message : '',
+    }
   }, [])
 
   const handleSignOut = useCallback(async () => {
@@ -360,6 +383,7 @@ export default function IpadBoardApp() {
       onDashboardChange={handleBoardChange}
       onSignOut={handleSignOut}
       loadSales={loadSales}
+      loadReflect={loadReflect}
     />
   )
 }
