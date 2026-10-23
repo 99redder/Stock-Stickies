@@ -192,6 +192,17 @@ export default function ReflectPage({ active, loadReflect }) {
     const lastPortfolio = [...points].reverse().find((point) => Number.isFinite(point.total))
     const lastSpy = [...points].reverse().find((point) => Number.isFinite(point.spy))
     const headline = performance?.total?.status === 'ready' ? performance.total : null
+    // The YTD share card's risk tiles: Sharpe, max drawdown and beta, from daily closes.
+    const risk = performance?.total?.risk || null
+    const riskTiles = [
+        Number.isFinite(risk?.sharpeRatio) && { label: 'SHARPE RATIO', value: risk.sharpeRatio.toFixed(2) },
+        Number.isFinite(risk?.maxDrawdownPercent) && {
+            label: 'MAX DRAWDOWN',
+            value: `${risk.maxDrawdownPercent < 0 ? '−' : ''}${Math.abs(risk.maxDrawdownPercent).toFixed(1)}%`,
+            detail: risk.maxDrawdownDate ? formatDay(risk.maxDrawdownDate) : '',
+        },
+        Number.isFinite(risk?.beta) && { label: `BETA VS ${risk.benchmark || 'SPY'}`, value: risk.beta.toFixed(2) },
+    ].filter(Boolean)
     const waiting = status === 'loading' || status === 'idle'
 
     const renderSection = (title, list, tone) => (
@@ -244,16 +255,35 @@ export default function ReflectPage({ active, loadReflect }) {
                         {headline && Number.isFinite(headline.gain) && (
                             <div className={`reflect-stat is-small ${headline.gain >= 0 ? 'is-up' : 'is-down'}`}>
                                 <span className="reflect-stat-label">YTD GAIN</span>
-                                <span className="reflect-stat-value">{formatDollars(headline.gain)}</span>
+                                <span className="reflect-stat-value">
+                                    {formatDollars(headline.gain)}
+                                    {Number.isFinite(headline.returnPercent) && <span className="reflect-stat-detail"> {formatPercent(headline.returnPercent)}</span>}
+                                </span>
                             </div>
                         )}
                     </div>
-                    {points.length >= 2
-                        ? <YtdChart points={points} />
-                        : <div className="reflect-chart reflect-chart-empty">{waiting ? 'Loading performance…' : 'The YTD chart isn’t available right now.'}</div>}
+                    <div className="reflect-chart-row">
+                        {points.length >= 2
+                            ? <YtdChart points={points} />
+                            : <div className="reflect-chart reflect-chart-empty">{waiting ? 'Loading performance…' : 'The YTD chart isn’t available right now.'}</div>}
+                        {riskTiles.length > 0 && (
+                            // Neutral on purpose: red/green is for gains and losses.
+                            <div className="reflect-risk">
+                                {riskTiles.map((tile) => (
+                                    <div key={tile.label} className="reflect-risk-tile">
+                                        <span className="reflect-stat-label">{tile.label}</span>
+                                        <span className="reflect-risk-value">
+                                            {tile.value}
+                                            {tile.detail && <span className="reflect-risk-detail"> {tile.detail}</span>}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <div className="reflect-footnote">
-                    {lastPortfolio && <span>THROUGH {formatDay(lastPortfolio.date)} · TIME-WEIGHTED FROM DAILY CLOSES, DEPOSITS AND WITHDRAWALS EXCLUDED{headline ? ' · YTD GAIN IS THE RECONCILED HEADLINE FIGURE' : ''}</span>}
+                    {lastPortfolio && <span>THROUGH {formatDay(lastPortfolio.date)} · TIME-WEIGHTED FROM DAILY CLOSES, DEPOSITS AND WITHDRAWALS EXCLUDED{headline ? ' · YTD GAIN IS THE RECONCILED HEADLINE FIGURE' : ''}{risk?.firstDate && risk?.lastDate ? ` · RISK FROM DAILY CLOSES ${formatDay(risk.firstDate)} – ${formatDay(risk.lastDate)}` : ''}</span>}
                     {trades?.status === 'ready' && <span>TRADES: {describeThrough(trades.through)}{estimatedShown ? ' · ≈ PLAID IS MISSING A TRADE, ESTIMATED' : ''}</span>}
                 </div>
             </div>

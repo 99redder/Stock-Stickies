@@ -702,8 +702,10 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   account, so only the exports' CDIV rows count; options opened last year are left out.
   `ReflectPage.jsx` shows the trades as Runners-sized tiles (STOCK / OPT split, account, shares
   held) and the desktop's YTD vs SPY panel (`ytdSeries` time-weighted return, SPY, the
-  difference, the headline YTD gain) as an SVG chart — no Chart.js in the iPad bundle. It
-  loads when first shown and every 10 minutes while showing.
+  difference, the headline YTD gain and return) as an SVG chart — no Chart.js in the iPad
+  bundle — with the YTD share card's neutral risk tiles beside it (Sharpe ratio, max drawdown
+  with its date, beta vs SPY, from `performance.total.risk`). It loads when first shown and
+  every 10 minutes while showing.
   - **Data.** Plaid's history starts Jun 12, 2026 and misses assignments, some fills and
     splits, so the year comes from Robinhood's activity exports (one CSV per account), kept
     git-ignored in `private/robinhood-activity/<year>/` as `<account>-<from>_<to>.csv`, with
