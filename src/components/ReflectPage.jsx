@@ -38,11 +38,14 @@ function TradeTile({ trade, rank }) {
     const tone = trade.pnl >= 0 ? 'up' : 'down'
     // The holdings' count; the records' (sharesNow) can be off where Plaid missed a trade.
     const shares = trade.sharesHeld ?? trade.sharesNow
-    const held = shares > 0
-        ? `HELD ${formatQuantity(shares)} SH`
-        : trade.optionContractsNow
-            ? `${Math.abs(trade.optionContractsNow)} CONTRACT${Math.abs(trade.optionContractsNow) === 1 ? '' : 'S'} OPEN`
-            : 'CLOSED'
+    const isCash = trade.assetClass === 'cash'
+    const held = isCash
+        ? 'CASH BALANCE'
+        : shares > 0
+            ? `HELD ${formatQuantity(shares)} SH`
+            : trade.optionContractsNow
+                ? `${Math.abs(trade.optionContractsNow)} CONTRACT${Math.abs(trade.optionContractsNow) === 1 ? '' : 'S'} OPEN`
+                : 'CLOSED'
     return (
         <div className={`paged-tile runner-tile reflect-tile quote-${tone}`}>
             <div className="paged-tile-body runner-tile-body">
@@ -55,7 +58,7 @@ function TradeTile({ trade, rank }) {
                     {formatDollars(trade.pnl)}
                 </div>
                 <div className="runner-tile-row reflect-tile-split">
-                    <span>STOCK {formatDollars(trade.stockPnl)}</span>
+                    <span>{isCash ? 'INTEREST' : 'STOCK'} {formatDollars(trade.stockPnl)}</span>
                     {trade.optionPnl !== 0 && <span>OPT {formatDollars(trade.optionPnl)}</span>}
                 </div>
                 <div className="runner-tile-row runner-tile-group">
@@ -231,7 +234,7 @@ export default function ReflectPage({ active, loadReflect }) {
         <div className={`runners-section reflect-section is-${sectionTone}`}>
             <div className="diagnostic-theme-heading paged-group-heading runners-heading">
                 <span>{title}</span>
-                <span>{year} YTD · STOCK + OPTIONS, PER ACCOUNT</span>
+                <span>{year} YTD · STOCK, OPTIONS + DIVIDENDS, PER ACCOUNT</span>
             </div>
             <div className="runners-tiles">
                 {trades?.status === 'no-history' && <div className="runners-empty">The year’s Robinhood activity hasn’t been imported yet.</div>}

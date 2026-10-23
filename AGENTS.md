@@ -698,8 +698,16 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   and five worst trades by dollar P&L, then YTD return vs SPY. `IpadBoardApp` passes
   `loadReflect`, which calls rentals-api `GET /api/stock-stickies/plaid/reflect` and the existing
   `/plaid/performance` side by side. A trade is one account and ticker, the stock and its
-  options together: value now − Dec 31 value + cash in − cash out. Plaid books dividends to the
-  account, so only the exports' CDIV rows count; options opened last year are left out.
+  options together: value now − Dec 31 value + cash in − cash out. Income counts as P&L:
+  SGOV is a position like any other, so its dividends count, as do every stock's dividends,
+  withholding, manufactured dividends and stock-lending income (exports: `CDIV`, `DTAX`,
+  `MDIV`, `SLIP`; Plaid: dividend rows name the ticker in the text, "…from SGOV"). Interest on
+  cash balances less margin interest (`INT` / `MINT`, Plaid interest and margin-expense rows)
+  is each account's **CASH** row. Deposits, transfers, the IRA match and Gold fees and credits
+  are not P&L here. Options opened last year are left out. Desktop has no trade list; its YTD
+  already includes dividends and interest (they grow account value and aren't external
+  flows), and the iPad's YTD figures come from the same `/plaid/performance`, so the two
+  always match.
   `ReflectPage.jsx` shows the trades as Runners-sized tiles (STOCK / OPT split, account, shares
   held), then YTD vs SPY. PORTFOLIO and YTD GAIN are the reconciled headline figures desktop
   shows (`performance.total.returnPercent` / `gain`, one decimal), SPY is
@@ -734,7 +742,8 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
     holds part of that day; the import drops today's rows and Plaid supplies today.
   - Exports on file: all three accounts Jan 1 – Oct 23, 2026 (imported through Oct 22; the
     earlier Sep 22 / Jul 26 files are kept). With them, Traditional's trades total $23,643 and
-    Roth's $23,144 against YTD gains of $23,486 and $22,783 at the Oct 22 close, with no ≈ rows;
+    Roth's $23,144 against YTD gains of $23,486 and $22,783 at the Oct 22 close, with no ≈ rows
+    (before income counted; with SGOV dividends and interest, $24,531 and $24,363 at midday Oct 23);
     one contract has no closing record and one was opened in 2025. Plaid's gaps only affect
     days after the newest export, so a fresh export now and then keeps the figures exact.
 - **Edit mode** (EDIT/DONE): remove or reorder tiles, move a group
