@@ -702,9 +702,10 @@ not part of `mobile/` and has no link in the app; add it to the Home Screen from
   SGOV is a position like any other, so its dividends count, as do every stock's dividends,
   withholding, manufactured dividends and stock-lending income (exports: `CDIV`, `DTAX`,
   `MDIV`, `SLIP`; Plaid: dividend rows name the ticker in the text, "…from SGOV"). Interest on
-  cash balances less margin interest (`INT` / `MINT`, Plaid interest and margin-expense rows)
-  is each account's **CASH** row. Deposits, transfers, the IRA match and Gold fees and credits
-  are not P&L here. Options opened last year are left out. Desktop has no trade list; its YTD
+  cash balances and the IRA match ("Interest on Contribution", `MTCH`; return, per the owner),
+  less margin interest (`INT` / `MTCH` / `MINT`, Plaid interest and margin-expense rows), is each
+  account's **CASH** row. Deposits, contributions, transfers and Gold fees and credits are not
+  P&L here. Options opened last year are left out. Desktop has no trade list; its YTD
   already includes dividends and interest (they grow account value and aren't external
   flows), and the iPad's YTD figures come from the same `/plaid/performance`, so the two
   always match.
