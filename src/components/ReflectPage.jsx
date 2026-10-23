@@ -15,7 +15,8 @@ const formatDollars = (value) => {
     const rounded = Math.round(value)
     return `${rounded < 0 ? '−' : '+'}$${Math.abs(rounded).toLocaleString()}`
 }
-const formatPercent = (value) => (Number.isFinite(value) ? `${value < 0 ? '−' : '+'}${Math.abs(value).toFixed(2)}%` : '—')
+// One decimal, as desktop shows YTD returns.
+const formatPercent = (value) => (Number.isFinite(value) ? `${value < 0 ? '−' : '+'}${Math.abs(value).toFixed(1)}%` : '—')
 const formatDay = (isoDate) => {
     const [year, month, day] = String(isoDate || '').split('-').map(Number)
     return year ? `${MONTHS[month - 1]} ${day}` : ''
@@ -153,20 +154,31 @@ function YtdChart({ points }) {
 export default function ReflectPage({ active, loadReflect }) {
     const [data, setData] = useState(null)
     const [status, setStatus] = useState('idle') // idle | loading | ready | error
+    // True while any load is in flight, the first one included, so REFRESH shows it.
+    const [refreshing, setRefreshing] = useState(false)
+    const [updatedAt, setUpdatedAt] = useState(null)
     const [error, setError] = useState('')
     const loadedAtRef = useRef(0)
+    const inFlightRef = useRef(false)
 
     const refresh = useCallback(async () => {
+        if (inFlightRef.current) return
+        inFlightRef.current = true
+        setRefreshing(true)
         setStatus((current) => (current === 'ready' ? current : 'loading'))
         try {
             const next = await loadReflect()
             setData(next)
             setError([next?.tradesError, next?.performanceError].filter(Boolean).join(' · '))
             setStatus('ready')
+            setUpdatedAt(new Date())
             loadedAtRef.current = Date.now()
         } catch (loadError) {
             setError(loadError instanceof Error ? loadError.message : 'Reflect could not be loaded.')
             setStatus((current) => (current === 'ready' ? current : 'error'))
+        } finally {
+            inFlightRef.current = false
+            setRefreshing(false)
         }
     }, [loadReflect])
 
@@ -189,13 +201,20 @@ export default function ReflectPage({ active, loadReflect }) {
     const performance = data?.performance
     const year = trades?.year || performance?.year || new Date().getFullYear()
     const points = useMemo(() => (Array.isArray(performance?.ytdSeries?.points) ? performance.ytdSeries.points : []), [performance])
-    const lastPortfolio = [...points].reverse().find((point) => Number.isFinite(point.total))
-    const lastSpy = [...points].reverse().find((point) => Number.isFinite(point.spy))
+    const lastPoint = [...points].reverse().find((point) => Number.isFinite(point.total))
+    const lastSpyPoint = [...points].reverse().find((point) => Number.isFinite(point.spy))
     const headline = performance?.total?.status === 'ready' ? performance.total : null
+    // The figures desktop shows: the reconciled headline return (Modified Dietz,
+    // Robinhood-anchored) and SPY over the same dates. The chart line is the
+    // time-weighted return from daily closes, which can end elsewhere; it is the
+    // fallback only while the headline isn't ready.
+    const portfolioReturn = Number.isFinite(headline?.returnPercent) ? headline.returnPercent : lastPoint?.total
+    const spyReturn = Number.isFinite(performance?.benchmark?.ytdReturnPercent) ? performance.benchmark.ytdReturnPercent : lastSpyPoint?.spy
+    const versusSpy = Number.isFinite(portfolioReturn) && Number.isFinite(spyReturn) ? portfolioReturn - spyReturn : null
     // The YTD share card's risk tiles: Sharpe, max drawdown and beta, from daily closes.
     const risk = performance?.total?.risk || null
     const riskTiles = [
-        Number.isFinite(risk?.sharpeRatio) && { label: 'SHARPE RATIO', value: risk.sharpeRatio.toFixed(2) },
+        Number.isFinite(risk?.sharpeRatio) && { label: 'SHARPE', value: risk.sharpeRatio.toFixed(2) },
         Number.isFinite(risk?.maxDrawdownPercent) && {
             label: 'MAX DRAWDOWN',
             value: `${risk.maxDrawdownPercent < 0 ? '−' : ''}${Math.abs(risk.maxDrawdownPercent).toFixed(1)}%`,
@@ -204,16 +223,17 @@ export default function ReflectPage({ active, loadReflect }) {
         Number.isFinite(risk?.beta) && { label: `BETA VS ${risk.benchmark || 'SPY'}`, value: risk.beta.toFixed(2) },
     ].filter(Boolean)
     const waiting = status === 'loading' || status === 'idle'
+    const tone = (value) => (Number.isFinite(value) ? (value >= 0 ? 'is-up' : 'is-down') : '')
 
-    const renderSection = (title, list, tone) => (
-        <div className={`runners-section reflect-section is-${tone}`}>
+    const renderSection = (title, list, sectionTone) => (
+        <div className={`runners-section reflect-section is-${sectionTone}`}>
             <div className="diagnostic-theme-heading paged-group-heading runners-heading">
                 <span>{title}</span>
                 <span>{year} YTD · STOCK + OPTIONS, PER ACCOUNT</span>
             </div>
             <div className="runners-tiles">
                 {trades?.status === 'no-history' && <div className="runners-empty">The year’s Robinhood activity hasn’t been imported yet.</div>}
-                {trades?.status === 'ready' && list.length === 0 && <div className="runners-empty">No {tone === 'up' ? 'winning' : 'losing'} trades this year.</div>}
+                {trades?.status === 'ready' && list.length === 0 && <div className="runners-empty">No {sectionTone === 'up' ? 'winning' : 'losing'} trades this year.</div>}
                 {!trades && <div className="runners-empty">{waiting ? 'Loading your trades…' : 'Trades could not be loaded. Tap REFRESH to try again.'}</div>}
                 {list.map((trade, index) => <TradeTile key={trade.id} trade={trade} rank={index + 1} />)}
             </div>
@@ -229,36 +249,37 @@ export default function ReflectPage({ active, loadReflect }) {
             <div className="reflect-performance">
                 <div className="diagnostic-theme-heading paged-group-heading reflect-heading">
                     <span>{year} YTD RETURN VS SPY · ALL ACCOUNTS</span>
-                    <span className="lookback-heading-side">
+                    <span className="lookback-heading-side reflect-heading-side">
                         {error && <span className="lookback-error">{error}</span>}
-                        <button type="button" className="lookback-refresh" onClick={refresh} disabled={status === 'loading'}>
-                            {status === 'loading' ? 'LOADING…' : 'REFRESH'}
+                        {!error && updatedAt && !refreshing && (
+                            <span className="reflect-updated">UPDATED {updatedAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }).toUpperCase()}</span>
+                        )}
+                        <button type="button" className={`reflect-refresh ${refreshing ? 'is-busy' : ''}`} onClick={refresh} disabled={refreshing} aria-busy={refreshing}>
+                            <span className="reflect-refresh-icon" aria-hidden="true">↻</span>
+                            {refreshing ? 'REFRESHING…' : 'REFRESH'}
                         </button>
                     </span>
                 </div>
                 <div className="reflect-performance-body">
                     <div className="reflect-stats">
-                        <div className={`reflect-stat ${lastPortfolio ? (lastPortfolio.total >= 0 ? 'is-up' : 'is-down') : ''}`}>
+                        <div className={`reflect-stat ${tone(portfolioReturn)}`}>
                             <span className="reflect-stat-label">PORTFOLIO</span>
-                            <span className="reflect-stat-value">{formatPercent(lastPortfolio?.total)}</span>
+                            <span className="reflect-stat-value">{formatPercent(portfolioReturn)}</span>
                         </div>
-                        <div className={`reflect-stat ${lastSpy ? (lastSpy.spy >= 0 ? 'is-up' : 'is-down') : ''}`}>
+                        <div className={`reflect-stat ${tone(spyReturn)}`}>
                             <span className="reflect-stat-label">SPY</span>
-                            <span className="reflect-stat-value">{formatPercent(lastSpy?.spy)}</span>
+                            <span className="reflect-stat-value">{formatPercent(spyReturn)}</span>
                         </div>
-                        {lastPortfolio && lastSpy && (
-                            <div className={`reflect-stat is-small ${lastPortfolio.total - lastSpy.spy >= 0 ? 'is-up' : 'is-down'}`}>
+                        {versusSpy !== null && (
+                            <div className={`reflect-stat is-small ${tone(versusSpy)}`}>
                                 <span className="reflect-stat-label">VS SPY</span>
-                                <span className="reflect-stat-value">{`${lastPortfolio.total - lastSpy.spy < 0 ? '−' : '+'}${Math.abs(lastPortfolio.total - lastSpy.spy).toFixed(2)} PTS`}</span>
+                                <span className="reflect-stat-value">{`${versusSpy < 0 ? '−' : '+'}${Math.abs(versusSpy).toFixed(1)} PTS`}</span>
                             </div>
                         )}
                         {headline && Number.isFinite(headline.gain) && (
-                            <div className={`reflect-stat is-small ${headline.gain >= 0 ? 'is-up' : 'is-down'}`}>
+                            <div className={`reflect-stat is-small ${tone(headline.gain)}`}>
                                 <span className="reflect-stat-label">YTD GAIN</span>
-                                <span className="reflect-stat-value">
-                                    {formatDollars(headline.gain)}
-                                    {Number.isFinite(headline.returnPercent) && <span className="reflect-stat-detail"> {formatPercent(headline.returnPercent)}</span>}
-                                </span>
+                                <span className="reflect-stat-value">{formatDollars(headline.gain)}</span>
                             </div>
                         )}
                     </div>
@@ -271,7 +292,7 @@ export default function ReflectPage({ active, loadReflect }) {
                             <div className="reflect-risk">
                                 {riskTiles.map((tile) => (
                                     <div key={tile.label} className="reflect-risk-tile">
-                                        <span className="reflect-stat-label">{tile.label}</span>
+                                        <span className="reflect-risk-label">{tile.label}</span>
                                         <span className="reflect-risk-value">
                                             {tile.value}
                                             {tile.detail && <span className="reflect-risk-detail"> {tile.detail}</span>}
@@ -283,7 +304,13 @@ export default function ReflectPage({ active, loadReflect }) {
                     </div>
                 </div>
                 <div className="reflect-footnote">
-                    {lastPortfolio && <span>THROUGH {formatDay(lastPortfolio.date)} · TIME-WEIGHTED FROM DAILY CLOSES, DEPOSITS AND WITHDRAWALS EXCLUDED{headline ? ' · YTD GAIN IS THE RECONCILED HEADLINE FIGURE' : ''}{risk?.firstDate && risk?.lastDate ? ` · RISK FROM DAILY CLOSES ${formatDay(risk.firstDate)} – ${formatDay(risk.lastDate)}` : ''}</span>}
+                    {lastPoint && (
+                        <span>
+                            {headline ? 'PORTFOLIO AND YTD GAIN ARE THE RECONCILED HEADLINE FIGURES, AS ON DESKTOP · ' : ''}
+                            CHART: TIME-WEIGHTED FROM DAILY CLOSES THROUGH {formatDay(lastPoint.date)}, ENDING {formatPercent(lastPoint.total)}
+                            {risk?.firstDate && risk?.lastDate ? ` · RISK FROM DAILY CLOSES ${formatDay(risk.firstDate)} – ${formatDay(risk.lastDate)}` : ''}
+                        </span>
+                    )}
                     {trades?.status === 'ready' && <span>TRADES: {describeThrough(trades.through)}{estimatedShown ? ' · ≈ PLAID IS MISSING A TRADE, ESTIMATED' : ''}</span>}
                 </div>
             </div>
