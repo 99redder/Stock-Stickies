@@ -937,8 +937,8 @@ the last one this browser applied (localStorage `stock-stickies-applied-position
 the app applies it once (updates/additions/CSPs/covered calls, with a backup; never removals).
 A manual update records itself too. Changes are written at that next load, not by the cron
 itself — an unattended write would need Worker-side Firestore credentials. Crons use 2
-multi-hour UTC expressions (`10 20,21` and `0 10,11,12`) with Eastern-time guards; the Workers
-Free plan allows only 5 cron triggers per account across all Workers.
+multi-hour UTC expressions (`10 20,21` and `0 10,11,12`) with Eastern-time guards (they kept
+the count down under the Free plan's 5 per account; the account is on Workers Paid now, 250).
 
 Every successful manual `Update positions` run also refreshes prices for the complete
 post-reconciliation position list, even when share quantities already match. Newly
