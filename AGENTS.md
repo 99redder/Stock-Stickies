@@ -1205,10 +1205,14 @@ addresses are in `~/crypto-tax/CLAUDE.md`), so the money leaves Robinhood: a **w
 Plaid usually publishes these as Robinhood Crypto withdrawals ("Withdrawal of 6.469920 SOL
 totaling $495.31"), valued at the coins rather than the cash paid, so Robinhood's spread counts
 as a loss ($88 on the Aug 9 and Sep 6 SOL buys). Since Jul 26 there were SOL on Aug 9 and Sep 6
-(×3), ETH on Aug 9, and USDC on Aug 29, Sep 8, Sep 29 and Nov 3 (9:34 PM ET, $800). Plaid hadn't
-published the Nov 3 one, so YTD sat on "pending cash activity"; it is a manual withdrawal flow
-(`rh-individual-2026-11-04-crypto-purchase-withdrawal-80000`). Record any Plaid misses the same
-way, or after 7 days the pending entry expires and the amount is booked as a loss.
+(×3), ETH on Aug 9, and USDC on Aug 29, Sep 8, Sep 29, Nov 3 (9:34 PM ET, $800) and Nov 5
+($1,000). Plaid hadn't published the last two when they were made, so YTD sat on "pending cash
+activity"; each is a manual withdrawal flow (`rh-individual-2026-11-04-crypto-purchase-withdrawal-80000`,
+`rh-individual-2026-11-05-crypto-purchase-withdrawal-100000`), and Plaid's later copy (the $800 one
+arrived dated Nov 4) is dropped as a match. Record any Plaid misses the same way, or after 7 days
+the pending entry expires and the amount is booked as a loss. Only stablecoin purchases are safe to
+record ahead of Plaid: the match needs the exact amount, and Plaid values other coins at their worth
+rather than the cash paid, so both copies would count.
 
 **Individual re-anchored to Robinhood (Nov 4, 2026).** Individual showed −$3,487 YTD against
 Robinhood's +$3,009. The Jul 26 anchor's value counted $10,929.44 of crypto, but Plaid's trades
