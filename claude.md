@@ -1088,7 +1088,8 @@ Plaid) are skipped in both the chart and the Sharpe/drawdown/beta stats.
 - Individual includes Robinhood Crypto (its Jan 1 $26,930.93 does; Robinhood's $1,561 Jul 26
   P&L does). Its Jul 26 anchor value is $24,103.14 = $13,173.69 brokerage + $10,929.44 crypto
   (holdings rolled back from Plaid trades/withdrawals, priced at Yahoo Jul 26 closes). Plaid
-  reported no crypto account balance Jul 26 – Sep 23.
+  reported no crypto account balance Jul 26 – Sep 23. That crypto figure was wrong, and the
+  anchor was replaced on Nov 4, 2026 (see **Individual re-anchored to Robinhood**).
 - The custodial (UTMA) account and prediction markets are excluded; moves to them are withdrawals.
 - Verified from statements: Dec 31, 2025 IRA portfolio values $231,389.38 / $127,246.27 (the daily
   store's Dec 31 IRA values were corrected to these from the rebuilt $231,199.44 / $127,237.28); Robinhood Crypto held
@@ -1196,6 +1197,37 @@ kept YTD on "pending cash activity" with no transfer to match (cleared by hand O
 transfer Plaid publishes after that still counts as a flow. To show YTD before Plaid catches up,
 add the deposit to `manualExternalFlows`; the later Plaid copy is dropped when the amount
 matches within 10 days.
+
+**Crypto bought into the Phantom wallet.** Robinhood Connect lets the owner spend Individual
+brokerage cash on crypto delivered straight to the Phantom on-chain wallet (the Robinhood sender
+addresses are in `~/crypto-tax/CLAUDE.md`), so the money leaves Robinhood: a **withdrawal**
+(unlike the Jan–May buy-and-send pairs above, which weren't shown to come from brokerage cash).
+Plaid usually publishes these as Robinhood Crypto withdrawals ("Withdrawal of 6.469920 SOL
+totaling $495.31"), valued at the coins rather than the cash paid, so Robinhood's spread counts
+as a loss ($88 on the Aug 9 and Sep 6 SOL buys). Since Jul 26 there were SOL on Aug 9 and Sep 6
+(×3), ETH on Aug 9, and USDC on Aug 29, Sep 8, Sep 29 and Nov 3 (9:34 PM ET, $800). Plaid hadn't
+published the Nov 3 one, so YTD sat on "pending cash activity"; it is a manual withdrawal flow
+(`rh-individual-2026-11-04-crypto-purchase-withdrawal-80000`). Record any Plaid misses the same
+way, or after 7 days the pending entry expires and the amount is booked as a loss.
+
+**Individual re-anchored to Robinhood (Nov 4, 2026).** Individual showed −$3,487 YTD against
+Robinhood's +$3,009. The Jul 26 anchor's value counted $10,929.44 of crypto, but Plaid's trades
+show Individual held only 3.92 ZEC and 500 USDG that day (~$2,490); the rest (~$8,830 at Jul 26
+prices) was the coins of the later Phantom purchases, which the backward rebuild treated as
+already held. A $4,000 ACH deposit on Oct 14 (in the export) had also never been recorded:
+Plaid has published no Individual deposits or withdrawals since Oct 6, so compare against a fresh
+export. `performanceReconciliations.2026.individual` is now Robinhood's own P&L on the evening of
+Nov 4 (+$3,009.37, realized $4,966.88) at Plaid's $17,481.02 (Robinhood's "Today −$90.25" matched
+Plaid to the cent), with the Jul 26 anchor kept under `replaces`. The Oct 14 deposit is a manual
+flow and now only affects the percentage. About $2,058 of the old gap was never explained.
+
+**IRAs vs Robinhood (Nov 4, 2026).** Stock Stickies showed Traditional +$11,802 and Roth +$21,870;
+Robinhood showed +$9,121 and +$21,443. Robinhood's displayed values include the overnight
+session while Plaid's are the 4 PM close; on Robinhood's own values the gaps are $1,087 and $364.
+The exports show no missing flows (only the Roth contribution, match, Jul 8 recharacterization,
+dividends and stock lending), and YTD dividends were $3,342 and $1,080. Robinhood's method (its
+start-of-year value or income treatment) isn't visible, so the IRAs stay on the Dec 31 statement
+values.
 
 The Worker also writes daily account snapshots so performance can continue from observed
 values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
