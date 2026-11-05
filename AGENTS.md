@@ -1197,6 +1197,14 @@ transfer Plaid publishes after that still counts as a flow. To show YTD before P
 add the deposit to `manualExternalFlows`; the later Plaid copy is dropped when the amount
 matches within 10 days.
 
+**Crypto bought into the Phantom wallet (Nov 4, 2026).** Robinhood Connect lets the owner spend
+Individual brokerage cash on crypto that goes straight to the Phantom on-chain wallet, so the
+money leaves Robinhood and is a **withdrawal** (unlike the Jan–May buy-and-send pairs above,
+which weren't shown to come from brokerage cash). Plaid had published no transfer for the first
+one ($800, Nov 4), so it sat on "YTD pending cash activity"; it is a manual withdrawal flow
+(`rh-individual-2026-11-04-crypto-purchase-withdrawal-80000`). Record each later purchase the
+same way, or after 7 days the pending entry expires and the amount is booked as a loss.
+
 The Worker also writes daily account snapshots so performance can continue from observed
 values. Plaid's Robinhood feed has not consistently supplied 2026 deposits/withdrawals for
 the Individual account. When external cash-flow history is incomplete, the API/frontend
