@@ -599,8 +599,9 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
 - **How quotes refresh.** Finnhub's free WebSocket streams at most 50 symbols (the cap is
   detected once and remembered 7 days); the full theme set is 88. Everything not actively
   streaming — beyond the cap, or subscribed but without a trade for 15s — refreshes every
-  15s from `/api/quotes` (`functions/api/quotes.js`): one request, Yahoo's spark endpoint
-  in chunks of 20 (its limit), 10s edge cache, `VIX` → `^VIX` and `BRK.B` → `BRK-B`
+  15s from `/api/quotes` (`functions/api/quotes.js`): one request per 100 symbols (the
+  endpoint's limit), Yahoo's spark endpoint in chunks of 20 (its limit), 10s edge cache,
+  `VIX` → `^VIX` and `BRK.B` → `BRK-B`
   mapping. It spends no Finnhub calls. The per-symbol Finnhub REST queue is the fallback:
   it skips any symbol the batch priced in the last 60s, so it takes over by itself if
   `/api/quotes` fails. It paces under 50 calls per rolling minute (the key's 60/min limit
@@ -609,6 +610,17 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
   its price, and every 5 minutes the batch supplies its previous close (`batchSymbolFor`:
   `BINANCE:BTCUSDT` → Yahoo `BTC-USD`, the prior UTC day's close) so the tile has a change
   and a red/green colour; without it the tile stayed grey.
+- **Daily cutover.** The stream carries prices only. The day's change is measured from the
+  previous close a snapshot brought, stamped with that snapshot's session
+  (`baselineMarketDate`). From 9:30 ET on a weekday (`getLatestUsSessionDate`; holidays are
+  not modeled) a close from an earlier session is stale (`hasStaleBaseline`): the batch
+  includes the symbol even while it streams until a fresh close lands, and desktop's Finnhub
+  fallback retries it every 5 minutes. Coming back into view (a tablet waking) polls at once.
+  Before Nov 6, 2026 a streamed symbol got a new close only after 15s without a trade, so a
+  board left open overnight measured busy names (NVDA, AMZN) from the close two sessions
+  back for much of the day, and Runners ranked on those figures. The iPad board's 101
+  symbols also broke its all-symbols first request (400 over the 100 limit), so even a
+  fresh open didn't fix them.
 - Adding a ticker (`appendWidgetToLayout`) fills a free slot inside its group, otherwise
   grows the group by a row and shifts the groups below it (same columns) down. It must
   never take the first free slot further down: groups are stacked with a one-row gap
@@ -1205,10 +1217,14 @@ addresses are in `~/crypto-tax/CLAUDE.md`), so the money leaves Robinhood: a **w
 Plaid usually publishes these as Robinhood Crypto withdrawals ("Withdrawal of 6.469920 SOL
 totaling $495.31"), valued at the coins rather than the cash paid, so Robinhood's spread counts
 as a loss ($88 on the Aug 9 and Sep 6 SOL buys). Since Jul 26 there were SOL on Aug 9 and Sep 6
-(×3), ETH on Aug 9, and USDC on Aug 29, Sep 8, Sep 29 and Nov 3 (9:34 PM ET, $800). Plaid hadn't
-published the Nov 3 one, so YTD sat on "pending cash activity"; it is a manual withdrawal flow
-(`rh-individual-2026-11-04-crypto-purchase-withdrawal-80000`). Record any Plaid misses the same
-way, or after 7 days the pending entry expires and the amount is booked as a loss.
+(×3), ETH on Aug 9, and USDC on Aug 29, Sep 8, Sep 29, Nov 3 (9:34 PM ET, $800) and Nov 5
+($1,000). Plaid hadn't published the last two when they were made, so YTD sat on "pending cash
+activity"; each is a manual withdrawal flow (`rh-individual-2026-11-04-crypto-purchase-withdrawal-80000`,
+`rh-individual-2026-11-05-crypto-purchase-withdrawal-100000`), and Plaid's later copy (the $800 one
+arrived dated Nov 4) is dropped as a match. Record any Plaid misses the same way, or after 7 days
+the pending entry expires and the amount is booked as a loss. Only stablecoin purchases are safe to
+record ahead of Plaid: the match needs the exact amount, and Plaid values other coins at their worth
+rather than the cash paid, so both copies would count.
 
 **Individual re-anchored to Robinhood (Nov 4, 2026).** Individual showed −$3,487 YTD against
 Robinhood's +$3,009. The Jul 26 anchor's value counted $10,929.44 of crypto, but Plaid's trades

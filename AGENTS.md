@@ -599,8 +599,9 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
 - **How quotes refresh.** Finnhub's free WebSocket streams at most 50 symbols (the cap is
   detected once and remembered 7 days); the full theme set is 88. Everything not actively
   streaming — beyond the cap, or subscribed but without a trade for 15s — refreshes every
-  15s from `/api/quotes` (`functions/api/quotes.js`): one request, Yahoo's spark endpoint
-  in chunks of 20 (its limit), 10s edge cache, `VIX` → `^VIX` and `BRK.B` → `BRK-B`
+  15s from `/api/quotes` (`functions/api/quotes.js`): one request per 100 symbols (the
+  endpoint's limit), Yahoo's spark endpoint in chunks of 20 (its limit), 10s edge cache,
+  `VIX` → `^VIX` and `BRK.B` → `BRK-B`
   mapping. It spends no Finnhub calls. The per-symbol Finnhub REST queue is the fallback:
   it skips any symbol the batch priced in the last 60s, so it takes over by itself if
   `/api/quotes` fails. It paces under 50 calls per rolling minute (the key's 60/min limit
@@ -609,6 +610,17 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
   its price, and every 5 minutes the batch supplies its previous close (`batchSymbolFor`:
   `BINANCE:BTCUSDT` → Yahoo `BTC-USD`, the prior UTC day's close) so the tile has a change
   and a red/green colour; without it the tile stayed grey.
+- **Daily cutover.** The stream carries prices only. The day's change is measured from the
+  previous close a snapshot brought, stamped with that snapshot's session
+  (`baselineMarketDate`). From 9:30 ET on a weekday (`getLatestUsSessionDate`; holidays are
+  not modeled) a close from an earlier session is stale (`hasStaleBaseline`): the batch
+  includes the symbol even while it streams until a fresh close lands, and desktop's Finnhub
+  fallback retries it every 5 minutes. Coming back into view (a tablet waking) polls at once.
+  Before Nov 6, 2026 a streamed symbol got a new close only after 15s without a trade, so a
+  board left open overnight measured busy names (NVDA, AMZN) from the close two sessions
+  back for much of the day, and Runners ranked on those figures. The iPad board's 101
+  symbols also broke its all-symbols first request (400 over the 100 limit), so even a
+  fresh open didn't fix them.
 - Adding a ticker (`appendWidgetToLayout`) fills a free slot inside its group, otherwise
   grows the group by a row and shifts the groups below it (same columns) down. It must
   never take the first free slot further down: groups are stacked with a one-row gap

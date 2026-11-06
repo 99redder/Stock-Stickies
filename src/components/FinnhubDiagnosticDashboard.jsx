@@ -40,8 +40,12 @@ const STALE_STREAM_SNAPSHOT_INTERVAL_MS = 30000
 // calls). A symbol the batch priced recently is skipped by the per-symbol Finnhub
 // queue, which takes over on its own if the batch endpoint stops answering.
 const QUOTES_BATCH_ENDPOINT = '/api/quotes'
+// The endpoint refuses more than 100 symbols, so a bigger board is split into requests.
+const QUOTES_BATCH_MAX_SYMBOLS = 100
 const BATCH_POLL_INTERVAL_MS = 15000
 const BATCH_COVERAGE_MS = 60000
+// How often the Finnhub queue retries a previous close that is still a session behind.
+const STALE_BASELINE_RETRY_MS = 5 * 60 * 1000
 const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 // Crypto trades arrive on the stream with no previous close, so the tile had nothing to
 // compute a change from. The batch endpoint supplies one (Yahoo's BTC-USD: the prior UTC
@@ -583,7 +587,6 @@ const loadCachedQuotes = () => {
             sourceDate: typeof quote?.sourceDate === 'string' ? quote.sourceDate : undefined,
             snapshotAt: Number(quote?.snapshotAt) || 0,
             baselineMarketDate: typeof quote?.baselineMarketDate === 'string' ? quote.baselineMarketDate : undefined,
-            baselineCheckedDate: typeof quote?.baselineCheckedDate === 'string' ? quote.baselineCheckedDate : undefined,
             cachedAt: Number(cachedAt) || Date.now(),
             isFresh: false,
             events: 0
@@ -673,6 +676,24 @@ const isRegularUsMarketSession = (timestamp = Date.now()) => {
     const minutes = (Number(parts.hour) * 60) + Number(parts.minute)
     return minutes >= 570 && minutes < 960
 }
+
+// The latest US regular session that has opened, as an Eastern YYYY-MM-DD date: today from
+// 9:30 AM on a weekday, otherwise the weekday before. Holidays are not modeled.
+const getLatestUsSessionDate = (timestamp = Date.now()) => {
+    const parts = Object.fromEntries(easternMarketClock.formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]))
+    const [year, month, day] = getEasternMarketDate(timestamp).split('-').map(Number)
+    const date = new Date(Date.UTC(year, month - 1, day))
+    if ((Number(parts.hour) * 60) + Number(parts.minute) < 570) date.setUTCDate(date.getUTCDate() - 1)
+    while (date.getUTCDay() === 0 || date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() - 1)
+    return date.toISOString().slice(0, 10)
+}
+
+// A previous close belongs to the session of the snapshot that brought it
+// (baselineMarketDate). Once a newer session opens it is a day behind, and every change
+// worked out from it, streamed trades included, is measured from the wrong close.
+const hasStaleBaseline = (quote, timestamp = Date.now()) => (
+    typeof quote?.baselineMarketDate !== 'string' || quote.baselineMarketDate < getLatestUsSessionDate(timestamp)
+)
 
 const createQuoteStore = (initialQuotes) => {
     const publishedQuotes = { ...initialQuotes }
@@ -1418,8 +1439,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                     daily: quote.daily,
                     sourceDate: quote.sourceDate,
                     snapshotAt: quote.snapshotAt,
-                    baselineMarketDate: quote.baselineMarketDate,
-                    baselineCheckedDate: quote.baselineCheckedDate
+                    baselineMarketDate: quote.baselineMarketDate
                 }]))
             if (Object.keys(cacheableQuotes).length > 0) {
                 localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), quotes: cacheableQuotes }))
@@ -1736,7 +1756,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
         const getEligibleTargets = () => {
             const now = Date.now()
-            const checkedDate = getEasternMarketDate(now)
             return targets.filter((symbol) => {
                 if (now < (retryAfterBySymbol[symbol] || 0)) return false
                 if (now - (batchCoveredAtRef.current[symbol] || 0) < BATCH_COVERAGE_MS) return false
@@ -1750,15 +1769,15 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 const quietSince = Math.max(Number(quote.lastEventAt) || 0, subscribedAtRef.current[symbol] || 0)
                 const streamIsStale = isSubscribed && now - quietSince >= STALE_STREAM_AFTER_MS
                 const staleSnapshotIsDue = streamIsStale && now - attemptedAt >= STALE_STREAM_SNAPSHOT_INTERVAL_MS
-                const baselineSnapshotIsDue = quote.baselineCheckedDate !== checkedDate
+                const baselineSnapshotIsDue = hasStaleBaseline(quote, now) && now - attemptedAt >= STALE_BASELINE_RETRY_MS
                 return needsInitialData || !isSubscribed || staleSnapshotIsDue || baselineSnapshotIsDue
             }).sort((a, b) => {
                 const aMetadata = targetMetadata.get(a)
                 const bMetadata = targetMetadata.get(b)
                 const aQuote = quotesRef.current[a] || {}
                 const bQuote = quotesRef.current[b] || {}
-                const aNeedsDailyBaseline = aQuote.baselineCheckedDate !== checkedDate
-                const bNeedsDailyBaseline = bQuote.baselineCheckedDate !== checkedDate
+                const aNeedsDailyBaseline = hasStaleBaseline(aQuote, now)
+                const bNeedsDailyBaseline = hasStaleBaseline(bQuote, now)
                 if (aNeedsDailyBaseline !== bNeedsDailyBaseline) return aNeedsDailyBaseline ? -1 : 1
                 if (aNeedsDailyBaseline && aMetadata.priority !== bMetadata.priority) return aMetadata.priority ? -1 : 1
                 const aHasPrice = Number.isFinite(aQuote.price) && aQuote.price > 0
@@ -1801,7 +1820,6 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                         cachedAt: null,
                         snapshotAt: now,
                         baselineMarketDate: getEasternMarketDate(providerTimestamp),
-                        baselineCheckedDate: getEasternMarketDate(now),
                         error: null
                     }
                     quotesRef.current[symbol] = nextQuote
@@ -1891,27 +1909,40 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         if (targets.length === 0) return undefined
         const streamSymbolByBatchSymbol = new Map(targets.map((symbol) => [batchSymbolFor(symbol), symbol]))
         let timer = null
+        let polling = false
 
         const poll = async () => {
-            if (controller.signal.aborted) return
+            if (controller.signal.aborted || polling) return
+            polling = true
             if (documentVisibleRef.current) {
                 const now = Date.now()
-                // Everything not actively streaming: beyond the stream cap, or
-                // subscribed but without a trade for STALE_STREAM_AFTER_MS.
+                // Everything not actively streaming (beyond the stream cap, or subscribed
+                // but without a trade for STALE_STREAM_AFTER_MS), plus any streamed symbol
+                // whose previous close is from an earlier session: the stream keeps the
+                // price current but never the close the day's change is measured from.
                 const symbols = targets.filter((symbol) => {
                     if (symbol.includes(':')) return now - (batchCoveredAtRef.current[symbol] || 0) >= CRYPTO_BASELINE_INTERVAL_MS
                     if (!subscribedSymbolsRef.current.has(symbol)) return true
                     const quote = quotesRef.current[symbol] || {}
+                    if (hasStaleBaseline(quote, now)) return true
                     const quietSince = Math.max(Number(quote.lastEventAt) || 0, subscribedAtRef.current[symbol] || 0)
                     return now - quietSince >= STALE_STREAM_AFTER_MS
                 }).map(batchSymbolFor).sort()
                 if (symbols.length > 0) {
-                    try {
-                        const response = await fetch(`${QUOTES_BATCH_ENDPOINT}?symbols=${encodeURIComponent(symbols.join(','))}`, { signal: controller.signal })
+                    const chunks = []
+                    for (let index = 0; index < symbols.length; index += QUOTES_BATCH_MAX_SYMBOLS) {
+                        chunks.push(symbols.slice(index, index + QUOTES_BATCH_MAX_SYMBOLS))
+                    }
+                    const results = await Promise.allSettled(chunks.map(async (chunk) => {
+                        const response = await fetch(`${QUOTES_BATCH_ENDPOINT}?symbols=${encodeURIComponent(chunk.join(','))}`, { signal: controller.signal })
                         if (!response.ok) throw new Error(`Quote batch returned ${response.status}`)
-                        const data = await response.json()
-                        const receivedAt = Date.now()
-                        Object.entries(data?.quotes || {}).forEach(([batchSymbol, batchQuote]) => {
+                        return (await response.json())?.quotes || {}
+                    }))
+                    if (controller.signal.aborted) return
+                    const receivedAt = Date.now()
+                    // A failed chunk's symbols go to the Finnhub queue once coverage lapses.
+                    results.filter((result) => result.status === 'fulfilled').forEach(({ value: batchQuotes }) => {
+                        Object.entries(batchQuotes).forEach(([batchSymbol, batchQuote]) => {
                             const symbol = streamSymbolByBatchSymbol.get(batchSymbol)
                             const batchPrice = Number(batchQuote?.price)
                             if (!symbol || !Number.isFinite(batchPrice) || batchPrice <= 0) return
@@ -1934,30 +1965,35 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                                 low: Number(batchQuote.low) || previous.low || null,
                                 cachedAt: null,
                                 snapshotAt: tradeIsNewer ? previous.snapshotAt : receivedAt,
-                                ...(validPreviousClose ? {
-                                    baselineMarketDate: getEasternMarketDate(providerTimestamp),
-                                    baselineCheckedDate: getEasternMarketDate(receivedAt)
-                                } : {}),
+                                ...(validPreviousClose ? { baselineMarketDate: getEasternMarketDate(providerTimestamp) } : {}),
                                 error: null
                             }
                             batchCoveredAtRef.current[symbol] = receivedAt
                             quotesRef.current[symbol] = nextQuote
                             quoteStore.publish(symbol, nextQuote)
                         })
-                    } catch (error) {
-                        if (error?.name === 'AbortError') return
-                        // The Finnhub queue picks these symbols up once coverage lapses.
-                    }
+                    })
                     batchSettledAtRef.current = Date.now()
                 }
             }
+            polling = false
             if (!controller.signal.aborted) timer = setTimeout(poll, BATCH_POLL_INTERVAL_MS)
         }
 
+        // A tablet waking from sleep, or the app coming back to the front, refreshes at
+        // once instead of on the next tick, so a new session's closes land right away.
+        const pollWhenVisible = () => {
+            if (document.visibilityState !== 'visible' || polling) return
+            if (timer) clearTimeout(timer)
+            poll()
+        }
+
         poll()
+        document.addEventListener('visibilitychange', pollWhenVisible)
         return () => {
             controller.abort()
             if (timer) clearTimeout(timer)
+            document.removeEventListener('visibilitychange', pollWhenVisible)
         }
     }, [quoteStore, symbolKey, widgets])
 
