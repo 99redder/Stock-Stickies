@@ -1163,6 +1163,20 @@ when they occurred. Dividends and trading activity are investment results, not e
 cash flows. Plaid transaction subtypes such as contribution, deposit, distribution, and
 withdrawal are recognized when supplied.
 
+**Credit-card cash back is return, like interest (Nov 7, 2026, owner's call).** Robinhood
+Gold Card points redeemed as cash into the brokerage (or any card cash back paid into a
+tracked account) count as investment gain, never as a deposit, even when Plaid labels them
+`deposit`. `stockStickiesCardRewardCredit` in `rentals-api`'s `performance-calculations.js`
+(matcher in `card-rewards.js`) recognizes cash coming in whose description names cash back,
+card rewards, or redeemed points; a card payment out of the brokerage is still a withdrawal,
+and a `manualExternalFlows` record is never reclassified. A published cash back credit also
+explains a cash/NAV jump, so a redemption over $250 doesn't hold YTD on "pending cash
+activity". Each account and the total report `cardRewardTotal` / `cardRewardCount`, and the
+desktop sync panel shows "$X card cash back counted as return". This is a performance choice
+only: for taxes cash back is a purchase rebate, not interest or income, and Stuff's Tax
+Planning leaves it out. Robinhood-anchored gains (Individual, from Nov 4) already include
+whatever Robinhood counted before the anchor; cash back after it rolls forward as return.
+
 Opening balances and reconciliation state are server-side, not hardcoded in either
 frontend. The Worker uses these KV namespaces:
 

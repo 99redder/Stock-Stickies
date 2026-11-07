@@ -1175,6 +1175,13 @@ export default function RobinhoodSync({
                                   Net external flow {Number(performance.netExternalFlow) >= 0 ? '+' : ''}
                                   {Number(performance.netExternalFlow).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
                                   {' · '}{performance.externalFlowCount} recognized flow{performance.externalFlowCount === 1 ? '' : 's'}
+                                  {Number(performance.cardRewardTotal) > 0 && (
+                                    <>
+                                      {' · '}
+                                      {Number(performance.cardRewardTotal).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                                      {' card cash back counted as return'}
+                                    </>
+                                  )}
                                 </span>
                               </>
                             )}
