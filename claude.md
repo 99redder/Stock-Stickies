@@ -1219,12 +1219,39 @@ flags a cash/NAV jump with no matching flow (`provisional-external-flow`, YTD hi
 that check compares only the last two snapshots and every page load takes a new one — so one
 refresh later a $15,000 Individual deposit was booked as gain. `reconcilePendingExternalFlows`
 now keeps the move in `performance:pending-flows` until a same-direction Plaid or manual flow
-accounts for it, or for at most 7 days: Plaid publishes ACH transfers within about five business
+accounts for it (until Nov 7 it also expired after 7 days; see below): Plaid publishes ACH transfers within about five business
 days, and on Oct 21 a Traditional IRA market move that lined up with an unexplained cash change
 kept YTD on "pending cash activity" with no transfer to match (cleared by hand Oct 22). A real
 transfer Plaid publishes after that still counts as a flow. To show YTD before Plaid catches up,
 add the deposit to `manualExternalFlows`; the later Plaid copy is dropped when the amount
 matches within 10 days.
+
+**Unpublished transfers are found, settled, or asked about (Nov 7, 2026).** Plaid stopped
+publishing Robinhood transfers for Individual after Oct 6, and on Nov 7 a $10,000 deposit made
+Nov 5 showed as YTD gain (the cash/NAV check missed it because the money was invested before
+the next sync). The Worker (`rentals-api`) now handles it in three steps; the money in
+Individual comes from Robinhood Joint Checking.
+- **Found from the holdings** (`detectHoldingsMoves`, `performance-calculations.js`): value
+  change between two snapshots less the market move (each earlier position's value × its price
+  change; an expired option counts as going to zero), less published flows, cash back and
+  dividends/interest. Anything over max($500, 1% of the account) becomes a pending move. An
+  account whose Plaid accounts aren't in both snapshots is skipped as a data gap. Runs next to
+  the old cash/NAV check; both feed `performance:pending-flows`.
+- **Settled from Robinhood checking** (`stock-stickies-transfers.js`): a pending move is matched,
+  at most every 30 minutes, to a checking transfer to/from an investment account (Plaid
+  Transactions on the Robinhood login, `TRANSFER_OUT/IN_INVESTMENT_AND_RETIREMENT_FUNDS` or a
+  name with brokerage / investing / individual / IRA; card payments excluded), within max($250,
+  10%) and two days. A match is written as a manual flow (`checkingTransactionId`, each checking
+  transaction used once) and YTD is rebuilt with it.
+- **Otherwise asked in Stock Stickies**: `performance.pendingFlows` drives a card in the corner of
+  the desktop app (`RobinhoodSync.jsx`): "About $X came into Individual between Nov 4 and Nov 5…
+  Was this a deposit?", with the exact amount editable. **Yes** records a manual flow (direction
+  always follows the move); **No, it was gain / a loss** dismisses it. Both go through
+  `POST /api/stock-stickies/plaid/performance/pending` `{ id, action: 'record' | 'gain', amount? }`
+  (owner-only) and are kept in the store's `dismissed` list so the same move isn't raised again.
+- **Pending moves no longer expire.** The account's YTD stays "pending" until one of the above
+  settles it (it used to expire after 7 days and count as gain). The mobile app shows the pending
+  status but has no prompt; answer on desktop.
 
 **Crypto bought into the Phantom wallet.** Robinhood Connect lets the owner spend Individual
 brokerage cash on crypto delivered straight to the Phantom on-chain wallet (the Robinhood sender

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const API_BASE_URL = 'https://rentals-api.99redder.workers.dev'
+const PENDING_FLOW_ACCOUNT_LABELS = {
+  individual: 'Individual',
+  traditional: 'Traditional IRA',
+  roth: 'Roth IRA',
+}
 const PLAID_SCRIPT_ID = 'stock-stickies-plaid-link'
 
 function RobinhoodLogo({ size = 23 }) {
@@ -487,6 +492,12 @@ export default function RobinhoodSync({
   })
   const [savingPerformance, setSavingPerformance] = useState(false)
   const [performanceMessage, setPerformanceMessage] = useState('')
+  // Money that came in or left without a deposit or withdrawal on record (Plaid
+  // stopped publishing Robinhood transfers). The owner answers each one here.
+  const [pendingFlows, setPendingFlows] = useState([])
+  const [pendingAmounts, setPendingAmounts] = useState({})
+  const [pendingBusyId, setPendingBusyId] = useState('')
+  const [pendingError, setPendingError] = useState('')
   const autoSyncStartedRef = useRef(false)
   const notesRef = useRef(notes)
   const cashSecuredPutsRef = useRef(cashSecuredPuts)
@@ -568,12 +579,34 @@ export default function RobinhoodSync({
   const applyPerformance = useCallback((performance) => {
     if (!performance) return
     onPerformanceChangeRef.current?.(performance)
+    setPendingFlows(Array.isArray(performance.pendingFlows) ? performance.pendingFlows : [])
     setOpeningValues({
       individual: performance.accounts?.individual?.openingValue ?? '',
       traditional: performance.accounts?.traditional?.openingValue ?? '',
       roth: performance.accounts?.roth?.openingValue ?? '',
     })
   }, [])
+
+  const answerPendingFlow = useCallback(async (flow, action) => {
+    setPendingBusyId(flow.id)
+    setPendingError('')
+    try {
+      const typed = pendingAmounts[flow.id]
+      const amount = action === 'record' && typed !== undefined && String(typed).trim() !== ''
+        ? Number(String(typed).replace(/[$,\s]/g, ''))
+        : undefined
+      if (amount !== undefined && !(amount > 0)) throw new Error('Enter the amount as a positive number.')
+      const data = await apiFetch('/api/stock-stickies/plaid/performance/pending', {
+        method: 'POST',
+        body: JSON.stringify({ id: flow.id, action, ...(amount !== undefined ? { amount } : {}) }),
+      })
+      applyPerformance(data.performance)
+    } catch (answerError) {
+      setPendingError(answerError?.message || 'That answer could not be saved. Please try again.')
+    } finally {
+      setPendingBusyId('')
+    }
+  }, [apiFetch, applyPerformance, pendingAmounts])
 
   // Page load only *reads* holdings (for YTD / performance / the sync modal). Position
   // changes are written (a) when the user clicks Update positions, or (b) once for each
@@ -1310,6 +1343,73 @@ export default function RobinhoodSync({
           </div>
         </div>
       )}
+      {pendingFlows.length > 0 && (() => {
+        const flow = pendingFlows[0]
+        const incoming = Number(flow.amount) > 0
+        const accountName = PENDING_FLOW_ACCOUNT_LABELS[flow.account] || flow.account
+        const busy = pendingBusyId === flow.id
+        const shortDate = iso => new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+        const when = flow.windowStart && flow.windowStart !== flow.date
+          ? `between ${shortDate(flow.windowStart)} and ${shortDate(flow.date)}`
+          : `around ${shortDate(flow.date)}`
+        const estimate = Math.abs(Number(flow.amount)).toLocaleString(undefined, { style: 'currency', currency: 'USD' })
+        const amountValue = pendingAmounts[flow.id] ?? Math.abs(Number(flow.amount)).toFixed(2)
+        return (
+          <div
+            role="dialog"
+            aria-label={incoming ? 'Unrecorded deposit' : 'Unrecorded withdrawal'}
+            className={`fixed bottom-4 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border p-4 shadow-2xl ${panel}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-sm font-bold">
+                {incoming ? 'Was this a deposit?' : 'Was this a withdrawal?'}
+              </div>
+              {pendingFlows.length > 1 && (
+                <span className={`text-xs ${muted}`}>1 of {pendingFlows.length}</span>
+              )}
+            </div>
+            <p className={`mt-1 text-sm ${muted}`}>
+              About {estimate} {incoming ? 'came into' : 'left'} {accountName} {when}, and no{' '}
+              {incoming ? 'deposit' : 'withdrawal'} is on record for it.
+              {' '}{accountName}&apos;s YTD is on hold until you answer, so it isn&apos;t counted as {incoming ? 'gain' : 'a loss'}.
+            </p>
+            <label className={`mt-3 block text-xs font-semibold ${muted}`}>
+              Exact amount
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amountValue}
+                onChange={event => setPendingAmounts(previous => ({ ...previous, [flow.id]: event.target.value }))}
+                disabled={busy}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                  darkMode ? 'border-gray-700 bg-gray-950 text-white' : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              />
+            </label>
+            {pendingError && <p className="mt-2 text-xs font-semibold text-red-500">{pendingError}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void answerPendingFlow(flow, 'record')}
+                disabled={busy}
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {busy ? 'Saving…' : incoming ? 'Yes, record the deposit' : 'Yes, record the withdrawal'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void answerPendingFlow(flow, 'gain')}
+                disabled={busy}
+                className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
+                  darkMode ? 'border-gray-600 hover:bg-gray-800' : 'border-gray-300 hover:bg-gray-100'
+                }`}
+              >
+                {incoming ? 'No, it was gain' : 'No, it was a loss'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }
