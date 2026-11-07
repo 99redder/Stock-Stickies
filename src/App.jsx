@@ -7409,6 +7409,14 @@ const firebaseConfig = {
                                                             {ytd.returnPercent != null && ` · ${formatSignedPercent(ytd.returnPercent)}`}
                                                         </div>
                                                     )}
+                                                    {ytd?.status === 'ready' && Number(ytd.cardRewardTotal) > 0 && (
+                                                        <div
+                                                            className={`text-[10px] opacity-75 ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}
+                                                            title="Credit-card cash back paid into the account counts as return, like interest"
+                                                        >
+                                                            incl. {Number(ytd.cardRewardTotal).toLocaleString(undefined, { style: 'currency', currency: 'USD' })} card cash back
+                                                        </div>
+                                                    )}
                                                 </button>
                                             );
                                         })}

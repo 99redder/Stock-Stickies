@@ -1171,8 +1171,10 @@ tracked account) count as investment gain, never as a deposit, even when Plaid l
 card rewards, or redeemed points; a card payment out of the brokerage is still a withdrawal,
 and a `manualExternalFlows` record is never reclassified. A published cash back credit also
 explains a cash/NAV jump, so a redemption over $250 doesn't hold YTD on "pending cash
-activity". Each account and the total report `cardRewardTotal` / `cardRewardCount`, and the
-desktop sync panel shows "$X card cash back counted as return". This is a performance choice
+activity". Each account and the total report `cardRewardTotal` / `cardRewardCount`. The
+Portfolio tab's account chips show "incl. $X card cash back" under the YTD line, and the full
+sync panel (only opened when something needs review) shows "$X card cash back counted as
+return". This is a performance choice
 only: for taxes cash back is a purchase rebate, not interest or income, and Stuff's Tax
 Planning leaves it out. Robinhood-anchored gains (Individual, from Nov 4) already include
 whatever Robinhood counted before the anchor; cash back after it rolls forward as return.
