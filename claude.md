@@ -1252,6 +1252,10 @@ export. `performanceReconciliations.2026.individual` is now Robinhood's own P&L 
 Nov 4 (+$3,009.37, realized $4,966.88) at Plaid's $17,481.02 (Robinhood's "Today −$90.25" matched
 Plaid to the cent), with the Jul 26 anchor kept under `replaces`. The Oct 14 deposit is a manual
 flow and now only affects the percentage. About $2,058 of the old gap was never explained.
+On Nov 7 Individual showed +$12,979.88: a $10,000 deposit (Nov 5) that Plaid hadn't published
+was being counted as gain. It is now the manual flow `rh-individual-2026-11-05-ach-deposit-1000000`
+(added from the Mac with `wrangler kv key get/put` on the config key), which brings YTD back to
+about the Nov 4 anchor plus market moves. Plaid still had no Individual transfers after Oct 6.
 
 **IRAs vs Robinhood (Nov 4, 2026).** Stock Stickies showed Traditional +$11,802 and Roth +$21,870;
 Robinhood showed +$9,121 and +$21,443. Robinhood's displayed values include the overnight
