@@ -1264,10 +1264,20 @@ as a loss ($88 on the Aug 9 and Sep 6 SOL buys). Since Jul 26 there were SOL on 
 ($1,000). Plaid hadn't published the last two when they were made, so YTD sat on "pending cash
 activity"; each is a manual withdrawal flow (`rh-individual-2026-11-04-crypto-purchase-withdrawal-80000`,
 `rh-individual-2026-11-05-crypto-purchase-withdrawal-100000`), and Plaid's later copy (the $800 one
-arrived dated Nov 4) is dropped as a match. Record any Plaid misses the same way, or after 7 days
-the pending entry expires and the amount is booked as a loss. Only stablecoin purchases are safe to
-record ahead of Plaid: the match needs the exact amount, and Plaid values other coins at their worth
-rather than the cash paid, so both copies would count.
+arrived dated Nov 4) is dropped as a match. Until Nov 7 Plaid misses had to be recorded the same
+way (a pending entry then expired after 7 days and the amount was booked as a loss), and only
+stablecoin purchases were safe to record ahead of Plaid: the match needed the exact amount, and
+Plaid values other coins at their worth rather than the cash paid, so both copies would count.
+
+Since Nov 7, 2026 these are recorded automatically: the crypto tracker (`~/crypto-tax`)
+pushes the year's purchases paid with Individual cash to `rentals-api`
+`POST /api/crypto/brokerage-withdrawals` on each sync, and each becomes an Individual
+withdrawal (`crypto-ledger-<tx>`) at the cash paid. Plaid's coin-valued copy is matched by
+coin and quantity, so the stablecoin-only rule above no longer applies to these. Purchases on
+or before the Nov 4 anchor are left as they are. Until the next morning's push, the holdings
+check may ask "Was this a withdrawal?" for a same-day purchase; answering is fine, the
+tracker's exact record replaces the answer. Spec: `docs/crypto-tracker-brokerage-withdrawals.md`
+in the `stuff` repo.
 
 **Individual re-anchored to Robinhood (Nov 4, 2026).** Individual showed −$3,487 YTD against
 Robinhood's +$3,009. The Jul 26 anchor's value counted $10,929.44 of crypto, but Plaid's trades
