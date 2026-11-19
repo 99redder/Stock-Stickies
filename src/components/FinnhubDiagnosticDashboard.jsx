@@ -46,6 +46,13 @@ const BATCH_POLL_INTERVAL_MS = 15000
 const BATCH_COVERAGE_MS = 60000
 // How often the Finnhub queue retries a previous close that is still a session behind.
 const STALE_BASELINE_RETRY_MS = 5 * 60 * 1000
+// Finnhub's stream sometimes answers a valid subscription with "Invalid symbol" for a
+// while (BINANCE:BTCUSDT on Nov 19, 2026). The symbol leaves the stream and is tried
+// again after each delay in turn (the last repeats); only one refused this many times
+// in a row is worth an alert.
+const INVALID_SYMBOL_RETRY_MS = [60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000, 60 * 60 * 1000]
+const INVALID_SYMBOL_ALERT_AFTER = 3
+const invalidSymbolAlert = (symbol) => `Finnhub's live stream isn't accepting ${displaySymbol(symbol)} right now. Its tile still refreshes from snapshots, and the stream will try it again.`
 const SUBSCRIPTION_CAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 // Crypto trades arrive on the stream with no previous close, so the tile had nothing to
 // compute a change from. The batch endpoint supplies one (Yahoo's BTC-USD: the prior UTC
@@ -1275,6 +1282,7 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const [connectionState, setConnectionState] = useState('disconnected')
     const [connectionError, setConnectionError] = useState('')
     const [socketEpoch, setSocketEpoch] = useState(0)
+    const [resubscribeTick, setResubscribeTick] = useState(0)
     const [editingWidgetId, setEditingWidgetId] = useState(null)
     const [highlightedWidgetId, setHighlightedWidgetId] = useState(null)
     const [newSymbol, setNewSymbol] = useState('')
@@ -1325,6 +1333,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
     const lastSnapshotRequestAtRef = useRef(0)
     const snapshotRequestLogRef = useRef([])
     const subscribedAtRef = useRef({})
+    // Symbols the stream refused: { [symbol]: { failures, retryAt } }, cleared by a trade.
+    const rejectedSymbolsRef = useRef({})
     const batchCoveredAtRef = useRef({})
     const batchSettledAtRef = useRef(0)
     const layoutsRef = useRef(initial.layouts)
@@ -1558,6 +1568,16 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                             setStreamedSymbols(accepted)
                             setSubscriptionNotice(`Finnhub accepted ${accepted.length} simultaneous symbols on this API key. The remaining widgets refresh with snapshots about every 15 seconds.`)
                             setConnectionError('')
+                        } else if (/invalid symbol\s+\S+/i.test(providerMessage)) {
+                            // Off the stream (its slot goes to the next symbol) until its retry
+                            // is due; meanwhile snapshots keep the tile current.
+                            const symbol = cleanSymbol(/invalid symbol\s+(\S+)/i.exec(providerMessage)[1])
+                            subscribedSymbolsRef.current.delete(symbol)
+                            const failures = (rejectedSymbolsRef.current[symbol]?.failures || 0) + 1
+                            const retryDelay = INVALID_SYMBOL_RETRY_MS[Math.min(failures, INVALID_SYMBOL_RETRY_MS.length) - 1]
+                            rejectedSymbolsRef.current[symbol] = { failures, retryAt: Date.now() + retryDelay }
+                            if (failures >= INVALID_SYMBOL_ALERT_AFTER) setConnectionError(invalidSymbolAlert(symbol))
+                            setResubscribeTick((current) => current + 1)
                         } else {
                             setConnectionError(providerMessage)
                         }
@@ -1570,6 +1590,10 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                         const symbol = cleanSymbol(trade.s)
                         const price = Number(trade.p)
                         if (!symbol || !Number.isFinite(price)) return
+                        if (rejectedSymbolsRef.current[symbol]) {
+                            delete rejectedSymbolsRef.current[symbol]
+                            setConnectionError((current) => current === invalidSymbolAlert(symbol) ? '' : current)
+                        }
                         const previous = quotesRef.current[symbol] || {}
                         const previousClose = previous.previousClose
                         const change = Number.isFinite(previousClose) && previousClose !== 0 ? price - previousClose : previous.change
@@ -1663,8 +1687,13 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
         const wanted = new Set(orderedSymbols)
         const subscribed = subscribedSymbolsRef.current
         const knownCap = paged ? Math.min(subscriptionCapRef.current ?? PAGED_STREAM_CAP, PAGED_STREAM_CAP) : subscriptionCapRef.current
-        const desiredSymbols = knownCap === null ? orderedSymbols : orderedSymbols.slice(0, knownCap)
+        // A symbol the stream refused waits for its retry; the next one takes its slot.
+        const now = Date.now()
+        const retryTimes = orderedSymbols.map((symbol) => rejectedSymbolsRef.current[symbol]?.retryAt || 0).filter((retryAt) => retryAt > now)
+        const streamableSymbols = orderedSymbols.filter((symbol) => !((rejectedSymbolsRef.current[symbol]?.retryAt || 0) > now))
+        const desiredSymbols = knownCap === null ? streamableSymbols : streamableSymbols.slice(0, knownCap)
         const desired = new Set(desiredSymbols)
+        const retryTimer = retryTimes.length ? setTimeout(() => setResubscribeTick((current) => current + 1), Math.min(...retryTimes) - now + 250) : null
 
         if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
 
@@ -1691,7 +1720,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 subscribedAtRef.current[symbol] = Date.now()
             })
             setStreamedSymbols([...subscribed])
-            return undefined
+            return () => {
+                if (retryTimer) clearTimeout(retryTimer)
+            }
         }
 
         const subscribeNext = () => {
@@ -1708,8 +1739,9 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
 
         return () => {
             if (subscriptionTimerRef.current) clearTimeout(subscriptionTimerRef.current)
+            if (retryTimer) clearTimeout(retryTimer)
         }
-    }, [paged, symbolKey, socketEpoch, streamOrderedWidgets])
+    }, [paged, symbolKey, socketEpoch, resubscribeTick, streamOrderedWidgets])
 
     useEffect(() => {
         // The paged board makes no Finnhub REST calls: the key's 60-a-minute allowance is
@@ -1921,7 +1953,8 @@ export default function FinnhubDiagnosticDashboard({ apiKey, persistedDashboard 
                 // whose previous close is from an earlier session: the stream keeps the
                 // price current but never the close the day's change is measured from.
                 const symbols = targets.filter((symbol) => {
-                    if (symbol.includes(':')) return now - (batchCoveredAtRef.current[symbol] || 0) >= CRYPTO_BASELINE_INTERVAL_MS
+                    // Streamed crypto needs only its previous close; off the stream it needs prices too.
+                    if (symbol.includes(':')) return !subscribedSymbolsRef.current.has(symbol) || now - (batchCoveredAtRef.current[symbol] || 0) >= CRYPTO_BASELINE_INTERVAL_MS
                     if (!subscribedSymbolsRef.current.has(symbol)) return true
                     const quote = quotesRef.current[symbol] || {}
                     if (hasStaleBaseline(quote, now)) return true

@@ -621,6 +621,14 @@ Layout persists per user as `diagnosticDashboard` in Firestore (localStorage fal
   back for much of the day, and Runners ranked on those figures. The iPad board's 101
   symbols also broke its all-symbols first request (400 over the 100 limit), so even a
   fresh open didn't fix them.
+- **Refused symbols.** Finnhub's stream sometimes answers a valid subscription with
+  `Invalid symbol …` for a while (`BINANCE:BTCUSDT` on Nov 19, 2026; REST and a fresh stream
+  took it minutes later). The symbol leaves the stream (`rejectedSymbolsRef`), its slot goes
+  to the next symbol, and it is retried after 1, 5 and 15 minutes, then hourly
+  (`INVALID_SYMBOL_RETRY_MS`); a trade clears it. Off the stream, crypto is batched every 15s
+  instead of only for its 5-minute previous close. Only a third refusal in a row shows an
+  alert, in plain words (`invalidSymbolAlert`). Before, the raw message stayed up as an amber
+  toast and BTC sat "subscribed" with no trades, updating every 5 minutes.
 - Adding a ticker (`appendWidgetToLayout`) fills a free slot inside its group, otherwise
   grows the group by a row and shifts the groups below it (same columns) down. It must
   never take the first free slot further down: groups are stacked with a one-row gap
