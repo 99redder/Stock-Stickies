@@ -3958,6 +3958,26 @@ const firebaseConfig = {
                 allPortfolioData.reduce((sum, h) => sum + h.value, 0),
             [allPortfolioData]);
 
+            // Owner only: open short options (CSPs, covered calls) at their current buy-back
+            // cost from the latest Plaid snapshot. Robinhood subtracts these from account value,
+            // so displayed balances do too. Holdings, donut slices and percentages stay gross.
+            const shortOptionValueByAccount = useMemo(() => {
+                const byAccount = {};
+                (robinhoodOptions?.shortPositions || []).forEach(option => {
+                    byAccount[option.account] = (byAccount[option.account] || 0) + option.value;
+                });
+                return byAccount;
+            }, [robinhoodOptions]);
+            const totalShortOptionValue = useMemo(() =>
+                Object.values(shortOptionValueByAccount).reduce((sum, v) => sum + v, 0),
+            [shortOptionValueByAccount]);
+            const shownShortOptionValue = portfolioAccountFilter === 'all'
+                ? totalShortOptionValue
+                : (shortOptionValueByAccount[portfolioAccountFilter] || 0);
+            const shortOptionNote = (amount) => amount > 0
+                ? `after ${formatUsd(amount)} to buy back open short options`
+                : '';
+
             const allPortfolioPnlTotals = useMemo(() => {
                 const covered = allPortfolioData.filter(h => h.unrealizedPnL != null);
                 const knownCostBasis = covered.reduce((sum, h) => sum + h.costBasis, 0);
@@ -4346,7 +4366,11 @@ const firebaseConfig = {
                             percentOfTotal: grandPortfolioValue > 0
                                 ? Number((((accountTotals[a.id]?.value || 0) / grandPortfolioValue) * 100).toFixed(2))
                                 : 0,
-                            cspObligation: Number((putObligationByAccount[a.id] || 0).toFixed(2))
+                            cspObligation: Number((putObligationByAccount[a.id] || 0).toFixed(2)),
+                            ...(shortOptionValueByAccount[a.id] > 0 ? {
+                                shortOptionBuybackCost: Number(shortOptionValueByAccount[a.id].toFixed(2)),
+                                accountValueAfterShortOptions: Number(((accountTotals[a.id]?.value || 0) - shortOptionValueByAccount[a.id]).toFixed(2)),
+                            } : {})
                         })),
                         ...(accountTotals[UNASSIGNED_ACCOUNT_ID] ? [{
                             id: UNASSIGNED_ACCOUNT_ID,
@@ -4411,7 +4435,7 @@ const firebaseConfig = {
                     })),
                     categories: categories.map(c => ({ color: c, label: colorLabels[c] || 'Category' }))
                 };
-            }, [notes, nickname, grandPortfolioValue, totalPutObligation, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, accountThemes, isOwnerPortfolioUser, ACCOUNTS, getAccountLabel, getPutAccount]);
+            }, [notes, nickname, grandPortfolioValue, totalPutObligation, shortOptionValueByAccount, putObligationByAccount, allPortfolioData, accountTotals, cashSecuredPuts, watchList, watchListNotes, radarList, radarNotes, radarQuotes, categories, colorLabels, accountThemes, isOwnerPortfolioUser, ACCOUNTS, getAccountLabel, getPutAccount]);
 
             // Markdown snapshot of whatever the Portfolio tab is currently showing, for
             // pasting into an external LLM. Follows the account filter, exactly like the
@@ -4451,6 +4475,10 @@ const firebaseConfig = {
 
                 lines.push('## Totals');
                 lines.push(`- Market value: ${money(totalPortfolioValue)}`);
+                if (shownShortOptionValue > 0) {
+                    lines.push(`- Open short options, cost to buy back: ${money(shownShortOptionValue)}`);
+                    lines.push(`- Account value after short options (as the broker reports it): ${money(totalPortfolioValue - shownShortOptionValue)}`);
+                }
                 if (portfolioAccountFilter !== 'all' && getAccountTheme(portfolioAccountFilter)) {
                     lines.push(`- Account theme: ${getAccountTheme(portfolioAccountFilter)}`);
                 }
@@ -7079,8 +7107,13 @@ const firebaseConfig = {
                                     <div>
                                         <div className="text-xs font-bold uppercase tracking-wider opacity-60">All accounts</div>
                                         <div className={`mt-1 text-lg font-bold tabular-nums ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
-                                            {formatUsd(grandPortfolioValue)}
+                                            {formatUsd(grandPortfolioValue - totalShortOptionValue)}
                                         </div>
+                                        {totalShortOptionValue > 0 && (
+                                            <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
+                                                {shortOptionNote(totalShortOptionValue)}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className={`text-right ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                         <div className="text-xs font-bold uppercase tracking-wider opacity-60">
@@ -7121,7 +7154,8 @@ const firebaseConfig = {
                             // Real accounts always show a header (so an empty one can still be
                             // targeted); Unassigned only appears while something is in it.
                             if (!accountNotes.length && accountId === UNASSIGNED_ACCOUNT_ID) return null;
-                            const accountValue = accountTotals[accountId]?.value || 0;
+                            const accountShortOptions = shortOptionValueByAccount[accountId] || 0;
+                            const accountValue = (accountTotals[accountId]?.value || 0) - accountShortOptions;
                             const isCollapsed = !!collapsedAccounts[accountId];
                             return (
                                 <div key={accountId} className="mb-6">
@@ -7180,6 +7214,11 @@ const firebaseConfig = {
                                             {accountValue > 0 && (
                                                 <span className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     {formatUsd(accountValue)}
+                                                </span>
+                                            )}
+                                            {accountShortOptions > 0 && (
+                                                <span className={`block text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    {shortOptionNote(accountShortOptions)}
                                                 </span>
                                             )}
                                             {(accountTotals[accountId]?.pnlPositionCount || 0) > 0 ? (
@@ -7268,8 +7307,14 @@ const firebaseConfig = {
                                                 </div>
                                             )}
                                             <p className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} ${hidePortfolioValues ? 'blur-md select-none' : ''}`}>
-                                                ${totalPortfolioValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                ${(totalPortfolioValue - shownShortOptionValue).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                                             </p>
+                                            {shownShortOptionValue > 0 && (
+                                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}
+                                                    title="Robinhood counts open short options at what it would cost to buy them back. Positions, the chart and percentages below are before this.">
+                                                    {formatUsd(totalPortfolioValue)} in positions, {shortOptionNote(shownShortOptionValue)}
+                                                </p>
+                                            )}
                                             <div className={`mt-2 ${hidePortfolioValues ? 'blur-sm select-none' : ''}`}>
                                                 <span className={`text-sm font-bold ${portfolioPnlTotals.coveredCount > 0
                                                     ? (portfolioPnlTotals.unrealizedPnL >= 0 ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-red-300' : 'text-red-700'))
@@ -7356,7 +7401,9 @@ const firebaseConfig = {
                                     <div className={`mt-5 pt-4 border-t flex flex-wrap gap-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                                         {['all', ...(accountsEnabled ? presentAccountIds : [])].map(accountId => {
                                             const isActive = portfolioAccountFilter === accountId;
-                                            const value = accountId === 'all' ? grandPortfolioValue : (accountTotals[accountId]?.value || 0);
+                                            const value = accountId === 'all'
+                                                ? grandPortfolioValue - totalShortOptionValue
+                                                : (accountTotals[accountId]?.value || 0) - (shortOptionValueByAccount[accountId] || 0);
                                             const count = accountId === 'all' ? allPortfolioData.length : (accountTotals[accountId]?.positionCount || 0);
                                             const pnl = accountId === 'all' ? allPortfolioPnlTotals : {
                                                 unrealizedPnL: accountTotals[accountId]?.unrealizedPnL || 0,

@@ -173,6 +173,30 @@ function normalizePlaidOptionPosition(position) {
   }
 }
 
+// Short option contracts (CSPs and covered calls) at their current buy-back cost, so the
+// app can net them out of account values the way Robinhood does. Display-only, never saved.
+function normalizePlaidShortOption(position) {
+  const contract = position?.optionContract
+  if (!contract || typeof contract !== 'object') return null
+  const contractType = String(contract.contract_type || contract.contractType || '').toLowerCase()
+  const rawQuantity = Number(position.quantity)
+  const value = Math.abs(Number(position.institutionValue))
+  if (
+    (contractType !== 'call' && contractType !== 'put') ||
+    !Number.isFinite(rawQuantity) ||
+    rawQuantity >= 0 ||
+    !Number.isFinite(value) ||
+    !position.stockStickiesAccount
+  ) return null
+  return {
+    account: position.stockStickiesAccount,
+    ticker: normalizeTicker(contract.underlying_security_ticker || contract.underlyingSecurityTicker),
+    contractType,
+    qty: Math.abs(rawQuantity),
+    value,
+  }
+}
+
 function coveredCallKey(call) {
   return [
     call?.securityId || '',
@@ -517,9 +541,13 @@ export default function RobinhoodSync({
 
   useEffect(() => {
     if (!holdings) return
+    const rawPositions = Array.isArray(holdings.positions) ? holdings.positions : []
     onOptionPositionsChangeRef.current?.({
-      positions: (Array.isArray(holdings.positions) ? holdings.positions : [])
+      positions: rawPositions
         .map(normalizePlaidOptionPosition)
+        .filter(Boolean),
+      shortPositions: rawPositions
+        .map(normalizePlaidShortOption)
         .filter(Boolean),
       fetchedAt: holdings.fetchedAt || '',
       stale: holdings.stale === true || holdings.source === 'nightly-cache',

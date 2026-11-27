@@ -525,6 +525,16 @@ expiry, account, Plaid market value, and Unrealized P&L when a cost basis is sup
 plus the snapshot time. Short calls are left out — they stay on the sticky note as covered
 calls. Option value is not added to portfolio or account totals.
 
+**Short options come off displayed balances (Nov 27, 2026).** Robinhood counts an open short
+option at what it would cost to buy back, so the Individual account showed $33,457.52 of cash in
+Stock Stickies against Robinhood's $25,786.58 (the HOOD and RKLB Jan 2029 puts were worth
+$7,670.94). `RobinhoodSync` now also reports `shortPositions` (every short put and call, at
+`|institutionValue|` from the latest Plaid snapshot) and the app sums them per account
+(`shortOptionValueByAccount`). The Notes-tab total, account section headers, the Portfolio
+header and account chips show the value after them, with an "after $X to buy back open short
+options" line. Holdings, donut slices, percentages and `accountTotals` stay gross; the export
+and Ask K get the buy-back cost and the net value as extra fields. Never saved.
+
 Ask K always receives **all** accounts regardless of the on-screen filter: each position
 carries `account`, `accountLabel`, `percentOfPortfolio`, and `percentOfAccount`, and the
 payload includes an `accounts` array with per-account totals and strategy text (owner
